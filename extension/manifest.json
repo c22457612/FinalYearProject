@@ -4,7 +4,12 @@
   "version": "0.0.1",
   "description": "Privacy Mode selector",
   "action": { "default_popup": "popup.html" },
-  "permissions": ["storage", "declarativeNetRequest"],
+  "permissions": [
+    "storage",
+    "declarativeNetRequest",
+    "declarativeNetRequestFeedback",
+    "notifications"            
+  ],
   "host_permissions": ["<all_urls>"],
   "background": { "service_worker": "background.js" }
 }
