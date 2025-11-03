@@ -1,27 +1,48 @@
-//sample domains to test with for now
 const FILTERS = [
   "google-analytics.com",
   "doubleclick.net",
   "googletagmanager.com",
-  "facebook.com/tr"
+  "facebook.com/tr",
+  "matomo.org"
 ];
 
-// Flip to true for system toasts 
-const NOTIFY_ENABLED = true;
-const NOTIFY_COOLDOWN_MS = 60_000; // per-domain throttle (1 min)
-
-// ----- State -----
+//State
 let currentMode = "moderate";
-let blockedCount = 0;
-const lastNotifyByDomain = new Map();
+let blockedFirst = 0;
+let blockedThird = 0;
+let notifyEnabled = false;
+const lastNotifyByDomain = new Map(); // throttle toasts
 
-// ----- Helpers -----
-function setBadge(mode) {
-  const label = blockedCount > 0 ? String(Math.min(999, blockedCount)) : ({ strict: "S", moderate: "M", low: "L" }[mode] || "");
-  chrome.action.setBadgeText({ text: label });
-  chrome.action.setBadgeBackgroundColor({
-    color: mode === "strict" ? "#d93025" : mode === "moderate" ? "#f29900" : "#6b7280"
+//Utils
+function setBadge() {
+  const total = blockedFirst + blockedThird;
+  chrome.action.setBadgeText({ text: total ? String(Math.min(total, 999)) : "" });
+}
+
+function base(host) {
+  if (!host) return "";
+  const parts = host.split(".").filter(Boolean);
+  return parts.length <= 2 ? parts.join(".") : parts.slice(-2).join(".");
+}
+function hostFromUrl(u) { try { return new URL(u).hostname; } catch { return ""; } }
+function hostFromOrigin(o) { try { return new URL(o).hostname; } catch { return ""; } }
+
+function isThirdParty(initiator, requestUrl) {
+  const a = base(hostFromOrigin(initiator));
+  const b = base(hostFromUrl(requestUrl));
+  if (!a || !b) return true; // default to third-party if unknown
+  return a !== b;
+}
+
+async function persistStats() {
+  await chrome.storage.local.set({
+    stats: { firstParty: blockedFirst, thirdParty: blockedThird }
   });
+  chrome.runtime.sendMessage({
+    type: "stats",
+    firstParty: blockedFirst,
+    thirdParty: blockedThird
+  }).catch(() => {});
 }
 
 async function applyRules(mode = "moderate") {
@@ -30,10 +51,10 @@ async function applyRules(mode = "moderate") {
 
   const addRules = [];
   if (mode !== "low") {
-    const base = mode === "strict" ? 1000 : 2000;
+    const baseId = mode === "strict" ? 1000 : 2000;
     FILTERS.forEach((f, i) => {
       addRules.push({
-        id: base + i,
+        id: baseId + i,
         priority: 1,
         action: { type: "block" },
         condition: {
@@ -47,25 +68,17 @@ async function applyRules(mode = "moderate") {
 
   await chrome.declarativeNetRequest.updateDynamicRules({ removeRuleIds, addRules });
   currentMode = mode;
-  blockedCount = 0; // reset per mode switch
-  setBadge(mode);
-}
-
-function domainFrom(url) {
-  try {
-    const u = new URL(url);
-    return u.hostname.replace(/^www\./, "");
-  } catch {
-    return url;
-  }
+  blockedFirst = 0;
+  blockedThird = 0;
+  await persistStats();
+  setBadge();
 }
 
 function maybeNotify(host) {
-  if (!NOTIFY_ENABLED) return;
+  if (!notifyEnabled) return;
   const now = Date.now();
   const last = lastNotifyByDomain.get(host) || 0;
-  if (now - last < NOTIFY_COOLDOWN_MS) return;
-
+  if (now - last < 60_000) return; // 1 min per-domain
   const id = `block-${host}-${now}`;
   chrome.notifications.create(id, {
     type: "basic",
@@ -73,27 +86,33 @@ function maybeNotify(host) {
     title: "Tracker blocked",
     message: `${host} (${currentMode})`
   }, () => setTimeout(() => chrome.notifications.clear(id), 3000));
-
   lastNotifyByDomain.set(host, now);
 }
 
-// ----- Boot & reactions -----
+//Boot & reactions
 async function init() {
-  const { privacyMode } = await chrome.storage.local.get(["privacyMode"]);
+  const { privacyMode, notifyEnabled: storedNotify } = await chrome.storage.local.get([
+    "privacyMode",
+    "notifyEnabled"
+  ]);
+  notifyEnabled = !!storedNotify;
   await applyRules(privacyMode || "moderate");
 }
 
 chrome.runtime.onInstalled.addListener(init);
 chrome.runtime.onStartup.addListener(init);
+
 chrome.storage.onChanged.addListener(ch => {
   if ("privacyMode" in ch) applyRules(ch.privacyMode.newValue);
+  if ("notifyEnabled" in ch) notifyEnabled = !!ch.notifyEnabled.newValue;
 });
 
-// When a rule blocks, this fires (needs declarativeNetRequestFeedback perm)
+// Count blocks (requires declarativeNetRequestFeedback)
 chrome.declarativeNetRequest.onRuleMatchedDebug.addListener(info => {
-  if (currentMode === "low") return;
-  blockedCount++;
-  setBadge(currentMode);
-  const host = domainFrom(info.request.url);
+  const third = isThirdParty(info.request.initiator, info.request.url);
+  if (third) blockedThird++; else blockedFirst++;
+  setBadge();
+  persistStats();
+  const host = hostFromUrl(info.request.url);
   maybeNotify(host);
 });
