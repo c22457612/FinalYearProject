@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Visual Privacy Toolkit (Prototype)",
-  "version": "0.0.1",
+  "version": "0.0.3",
   "description": "Privacy Mode selector",
   "action": { "default_popup": "popup.html" },
   "permissions": [
