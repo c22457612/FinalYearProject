@@ -3,17 +3,33 @@
   <head>
     <meta charset="utf-8" />
     <title>VPT</title>
-    <style>body{font-family:system-ui,sans-serif;padding:12px;min-width:260px}</style>
+    <style>
+      body{font-family:system-ui,sans-serif;padding:12px;min-width:260px}
+      .row{display:flex;justify-content:space-between;align-items:center;margin:8px 0}
+      .muted{color:#666;font-size:12px}
+    </style>
   </head>
   <body>
     <h1>Visual Privacy Toolkit</h1>
-    <label for="mode">Privacy mode</label>
-    <select id="mode">
-      <option value="strict">Strict</option>
-      <option value="moderate" selected>Moderate</option>
-      <option value="low">Low</option>
-    </select>
-    <p id="status"></p>
+
+    <div class="row">
+      <label for="mode">Privacy mode</label>
+      <select id="mode">
+        <option value="strict">Strict</option>
+        <option value="moderate" selected>Moderate</option>
+        <option value="low">Low</option>
+      </select>
+    </div>
+
+    <div class="row"><span>First-party blocked</span><strong id="first">0</strong></div>
+    <div class="row"><span>Third-party blocked</span><strong id="third">0</strong></div>
+
+    <div class="row">
+      <label for="notify">Show notifications</label>
+      <input type="checkbox" id="notify" />
+    </div>
+
+    <p id="status" class="muted"></p>
     <script src="popup.js"></script>
   </body>
 </html>
