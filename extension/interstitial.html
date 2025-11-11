@@ -1,0 +1,44 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <title>Privacy Check</title>
+    <style>
+      body { font-family: system-ui, sans-serif; margin: 24px; max-width: 680px; }
+      .row { display: flex; gap: 12px; align-items: center; }
+      .actions { display:flex; gap:12px; margin-top:16px; }
+      .btn { padding:10px 14px; border:1px solid #ddd; border-radius:10px; cursor:pointer; background:#fff; }
+      .btn.primary { background:#111; color:#fff; }
+      .muted { color:#666; font-size:12px; }
+      .list { margin: 10px 0; padding-left: 18px; }
+    </style>
+  </head>
+  <body>
+    <h1 style="margin:0 0 8px 0;">Before you visit</h1>
+    <p class="muted">You’re seeing this because this is your first visit to this site.</p>
+
+    <div class="row">
+      <div>Site:</div>
+      <strong id="site">-</strong>
+    </div>
+    <div class="row" style="margin-top:6px">
+      <div>Current mode:</div>
+      <strong id="mode">-</strong>
+    </div>
+
+    <div style="margin-top:16px">
+      <strong>Mini privacy receipt (will update after preview):</strong>
+      <ul id="receipt" class="list"></ul>
+      <p class="muted">Tip: Use “Preview first” to load with strict blocking and collect what this site tries to contact.</p>
+    </div>
+
+    <div class="actions">
+      <button id="enter" class="btn primary">Enter with current mode</button>
+      <button id="preview" class="btn">Preview first</button>
+      <button id="trust" class="btn">Always allow for this site</button>
+      <button id="back" class="btn">Back</button>
+    </div>
+
+    <script src="interstitial.js"></script>
+  </body>
+</html>
