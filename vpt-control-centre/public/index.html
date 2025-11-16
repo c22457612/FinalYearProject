@@ -1,0 +1,97 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Visual Privacy Toolkit – Control Centre</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <header>
+    <div class="header-left">
+      <h1>Visual Privacy Toolkit – Control Centre</h1>
+      <span class="header-subtitle">Prototype live view (local only, no cloud)</span>
+    </div>
+    <div id="connectionStatus" class="badge">Connecting…</div>
+  </header>
+
+  <main>
+    <section>
+      <div class="summary">
+        <div class="summary-card">
+          <h2>Total events</h2>
+          <div id="statTotalEvents" class="value">0</div>
+          <div class="hint">since server started</div>
+        </div>
+        <div class="summary-card">
+          <h2>Active sites</h2>
+          <div id="statSites" class="value">0</div>
+          <div class="hint">seen in recent events</div>
+        </div>
+        <div class="summary-card">
+          <h2>Events (last 5 min)</h2>
+          <div id="statRecent" class="value">0</div>
+          <div class="hint" id="statRecentHint">refreshing…</div>
+        </div>
+      </div>
+
+      <div class="panel">
+        <div class="panel-header">
+          <div>
+            <div class="panel-title">Live Privacy Receipt</div>
+            <div class="panel-subtitle" id="receiptSubtitle">
+              Showing latest events…
+            </div>
+          </div>
+        </div>
+        <div class="scroll">
+          <table>
+            <thead>
+              <tr>
+                <th>Time</th>
+                <th>Site</th>
+                <th>Event</th>
+                <th>Details</th>
+                <th>Mode</th>
+              </tr>
+            </thead>
+            <tbody id="eventsTableBody"></tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <section>
+      <div class="panel">
+        <div class="panel-header">
+          <div>
+            <div class="panel-title">Per-site summary</div>
+            <div class="panel-subtitle">Derived from current in-memory stats</div>
+          </div>
+        </div>
+        <div class="scroll">
+          <table>
+            <thead>
+              <tr>
+                <th>Site</th>
+                <th>Events</th>
+                <th>Blocked</th>
+                <th>Observed</th>
+                <th>3rd-party domains</th>
+              </tr>
+            </thead>
+            <tbody id="sitesTableBody"></tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <footer>
+    <div>Prototype only: data resets when the backend restarts.</div>
+    <div>Source: local extension events streamed to <code>http://127.0.0.1:4141</code>.</div>
+  </footer>
+
+  <script src="dashboard.js" defer></script>
+</body>
+</html>
