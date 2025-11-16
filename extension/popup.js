@@ -4,6 +4,10 @@ const firstEl = document.getElementById("first");
 const thirdEl = document.getElementById("third");
 const notifyChk = document.getElementById("notify");
 
+// debug clear-trusted controls
+const clearTrustedBtn = document.getElementById("clearTrustedBtn");
+const clearTrustedStatus = document.getElementById("clearTrustedStatus");
+
 async function load() {
   const { privacyMode, stats, notifyEnabled } = await chrome.storage.local.get([
     "privacyMode",
@@ -25,6 +29,26 @@ modeSel.addEventListener("change", async () => {
 notifyChk.addEventListener("change", async () => {
   await chrome.storage.local.set({ notifyEnabled: notifyChk.checked });
 });
+
+// clear all trusted sites (debug button)
+if (clearTrustedBtn) {
+  clearTrustedBtn.addEventListener("click", async () => {
+    try {
+      await chrome.storage.local.set({ trusted: [] });
+      if (clearTrustedStatus) {
+        clearTrustedStatus.textContent = "All trusted sites cleared.";
+        setTimeout(() => {
+          clearTrustedStatus.textContent = "";
+        }, 2000);
+      }
+    } catch (e) {
+      console.error("Failed to clear trusted sites", e);
+      if (clearTrustedStatus) {
+        clearTrustedStatus.textContent = "Error clearing trusted sites.";
+      }
+    }
+  });
+}
 
 chrome.runtime.onMessage.addListener(msg => {
   if (msg?.type === "stats") {
