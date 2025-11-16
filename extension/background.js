@@ -2,6 +2,7 @@ const FILTERS = [
   "google-analytics.com",
   "doubleclick.net",
   "googletagmanager.com",
+  "googleapis.com",
   "facebook.com/tr",
   "matomo.org"
 ];
@@ -15,6 +16,67 @@ const lastNotifyByDomain = new Map(); // throttle toasts
 let promptOnNewSites = true;   // default ON (toggle later in popup if you want)
 let trustedDomains = [];       // base domains user trusts
 let enterOnce = null; // { siteBase, ts }
+
+let previewReq = null;             // { siteBase, dest, ts }
+let previewActive = null;          // { siteBase, tabId, timerId }
+const previewObserved = new Map(); // reqBase -> { blocked: boolean, allowed: boolean }
+const locationCache = {};          // tabId -> last main-frame URL
+
+// ---- Privacy event logger ----
+async function logEvent(kind, data = {}, tabId = null) {
+  try {
+    const ts = Date.now();
+
+    let topLevelUrl = null;
+    let site = null;
+
+    // Use locationCache if we know this tab's top-level URL
+    if (
+      tabId !== null &&
+      typeof tabId !== "undefined" &&
+      typeof locationCache === "object" &&
+      Object.prototype.hasOwnProperty.call(locationCache, tabId)
+    ) {
+      topLevelUrl = locationCache[tabId];
+      try {
+        const host = new URL(topLevelUrl).hostname;
+        site = base(host); // your existing helper
+      } catch (e) {
+        // ignore parse errors
+      }
+    }
+
+    // Fallback: if caller passed a siteBase in data, use that
+    if (!site && data.siteBase) {
+      site = data.siteBase;
+    }
+
+    const event = {
+      id: `evt-${ts}-${Math.random().toString(16).slice(2, 8)}`,
+      ts,
+      site: site || null,
+      topLevelUrl: topLevelUrl || null,
+      tabId,
+      mode: currentMode || "moderate",
+      source: "extension",
+      kind,
+      data
+    };
+
+    const result = await chrome.storage.local.get("events");
+    const events = Array.isArray(result.events) ? result.events : [];
+    events.push(event);
+
+    const MAX = 500;
+    if (events.length > MAX) {
+      events.splice(0, events.length - MAX);
+    }
+
+    await chrome.storage.local.set({ events });
+  } catch (e) {
+    console.error("logEvent failed", kind, data, tabId, e);
+  }
+}
 
 
 //Utils
@@ -105,6 +167,58 @@ async function loadTrustAndPromptFlag() {
   promptOnNewSites = flag !== false;
 }
 
+function startPreview(siteBase, tabId) {
+  // reset any prior preview
+  if (previewActive?.timerId) clearTimeout(previewActive.timerId);
+  previewObserved.clear();
+  const timerId = setTimeout(() => endPreview(), 5000); // ~5s window
+  previewActive = { siteBase, tabId, timerId };
+}
+
+async function endPreview() {
+  if (!previewActive) return;
+  const { siteBase, tabId, timerId } = previewActive;
+  clearTimeout(timerId);
+  previewActive = null;
+  previewReq = null;
+
+  // persist mini receipt
+  const { receipts = {} } = await chrome.storage.local.get(["receipts"]);
+  const prev = receipts[siteBase]?.domains || [];
+  const merged = new Set(prev);
+  for (const [d, flags] of previewObserved.entries()) {
+    // Store with a simple marker e.g., "doubleclick.net (blocked)" if blocked at least once
+    merged.add(flags.blocked ? `${d} (blocked)` : d);
+  }
+  receipts[siteBase] = { lastSeen: Date.now(), domains: [...merged] };
+  await chrome.storage.local.set({ receipts, __preview: null });
+
+  // Build a summary array from previewObserved
+  const domainsSummary = [];
+  for (const [d, flags] of previewObserved.entries()) {
+    domainsSummary.push({
+      domain: d,
+      blocked: !!flags.blocked,
+      seen: !!flags.allowed
+    });
+  }
+
+  // Log a preview.summary event
+  logEvent("preview.summary", {
+    siteBase,
+    domains: domainsSummary
+  }, tabId).catch(() => {});
+
+
+  // return to interstitial for this dest
+  const dest = locationCache[tabId] || "";
+  if (dest) {
+    const url = `${chrome.runtime.getURL("interstitial.html")}?dest=${encodeURIComponent(dest)}`;
+    try { chrome.tabs.update(tabId, { url }); } catch {}
+  }
+}
+
+
 
 //Boot & reactions
 async function init() {
@@ -131,15 +245,13 @@ chrome.storage.onChanged.addListener(async ch => {
     await applyRules(currentMode);
   }
 
-  // if a preview is requested, temporarily switch to strict; when it ends, you can switch back (A2)
-  if ("__preview" in ch && ch.__preview?.newValue) {
-    // we’ll add strict-preview behavior in the next step.
-  }
-
   if ("__enterOnce" in ch && ch.__enterOnce?.newValue) {
   enterOnce = ch.__enterOnce.newValue;
-}
+  }
 
+  if ("__preview" in ch && ch.__preview?.newValue) {
+    previewReq = ch.__preview.newValue; // { siteBase, dest, ts }
+  }
 });
 
 chrome.webNavigation.onBeforeNavigate.addListener((details) => {
@@ -150,16 +262,28 @@ chrome.webNavigation.onBeforeNavigate.addListener((details) => {
     if (!/^https?:/i.test(url)) return;
     if (url.startsWith(chrome.runtime.getURL("interstitial.html"))) return;
 
-    const now = Date.now();
     const siteBase = base(hostFromUrl(url));
     if (!siteBase) return;
 
+    // cache last URL for this tab
+    locationCache[details.tabId] = url;
+
     // one-time Enter bypass
+    const now = Date.now();
+
+    // one-time Enter bypass: allow this site to load once without interstitial
     if (enterOnce && enterOnce.siteBase === siteBase && (now - enterOnce.ts) < 15000) {
-      enterOnce = null; // consume bypass
-      return;           // allow navigation once
+      enterOnce = null; // consume the bypass
+      return;           // let this navigation proceed
     }
 
+    // --- PREVIEW: if interstitial set __preview for this site/dest, start preview now
+    if (previewReq && previewReq.siteBase === siteBase && previewReq.dest === url) {
+      startPreview(siteBase, details.tabId);   // <-- no rule changes; use current mode
+      return; // allow navigation to proceed
+    }
+
+    // interstitial redirect (unchanged)
     if (!promptOnNewSites) return;
     if (trustedDomains.includes(siteBase)) return;
 
@@ -168,8 +292,9 @@ chrome.webNavigation.onBeforeNavigate.addListener((details) => {
   } catch {}
 });
 
+
 chrome.declarativeNetRequest.onRuleMatchedDebug.addListener((info) => {
-  if (currentMode === "low") return; // low installs no rules, so skip
+  if (currentMode === "low") return; // low has no rules
 
   const third = isThirdParty(info.request.initiator, info.request.url);
   if (third) blockedThird++; else blockedFirst++;
@@ -178,6 +303,37 @@ chrome.declarativeNetRequest.onRuleMatchedDebug.addListener((info) => {
   persistStats();
 
   const host = hostFromUrl(info.request.url);
-  maybeNotify(host); // optional toast if enabled notifications
+  maybeNotify(host);
+
+  // NEW: log a network.blocked event (fire-and-forget)
+  logEvent("network.blocked", {
+    url: info.request.url,
+    domain: base(host),
+    resourceType: info.request.resourceType,
+    ruleId: info.rule.id,
+    isThirdParty: third
+  }, info.tabId).catch(() => {});
 });
+
+
+chrome.webRequest.onBeforeRequest.addListener((details) => {
+  if (!previewActive || details.tabId !== previewActive.tabId) return;
+
+  const siteBase = previewActive.siteBase;
+  const reqBase = base(hostFromUrl(details.url));
+  if (!reqBase || reqBase === siteBase) return; // only care about 3rd-party
+
+  const rec = previewObserved.get(reqBase) || { blocked: false, allowed: false };
+  rec.allowed = true;
+  previewObserved.set(reqBase, rec);
+
+  // NEW: log a network.observed event (attempted request during preview)
+  logEvent("network.observed", {
+    url: details.url,
+    domain: reqBase,
+    resourceType: details.type, // may be undefined in some cases, that's okay
+    isThirdParty: true,
+    siteBase
+  }, details.tabId).catch(() => {});
+}, { urls: ["<all_urls>"] });
 
