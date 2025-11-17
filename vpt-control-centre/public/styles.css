@@ -210,6 +210,22 @@ tbody tr:nth-child(even) {
   background: rgba(15, 23, 42, 0.6);
 }
 
+/* Make Live Privacy Receipt rows feel interactive */
+
+#eventsTableBody tr {
+  cursor: pointer;
+  transition: background 0.12s ease, transform 0.05s ease;
+}
+
+#eventsTableBody tr:hover {
+  background: rgba(148, 163, 184, 0.12);
+}
+
+#eventsTableBody tr.event-row-selected {
+  background: rgba(59, 130, 246, 0.25);
+}
+
+
 /* Pills */
 
 .pill {
@@ -268,4 +284,97 @@ footer code {
   footer {
     padding-inline: var(--space-md);
   }
+}
+
+/* --- Right column wrapper (no visual change, just structure) --- */
+.right-column {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+/* --- Event details panel --- */
+
+.details-panel {
+  /* already looks like a .panel; just tweak spacing */
+}
+
+.details-body {
+  margin-top: 0.75rem;
+  font-size: 0.8rem;
+  display: grid;
+  grid-template-columns: auto 1fr;
+  row-gap: 0.25rem;
+  column-gap: 0.75rem;
+}
+
+.details-body details.raw {
+  grid-column: 1 / -1;
+  margin-top: 0.75rem;
+}
+
+.details-placeholder {
+  font-size: 0.8rem;
+  color: #9ca3af;
+}
+
+#details-body .label,
+#details-body .details-label {
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  font-size: 0.72rem;
+  color: #9ca3af;
+}
+
+#details-body .value,
+#details-body .details-value {
+  color: #e5e7eb;
+}
+
+.details-actions {
+  margin-top: 0.75rem;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  align-items: center;
+  font-size: 0.8rem;
+}
+
+.details-actions button {
+  padding: 0.35rem 0.7rem;
+  border-radius: 999px;
+  border: none;
+  font-size: 0.75rem;
+  cursor: pointer;
+  background: #ef4444; /* red */
+  color: #ffffff;
+}
+
+.details-actions button:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+/* Raw JSON toggle + block */
+
+.details-json-toggle {
+  margin-top: 0.5rem;
+  padding: 0;
+  border: none;
+  background: none;
+  font-size: 0.75rem;
+  cursor: pointer;
+  color: #9ca3af;
+  text-decoration: underline;
+}
+
+.details-json {
+  margin-top: 0.35rem;
+  background: #020617;
+  border-radius: 0.5rem;
+  padding: 0.5rem 0.75rem;
+  font-size: 0.72rem;
+  max-height: 180px;
+  overflow: auto;
+  white-space: pre-wrap;
 }
