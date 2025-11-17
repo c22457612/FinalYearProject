@@ -61,16 +61,21 @@
       </div>
     </section>
 
-    <section>
+    <!-- RIGHT COLUMN: per-site summary + event details -->
+    <section class="right-column">
+      <!-- Per-site summary (same content as before, just moved) -->
       <div class="panel">
         <div class="panel-header">
           <div>
             <div class="panel-title">Per-site summary</div>
-            <div class="panel-subtitle">Derived from current in-memory stats</div>
+            <div class="panel-subtitle">
+              Derived from current in-memory stats
+            </div>
           </div>
         </div>
-        <div class="scroll">
-          <table>
+
+        <div class="table-wrapper">
+          <table class="summary-table">
             <thead>
               <tr>
                 <th>Site</th>
@@ -80,9 +85,38 @@
                 <th>3rd-party domains</th>
               </tr>
             </thead>
-            <tbody id="sitesTableBody"></tbody>
+            <tbody id="sitesTableBody">
+              <!-- filled by dashboard.js -->
+            </tbody>
           </table>
         </div>
+      </div>
+
+      <!-- Event details panel -->
+      <div class="panel details-panel">
+        <div class="panel-header">
+          <div>
+            <div class="panel-title">Event details</div>
+            <div id="details-subtitle" class="panel-subtitle">
+              Click an event in the table to see more information.
+            </div>
+          </div>
+        </div>
+
+        <div id="details-body" class="details-body">
+          <div class="details-placeholder">No event selected.</div>
+        </div>
+
+        <div id="details-actions" class="details-actions">
+          <button id="block-domain-btn">
+            Block this domain for this browser session (UI-only demo)
+          </button>
+        </div>
+
+        <button id="details-json-toggle" class="details-json-toggle" hidden>
+          Show raw event JSON
+        </button>
+        <pre id="details-json" class="details-json" hidden></pre>
       </div>
     </section>
   </main>
