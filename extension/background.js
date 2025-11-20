@@ -8,6 +8,11 @@ const FILTERS = [
 ];
 
 //State
+const BACKEND_URL = "http://127.0.0.1:4141";
+
+let lastPolicyTs = 0;
+let customFilters = []; // extra domains to block via policies
+
 let currentMode = "moderate";
 let blockedFirst = 0;
 let blockedThird = 0;
@@ -21,6 +26,9 @@ let previewReq = null;             // { siteBase, dest, ts }
 let previewActive = null;          // { siteBase, tabId, timerId }
 const previewObserved = new Map(); // reqBase -> { blocked: boolean, allowed: boolean }
 const locationCache = {};          // tabId -> last main-frame URL
+
+let lastCommandId = 0;
+
 
 // ---- Privacy event logger ----
 async function logEvent(kind, data = {}, tabId = null) {
@@ -73,6 +81,16 @@ async function logEvent(kind, data = {}, tabId = null) {
     }
 
     await chrome.storage.local.set({ events });
+    // Fire-and-forget: send to local backend if it's running
+    try {
+      fetch(`${BACKEND_URL}/api/events`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(event)
+      }).catch(() => {});
+    } catch (e2) {
+      // backend might not be running; ignore
+    }
   } catch (e) {
     console.error("logEvent failed", kind, data, tabId, e);
   }
@@ -117,8 +135,10 @@ async function applyRules(mode = "moderate") {
 
   const addRules = [];
   if (mode !== "low") {
+    const allFilters = [...new Set([...FILTERS, ...customFilters])];
     const baseId = mode === "strict" ? 1000 : 2000;
-    FILTERS.forEach((f, i) => {
+
+    allFilters.forEach((f, i) => {
       addRules.push({
         id: baseId + i,
         priority: 1,
@@ -127,7 +147,6 @@ async function applyRules(mode = "moderate") {
           urlFilter: f,
           resourceTypes: ["script", "xmlhttprequest", "image", "sub_frame"],
           ...(mode === "moderate" ? { domainType: "thirdParty" } : {}),
-          // if the site is trusted, skip blocking there
           excludedInitiatorDomains: trustedDomains
         }
       });
@@ -141,6 +160,7 @@ async function applyRules(mode = "moderate") {
   await persistStats();
   setBadge();
 }
+
 
 function maybeNotify(host) {
   if (!notifyEnabled) return;
@@ -165,6 +185,72 @@ async function loadTrustAndPromptFlag() {
   trustedDomains = Array.isArray(trusted) ? trusted : [];
   // default to true unless explicitly false
   promptOnNewSites = flag !== false;
+}
+// sibling helper to loadTrustAndPromptFlag()
+async function loadCustomFilters() {
+  const { customFilters: stored } = await chrome.storage.local.get("customFilters");
+  customFilters = Array.isArray(stored) ? stored : [];
+}
+
+async function applyPolicy(policy) {
+  if (!policy || typeof policy !== "object") return;
+  const { op, payload = {} } = policy;
+
+  switch (op) {
+    case "trust_site": {
+      const site = payload.site;
+      if (!site) break;
+      const { trusted = [] } = await chrome.storage.local.get("trusted");
+      const set = new Set(trusted);
+      set.add(site);
+      await chrome.storage.local.set({ trusted: [...set] });
+      break;
+    }
+
+    case "untrust_site": {
+      const site = payload.site;
+      if (!site) break;
+      const { trusted = [] } = await chrome.storage.local.get("trusted");
+      const set = new Set(trusted);
+      set.delete(site);
+      await chrome.storage.local.set({ trusted: [...set] });
+      break;
+    }
+
+    case "block_domain": {
+      const domain = payload.domain;
+      if (!domain) break;
+      const { customFilters: stored = [] } = await chrome.storage.local.get("customFilters");
+      const set = new Set(stored);
+      set.add(domain);
+      await chrome.storage.local.set({ customFilters: [...set] });
+      break;
+    }
+
+    default:
+      // unknown op, ignore for now
+      break;
+  }
+}
+
+async function pollPolicies() {
+  try {
+    const res = await fetch(`${BACKEND_URL}/api/policies?since=${lastPolicyTs}`);
+    if (!res.ok) return;
+    const { latestTs, items } = await res.json();
+
+    if (Array.isArray(items)) {
+      for (const p of items) {
+        await applyPolicy(p);
+      }
+    }
+
+    if (typeof latestTs === "number" && latestTs > lastPolicyTs) {
+      lastPolicyTs = latestTs;
+    }
+  } catch (e) {
+    // backend may not be running; ignore
+  }
 }
 
 function startPreview(siteBase, tabId) {
@@ -222,7 +308,9 @@ async function endPreview() {
 
 //Boot & reactions
 async function init() {
-  await loadTrustAndPromptFlag();  // <-- ADD
+  await loadTrustAndPromptFlag();
+  await loadCustomFilters(); // <-- add this line
+  setInterval(pollPolicies, 10000); // poll every 10s
   const { privacyMode, notifyEnabled: storedNotify } = await chrome.storage.local.get([
     "privacyMode",
     "notifyEnabled"
@@ -247,6 +335,11 @@ chrome.storage.onChanged.addListener(async ch => {
 
   if ("__enterOnce" in ch && ch.__enterOnce?.newValue) {
   enterOnce = ch.__enterOnce.newValue;
+  }
+
+  if ("customFilters" in ch) {
+    await loadCustomFilters();
+    await applyRules(currentMode);
   }
 
   if ("__preview" in ch && ch.__preview?.newValue) {
@@ -292,12 +385,15 @@ chrome.webNavigation.onBeforeNavigate.addListener((details) => {
   } catch {}
 });
 
-
 chrome.declarativeNetRequest.onRuleMatchedDebug.addListener((info) => {
   if (currentMode === "low") return; // low has no rules
 
   const third = isThirdParty(info.request.initiator, info.request.url);
-  if (third) blockedThird++; else blockedFirst++;
+  if (third) {
+    blockedThird++;
+  } else {
+    blockedFirst++;
+  }
 
   setBadge();
   persistStats();
@@ -305,15 +401,25 @@ chrome.declarativeNetRequest.onRuleMatchedDebug.addListener((info) => {
   const host = hostFromUrl(info.request.url);
   maybeNotify(host);
 
-  // NEW: log a network.blocked event (fire-and-forget)
-  logEvent("network.blocked", {
-    url: info.request.url,
-    domain: base(host),
-    resourceType: info.request.resourceType,
-    ruleId: info.rule.id,
-    isThirdParty: third
-  }, info.tabId).catch(() => {});
+  // Work out the top-level site base from the initiator, if we can
+  const topHost = hostFromOrigin(info.request.initiator || "");
+  const siteBase = base(topHost);
+
+  // Log a network.blocked event; logEvent will use siteBase as a fallback
+  logEvent(
+    "network.blocked",
+    {
+      url: info.request.url,
+      domain: base(host),
+      resourceType: info.request.resourceType,
+      ruleId: info.rule.id,
+      isThirdParty: third,
+      siteBase // ✅ now defined
+    },
+    info.tabId
+  ).catch(() => {});
 });
+
 
 
 chrome.webRequest.onBeforeRequest.addListener((details) => {
