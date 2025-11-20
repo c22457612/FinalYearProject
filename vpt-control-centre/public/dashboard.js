@@ -227,7 +227,7 @@ function renderEvents(events) {
 }
 
 function renderSites(sites) {
-  const tbody = document.getElementById("sitesTableBody");
+  const tbody = document.getElementById("site-summary-body");
   tbody.innerHTML = "";
 
   const rows = sites.slice().sort((a, b) => b.totalEvents - a.totalEvents);
@@ -301,6 +301,42 @@ window.addEventListener("load", () => {
   fetchAndRender();
   setInterval(fetchAndRender, POLL_MS);
 
+  // --- View switching (Home / Cookies) ---
+  const homeView = document.getElementById("view-home");
+  const cookiesView = document.getElementById("view-cookies");
+  const navItems = document.querySelectorAll(".nav-item[data-view]");
+
+  function switchView(view) {
+    if (!homeView || !cookiesView) return;
+
+    if (view === "cookies") {
+      homeView.classList.add("hidden");
+      cookiesView.classList.remove("hidden");
+    } else {
+      homeView.classList.remove("hidden");
+      cookiesView.classList.add("hidden");
+      view = "home";
+    }
+
+    navItems.forEach(btn => {
+      if (btn.dataset.view === view) {
+        btn.classList.add("active");
+      } else {
+        btn.classList.remove("active");
+      }
+    });
+  }
+
+  navItems.forEach(btn => {
+    btn.addEventListener("click", () => {
+      const view = btn.dataset.view || "home";
+      switchView(view);
+    });
+  });
+
+  // Default to Home on load
+  switchView("home");
+
   const trustBtn = document.getElementById("trust-site-btn");
   if (trustBtn) {
     trustBtn.addEventListener("click", async () => {
@@ -327,7 +363,6 @@ window.addEventListener("load", () => {
           throw new Error(`HTTP ${res.status}`);
         }
 
-        // Optimistic local update so UI matches immediately
         const next = new Set(trustedSites);
         if (op === "trust_site") {
           next.add(site);
@@ -346,7 +381,6 @@ window.addEventListener("load", () => {
       } finally {
         setTimeout(() => {
           trustBtn.disabled = false;
-          // re-render so label switches to "Trust ..." or "Stop trusting ..."
           renderEventDetails(selectedEvent);
         }, 1500);
       }
