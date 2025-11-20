@@ -163,8 +163,29 @@ function summarizeEvent(ev) {
     const domains = Array.isArray(d.domains) ? d.domains.slice(0, 3).join(", ") : "";
     return `preview found ${total} third-party domain(s)${domains ? ` (${domains})` : ""}`;
   }
+
+  if (kind === "cookies.snapshot") {
+    const site = ev.site || d.siteBase || "this site";
+    const count =
+      d.count != null
+        ? d.count
+        : (Array.isArray(d.cookies) ? d.cookies.length : 0);
+    const third = d.thirdPartyCount != null ? d.thirdPartyCount : 0;
+    const first = count - third;
+
+    if (!count) {
+      return `Cookie snapshot: no cookies found for ${site}`;
+    }
+
+    const parts = [`${count} cookie${count === 1 ? "" : "s"}`];
+    if (first >= 0 && third >= 0) {
+      parts.push(`${first} first-party`, `${third} third-party`);
+    }
+    return `Cookie snapshot for ${site}: ${parts.join(" · ")}`;
+  }
   return JSON.stringify(d) || "(no details)";
 }
+
 
 function renderEvents(events) {
   const tbody = document.getElementById("eventsTableBody");
