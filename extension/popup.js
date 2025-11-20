@@ -3,10 +3,46 @@ const statusEl = document.getElementById("status");
 const firstEl = document.getElementById("first");
 const thirdEl = document.getElementById("third");
 const notifyChk = document.getElementById("notify");
+const cookieCountEl = document.getElementById("cookieCount");
 
 // debug clear-trusted controls
 const clearTrustedBtn = document.getElementById("clearTrustedBtn");
 const clearTrustedStatus = document.getElementById("clearTrustedStatus");
+
+async function getCurrentTabUrl() {
+  const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+  return tab?.url || null;
+}
+
+async function updateCookieCount() {
+  if (!cookieCountEl) return;
+
+  try {
+    const url = await getCurrentTabUrl();
+    // Ignore chrome://, about: etc.
+    if (!url || !/^https?:/i.test(url)) {
+      cookieCountEl.textContent = "n/a";
+      return;
+    }
+
+    cookieCountEl.textContent = "…";
+
+    const res = await chrome.runtime.sendMessage({
+      type: "cookies:getSummary",
+      url
+    });
+
+    if (!res || !res.ok) {
+      cookieCountEl.textContent = "error";
+      return;
+    }
+
+    cookieCountEl.textContent = String(res.count);
+  } catch (e) {
+    console.error("Failed to get cookie summary", e);
+    cookieCountEl.textContent = "error";
+  }
+} 
 
 async function load() {
   const { privacyMode, stats, notifyEnabled } = await chrome.storage.local.get([
@@ -19,6 +55,8 @@ async function load() {
   thirdEl.textContent = stats?.thirdParty || 0;
   notifyChk.checked = !!notifyEnabled;
   statusEl.textContent = `Current: ${modeSel.value}`;
+
+  updateCookieCount();
 }
 
 modeSel.addEventListener("change", async () => {
