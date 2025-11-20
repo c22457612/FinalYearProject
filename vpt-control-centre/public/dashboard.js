@@ -1,5 +1,10 @@
 const POLL_MS = 3000; // poll every 3s
 
+let latestEvents = [];
+let selectedEvent = null;
+let selectedEventRow = null;
+let trustedSites = new Set(); // derived from /api/policies
+
 function friendlyTime(ts) {
   if (!ts) return "-";
   const d = new Date(ts);
@@ -12,6 +17,116 @@ function modeClass(mode) {
   if (m === "low" || m === "moderate" || m === "strict") return m;
   return "";
 }
+
+function escapeHtml(str) {
+  return String(str)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;");
+}
+
+function recomputePolicyState(policiesResponse) {
+  const items = (policiesResponse && policiesResponse.items) || [];
+  const trusted = new Set();
+
+  for (const p of items) {
+    if (!p || typeof p !== "object") continue;
+    const op = p.op;
+    const payload = p.payload || {};
+
+    if (op === "trust_site" && payload.site) {
+      trusted.add(payload.site);
+    } else if (op === "untrust_site" && payload.site) {
+      trusted.delete(payload.site);
+    }
+  }
+
+  trustedSites = trusted;
+}
+
+function renderEventDetails(ev) {
+  const body = document.getElementById("details-body");
+  const actions = document.getElementById("details-actions");
+  const subtitle = document.getElementById("details-subtitle");
+
+  if (!ev) {
+    selectedEvent = null;
+    body.innerHTML = '<p class="muted">No event selected.</p>';
+    actions.style.display = "none";
+
+    const trustBtn = document.getElementById("trust-site-btn");
+    if (trustBtn) trustBtn.disabled = true;
+
+    subtitle.textContent = "Click an event in the table to see more information.";
+    return;
+  }
+
+
+  selectedEvent = ev;
+
+  const d = ev.data || {};
+  const domain = d.domain || "(none)";
+  const third = d.isThirdParty ? "third-party" : "first-party / unknown";
+
+  subtitle.textContent =
+    `Event at ${friendlyTime(ev.ts)} on ${ev.site || "unknown"}`;
+
+  const isTrusted = ev.site && trustedSites.has(ev.site);
+  const protectionStatus = isTrusted
+    ? "trusted (tracking protection bypassed)"
+    : "protected (tracking protection active)";
+
+  body.innerHTML = `
+    <div class="label">Event ID</div>
+    <div class="value">${ev.id || "(none)"}</div>
+
+    <div class="label">Site</div>
+    <div class="value">${ev.site || "unknown"}</div>
+
+    <div class="label">Protection status</div>
+    <div class="value">${protectionStatus}</div>
+
+    <div class="label">Kind</div>
+    <div class="value">${ev.kind || "-"}</div>
+
+    <div class="label">Mode</div>
+    <div class="value">${ev.mode || "-"}</div>
+
+    <div class="label">Domain</div>
+    <div class="value">${domain}</div>
+
+    <div class="label">Party</div>
+    <div class="value">${third}</div>
+
+    <div class="label">Resource type</div>
+    <div class="value">${d.resourceType || "-"}</div>
+
+    <div class="label">Summary</div>
+    <div class="value">${escapeHtml(summarizeEvent(ev))}</div>
+
+    <details class="raw">
+      <summary>Show raw event JSON</summary>
+      <pre>${escapeHtml(JSON.stringify(ev, null, 2))}</pre>
+    </details>
+  `;
+
+  // decide whether the trust button should be shown/enabled
+  const canTrustSite = !!ev.site;
+  actions.style.display = canTrustSite ? "flex" : "none";
+
+  const trustBtn = document.getElementById("trust-site-btn");
+  if (trustBtn) {
+    trustBtn.disabled = !canTrustSite;
+    if (!canTrustSite) {
+      trustBtn.textContent = "Trust this site (send to extension)";
+    } else if (trustedSites.has(ev.site)) {
+      trustBtn.textContent = `Stop trusting ${ev.site}`;
+    } else {
+      trustBtn.textContent = `Trust ${ev.site} (send to extension)`;
+    }
+  }
+}
+
 
 // ---- Rendering ----
 
@@ -55,8 +170,8 @@ function renderEvents(events) {
   const tbody = document.getElementById("eventsTableBody");
   tbody.innerHTML = "";
 
-  const sorted = [...events].sort((a, b) => (b.ts || 0) - (a.ts || 0));
-  const latest = sorted.slice(0, 50);
+  latestEvents = events.slice().sort((a, b) => (b.ts || 0) - (a.ts || 0));
+  const latest = latestEvents.slice(0, 50);
 
   latest.forEach(ev => {
     const tr = document.createElement("tr");
@@ -77,8 +192,10 @@ function renderEvents(events) {
     tr.appendChild(tdKind);
 
     const tdDetails = document.createElement("td");
-    tdDetails.textContent = summarizeEvent(ev);
+    let text = summarizeEvent(ev);
+    tdDetails.textContent = text;
     tr.appendChild(tdDetails);
+
 
     const tdMode = document.createElement("td");
     const pillMode = document.createElement("span");
@@ -86,6 +203,17 @@ function renderEvents(events) {
     pillMode.textContent = ev.mode || "-";
     tdMode.appendChild(pillMode);
     tr.appendChild(tdMode);
+
+    // click to see details
+    tr.addEventListener("click", () => {
+      if (selectedEventRow) {
+        selectedEventRow.classList.remove("event-row-selected");
+      }
+      selectedEventRow = tr;
+      tr.classList.add("event-row-selected");
+      renderEventDetails(ev);
+    });
+
 
     tbody.appendChild(tr);
   });
@@ -102,7 +230,7 @@ function renderSites(sites) {
   const tbody = document.getElementById("sitesTableBody");
   tbody.innerHTML = "";
 
-  const rows = [...sites].sort((a, b) => b.totalEvents - a.totalEvents);
+  const rows = sites.slice().sort((a, b) => b.totalEvents - a.totalEvents);
 
   rows.forEach(s => {
     const tr = document.createElement("tr");
@@ -136,14 +264,21 @@ function renderSites(sites) {
 async function fetchAndRender() {
   const statusEl = document.getElementById("connectionStatus");
   try {
-    const [eventsRes, sitesRes] = await Promise.all([
+    const [eventsRes, sitesRes, policiesRes] = await Promise.all([
       fetch("/api/events"),
-      fetch("/api/sites")
+      fetch("/api/sites"),
+      fetch("/api/policies")
     ]);
-    if (!eventsRes.ok || !sitesRes.ok) throw new Error("HTTP error");
+    if (!eventsRes.ok || !sitesRes.ok || !policiesRes.ok) {
+      throw new Error("HTTP error");
+    }
 
-    const events = await eventsRes.json(); // server returns an ARRAY
+    const events = await eventsRes.json();   // server returns an ARRAY
     const sites = await sitesRes.json();
+    const policies = await policiesRes.json();
+
+    // update trustedSites set from policies
+    recomputePolicyState(policies);
 
     statusEl.textContent = "Connected to local backend";
     statusEl.style.color = "#10b981";
@@ -151,6 +286,9 @@ async function fetchAndRender() {
     renderSummary(events, sites);
     renderEvents(events);
     renderSites(sites);
+
+    // refresh details panel so status + button reflect current trust state
+    renderEventDetails(selectedEvent);
   } catch (err) {
     console.error("fetch error", err);
     statusEl.textContent = "Backend unavailable – is server.js running?";
@@ -158,7 +296,63 @@ async function fetchAndRender() {
   }
 }
 
+
 window.addEventListener("load", () => {
   fetchAndRender();
   setInterval(fetchAndRender, POLL_MS);
+
+  const trustBtn = document.getElementById("trust-site-btn");
+  if (trustBtn) {
+    trustBtn.addEventListener("click", async () => {
+      if (!selectedEvent || !selectedEvent.site) return;
+
+      const site = selectedEvent.site;
+      const isTrusted = trustedSites.has(site);
+      const op = isTrusted ? "untrust_site" : "trust_site";
+
+      const originalText = trustBtn.textContent;
+      trustBtn.disabled = true;
+      trustBtn.textContent = isTrusted
+        ? `Stopping trust for ${site}…`
+        : `Trusting ${site}…`;
+
+      try {
+        const res = await fetch("/api/policies", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ op, payload: { site } })
+        });
+
+        if (!res.ok) {
+          throw new Error(`HTTP ${res.status}`);
+        }
+
+        // Optimistic local update so UI matches immediately
+        const next = new Set(trustedSites);
+        if (op === "trust_site") {
+          next.add(site);
+        } else {
+          next.delete(site);
+        }
+        trustedSites = next;
+        renderEventDetails(selectedEvent);
+
+        trustBtn.textContent = op === "trust_site"
+          ? `Sent: trust ${site}`
+          : `Sent: stop trusting ${site}`;
+      } catch (err) {
+        console.error("Failed to send policy", err);
+        trustBtn.textContent = "Error sending policy – try again";
+      } finally {
+        setTimeout(() => {
+          trustBtn.disabled = false;
+          // re-render so label switches to "Trust ..." or "Stop trusting ..."
+          renderEventDetails(selectedEvent);
+        }, 1500);
+      }
+    });
+  }
 });
+
+
+
