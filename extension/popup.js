@@ -4,6 +4,7 @@ const firstEl = document.getElementById("first");
 const thirdEl = document.getElementById("third");
 const notifyChk = document.getElementById("notify");
 const cookieCountEl = document.getElementById("cookieCount");
+const cookieSnapshotBtn = document.getElementById("cookieSnapshotBtn"); 
 
 // debug clear-trusted controls
 const clearTrustedBtn = document.getElementById("clearTrustedBtn");
@@ -88,6 +89,55 @@ if (clearTrustedBtn) {
   });
 }
 
+// send a cookie snapshot to the Control Centre
+if (cookieSnapshotBtn) {
+  cookieSnapshotBtn.addEventListener("click", async () => {
+    try {
+      const url = await getCurrentTabUrl();
+      // only for http/https pages
+      if (!url || !/^https?:/i.test(url)) {
+        const original = cookieSnapshotBtn.textContent;
+        cookieSnapshotBtn.textContent = "Not available on this page";
+        cookieSnapshotBtn.disabled = true;
+        setTimeout(() => {
+          cookieSnapshotBtn.disabled = false;
+          cookieSnapshotBtn.textContent = original;
+        }, 2000);
+        return;
+      }
+
+      const originalText = cookieSnapshotBtn.textContent;
+      cookieSnapshotBtn.disabled = true;
+      cookieSnapshotBtn.textContent = "Sending cookie snapshot…";
+
+      const res = await chrome.runtime.sendMessage({
+        type: "cookies:sendSnapshot",
+        url
+      });
+
+      if (!res || !res.ok) {
+        console.error("Cookie snapshot failed:", res && res.error);
+        cookieSnapshotBtn.textContent = "Snapshot failed";
+      } else {
+        cookieSnapshotBtn.textContent = `Snapshot sent (${res.count || 0} cookies)`;
+      }
+
+      setTimeout(() => {
+        cookieSnapshotBtn.disabled = false;
+        cookieSnapshotBtn.textContent = originalText;
+      }, 2000);
+    } catch (e) {
+      console.error("Failed to send cookie snapshot", e);
+      const originalText = cookieSnapshotBtn.textContent;
+      cookieSnapshotBtn.textContent = "Snapshot error";
+      setTimeout(() => {
+        cookieSnapshotBtn.disabled = false;
+        cookieSnapshotBtn.textContent = originalText;
+      }, 2000);
+    }
+  });
+}
+
 chrome.runtime.onMessage.addListener(msg => {
   if (msg?.type === "stats") {
     firstEl.textContent = msg.firstParty;
@@ -96,3 +146,4 @@ chrome.runtime.onMessage.addListener(msg => {
 });
 
 load();
+
