@@ -1,10 +1,19 @@
 // server.js
 const express = require("express");
 const cors = require("cors");
-const app = express();
-const PORT = 4141;
+const path = require("path");
 
-// --- In-memory stores (prototype only) ---
+// SQLite initialisation
+const { initDb } = require("./db");
+
+const app = express();
+const PORT = process.env.PORT || 4141;
+
+// Simple in-memory command queue for live controls
+let nextCommandId = 1;
+let pendingCommands = []; // { id, type, site, createdAt }
+
+// --- In-memory stores (prototype only for now) ---
 /** @type {Array<any>} */
 const events = [];
 /** @type {Array<any>} */
@@ -15,6 +24,9 @@ const siteStats = new Map();
 app.use(cors());
 app.use(express.json());
 
+// serve dashboard static files from ./public
+app.use(express.static(path.join(__dirname, "public")));
+
 // ---- Helpers ----
 function makeId(prefix) {
   return `${prefix}-${Date.now()}-${Math.random().toString(16).slice(2, 8)}`;
@@ -23,6 +35,7 @@ function makeId(prefix) {
 function updateSiteStatsFromEvent(ev) {
   const site = ev.site || "unknown";
   let s = siteStats.get(site);
+
   if (!s) {
     s = {
       site,
@@ -31,10 +44,11 @@ function updateSiteStatsFromEvent(ev) {
       totalEvents: 0,
       blockedCount: 0,
       observedCount: 0,
-      thirdParties: {} // domain -> { seen, blocked }
+      thirdParties: {}, // domain -> { seen, blocked }
     };
     siteStats.set(site, s);
   }
+
   s.totalEvents++;
   s.lastSeen = ev.ts;
 
@@ -53,14 +67,10 @@ function updateSiteStatsFromEvent(ev) {
       if (!s.thirdParties[d]) s.thirdParties[d] = { seen: 0, blocked: 0 };
       s.thirdParties[d].seen++;
     }
-  } else if (ev.kind === "preview.summary") {
-    // we might use this later for richer views; for now just update lastSeen/totalEvents
   }
 }
 
 // ---- Events API ----
-
-// Ingest one or more PrivacyEvent envelopes
 app.post("/api/events", (req, res) => {
   const body = req.body;
   const list = Array.isArray(body) ? body : [body];
@@ -84,23 +94,54 @@ app.post("/api/events", (req, res) => {
   res.status(202).json({ ok: true, count: list.length });
 });
 
-// Simple read API for dashboard (we’ll extend later)
 app.get("/api/events", (req, res) => {
   const site = req.query.site || null;
   const kind = req.query.kind || null;
 
   let out = events;
-  if (site) out = out.filter(e => e.site === site);
-  if (kind) out = out.filter(e => e.kind === kind);
+  if (site) out = out.filter((e) => e.site === site);
+  if (kind) out = out.filter((e) => e.kind === kind);
 
   // limit to last 200 to avoid giant payloads
   const slice = out.slice(-200);
   res.json(slice);
 });
 
+// --- Live control commands ---
+app.post("/api/commands/trust-site", (req, res) => {
+  const { site } = req.body || {};
+  if (!site || typeof site !== "string") {
+    return res.status(400).json({ error: "site is required" });
+  }
+
+  const cmd = {
+    id: nextCommandId++,
+    type: "trust-site",
+    site,
+    createdAt: Date.now(),
+  };
+
+  pendingCommands.push(cmd);
+
+  if (pendingCommands.length > 200) {
+    pendingCommands = pendingCommands.slice(-200);
+  }
+
+  console.log("Enqueued command:", cmd);
+  res.json({ ok: true, commandId: cmd.id });
+});
+
+app.get("/api/commands/poll", (req, res) => {
+  const since = Number(req.query.since || 0);
+  const commands = pendingCommands.filter((c) => c.id > since);
+  res.json({
+    commands,
+    latestId: nextCommandId - 1,
+  });
+});
+
 app.get("/api/sites", (req, res) => {
-  const list = Array.from(siteStats.values()).map(s => {
-    // for list view, don’t send full third-party breakdown
+  const list = Array.from(siteStats.values()).map((s) => {
     const uniqueThirdParties = Object.keys(s.thirdParties).length;
     return {
       site: s.site,
@@ -109,7 +150,7 @@ app.get("/api/sites", (req, res) => {
       totalEvents: s.totalEvents,
       blockedCount: s.blockedCount,
       observedCount: s.observedCount,
-      uniqueThirdParties
+      uniqueThirdParties,
     };
   });
   res.json(list);
@@ -123,8 +164,6 @@ app.get("/api/sites/:site", (req, res) => {
 });
 
 // ---- Policies API ----
-
-// Create one or more policies from dashboard
 app.post("/api/policies", (req, res) => {
   const body = req.body;
   const input = Array.isArray(body) ? body : [body];
@@ -140,7 +179,7 @@ app.post("/api/policies", (req, res) => {
       id: makeId("pol"),
       ts: Date.now(),
       op,
-      payload: payload || {}
+      payload: payload || {},
     };
     policies.push(pol);
     created.push(pol);
@@ -149,10 +188,9 @@ app.post("/api/policies", (req, res) => {
   res.status(201).json(created.length === 1 ? created[0] : created);
 });
 
-// Extension polls for new policies
 app.get("/api/policies", (req, res) => {
   const since = Number(req.query.since || 0);
-  const items = policies.filter(p => p.ts > since);
+  const items = policies.filter((p) => p.ts > since);
   const latestTs = items.length
     ? items.reduce((max, p) => (p.ts > max ? p.ts : max), since)
     : since;
@@ -160,6 +198,18 @@ app.get("/api/policies", (req, res) => {
   res.json({ latestTs, items });
 });
 
-app.listen(PORT, () => {
-  console.log(`VPT control centre backend listening on http://127.0.0.1:${PORT}`);
-});
+//Initialise persistence, then start server ONCE
+(async () => {
+  try {
+    const dbCtx = await initDb();
+    app.locals.db = dbCtx;
+    console.log(`SQLite ready: ${dbCtx.filename}`);
+
+    app.listen(PORT, () => {
+      console.log(`VPT control centre backend listening on http://127.0.0.1:${PORT}`);
+    });
+  } catch (err) {
+    console.error("Failed to initialise SQLite database:", err);
+    process.exit(1);
+  }
+})();
