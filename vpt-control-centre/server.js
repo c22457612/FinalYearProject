@@ -71,40 +71,112 @@ function updateSiteStatsFromEvent(ev) {
 }
 
 // ---- Events API ----
-app.post("/api/events", (req, res) => {
-  const body = req.body;
-  const list = Array.isArray(body) ? body : [body];
+app.post("/api/events", async (req, res) => {
+  try {
+    const body = req.body;
+    const list = Array.isArray(body) ? body : [body];
 
-  console.log("POST /api/events", "count =", list.length);
+    const dbCtx = app.locals.db;
+    if (!dbCtx) {
+      return res.status(500).json({ ok: false, error: "db_not_ready" });
+    }
 
-  for (const ev of list) {
-    if (!ev || typeof ev !== "object") continue;
-    if (!ev.id) ev.id = makeId("evt");
-    if (!ev.ts) ev.ts = Date.now();
-    events.push(ev);
-    updateSiteStatsFromEvent(ev);
+    console.log("POST /api/events", "count =", list.length);
+
+    let inserted = 0;
+
+    for (const ev of list) {
+      if (!ev || typeof ev !== "object") continue;
+
+      // Ensure minimum fields exist (same as before)
+      if (!ev.id) ev.id = makeId("evt");
+      if (!ev.ts) ev.ts = Date.now();
+
+      // Fallback site detection: prefer ev.site, else ev.data.siteBase
+      const site = ev.site || ev.data?.siteBase || "unknown";
+
+      // Persist to SQLite (event sourcing)
+      await dbCtx.run(
+        `
+          INSERT OR IGNORE INTO events
+            (event_id, ts, site, kind, mode, tab_id, source, top_level_url, raw_event)
+          VALUES
+            (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `,
+        [
+          ev.id,
+          ev.ts,
+          site,
+          ev.kind || "unknown",
+          ev.mode || null,
+          ev.tabId ?? null,
+          ev.source || "extension",
+          ev.topLevelUrl || null,
+          JSON.stringify({ ...ev, site }), // store full event JSON
+        ]
+      );
+
+      inserted++;
+
+      // Keep in-memory stats updated (dashboard still works instantly)
+      ev.site = site;
+      events.push(ev);
+      updateSiteStatsFromEvent(ev);
+    }
+
+    // keep last N events in memory (optional cache)
+    const MAX = 2000;
+    if (events.length > MAX) {
+      events.splice(0, events.length - MAX);
+    }
+
+    res.status(202).json({ ok: true, count: list.length, inserted });
+  } catch (err) {
+    console.error("Failed to persist events:", err);
+    res.status(500).json({ ok: false, error: "persist_failed" });
   }
-
-  // keep last N events
-  const MAX = 2000;
-  if (events.length > MAX) {
-    events.splice(0, events.length - MAX);
-  }
-
-  res.status(202).json({ ok: true, count: list.length });
 });
 
-app.get("/api/events", (req, res) => {
-  const site = req.query.site || null;
-  const kind = req.query.kind || null;
+app.get("/api/events", async (req, res) => {
+  try {
+    const dbCtx = app.locals.db;
+    if (!dbCtx) {
+      return res.status(500).json({ ok: false, error: "db_not_ready" });
+    }
 
-  let out = events;
-  if (site) out = out.filter((e) => e.site === site);
-  if (kind) out = out.filter((e) => e.kind === kind);
+    const site = req.query.site || null;
+    const kind = req.query.kind || null;
+    const limit = Math.min(Number(req.query.limit || 200), 1000);
 
-  // limit to last 200 to avoid giant payloads
-  const slice = out.slice(-200);
-  res.json(slice);
+    const rows = await dbCtx.all(
+      `
+        SELECT raw_event
+        FROM events
+        WHERE (? IS NULL OR site = ?)
+          AND (? IS NULL OR kind = ?)
+        ORDER BY ts DESC
+        LIMIT ?
+      `,
+      [site, site, kind, kind, limit]
+    );
+
+    // Parse and return in chronological order (oldest -> newest)
+    const parsed = rows
+      .map((r) => {
+        try {
+          return JSON.parse(r.raw_event);
+        } catch {
+          return null;
+        }
+      })
+      .filter(Boolean)
+      .reverse();
+
+    res.json(parsed);
+  } catch (err) {
+    console.error("Failed to read events from DB:", err);
+    res.status(500).json({ ok: false, error: "read_failed" });
+  }
 });
 
 // --- Live control commands ---
@@ -140,20 +212,98 @@ app.get("/api/commands/poll", (req, res) => {
   });
 });
 
-app.get("/api/sites", (req, res) => {
-  const list = Array.from(siteStats.values()).map((s) => {
-    const uniqueThirdParties = Object.keys(s.thirdParties).length;
-    return {
-      site: s.site,
-      firstSeen: s.firstSeen,
-      lastSeen: s.lastSeen,
-      totalEvents: s.totalEvents,
-      blockedCount: s.blockedCount,
-      observedCount: s.observedCount,
-      uniqueThirdParties,
-    };
-  });
-  res.json(list);
+app.get("/api/sites", async (req, res) => {
+  try {
+    const dbCtx = app.locals.db;
+    if (!dbCtx) {
+      return res.status(500).json({ ok: false, error: "db_not_ready" });
+    }
+
+    const limit = Math.min(Number(req.query.limit || 200), 1000);
+
+    // Main per-site counts/timestamps (fast SQL aggregation)
+    const baseRows = await dbCtx.all(
+      `
+        SELECT
+          COALESCE(site, 'unknown') AS site,
+          MIN(ts) AS firstSeen,
+          MAX(ts) AS lastSeen,
+          COUNT(*) AS totalEvents,
+          SUM(CASE WHEN kind = 'network.blocked' THEN 1 ELSE 0 END) AS blockedCount,
+          SUM(CASE WHEN kind = 'network.observed' THEN 1 ELSE 0 END) AS observedCount
+        FROM events
+        GROUP BY COALESCE(site, 'unknown')
+        ORDER BY lastSeen DESC
+        LIMIT ?
+      `,
+      [limit]
+    );
+
+    // count unique third-party domains seen per site
+    // (tries SQLite json_extract; falls back to JS parsing if unavailable)
+    const uniqueMap = new Map();
+
+    try {
+      const uniqRows = await dbCtx.all(`
+        SELECT
+          COALESCE(site, 'unknown') AS site,
+          COUNT(DISTINCT json_extract(raw_event, '$.data.domain')) AS uniqueThirdParties
+        FROM events
+        WHERE kind IN ('network.blocked', 'network.observed')
+        GROUP BY COALESCE(site, 'unknown')
+      `);
+
+      for (const r of uniqRows) {
+        uniqueMap.set(r.site, Number(r.uniqueThirdParties) || 0);
+      }
+    } catch (e) {
+      // Fallback: scan recent network events and build sets in JS
+      const scanRows = await dbCtx.all(`
+        SELECT COALESCE(site, 'unknown') AS site, raw_event
+        FROM events
+        WHERE kind IN ('network.blocked', 'network.observed')
+        ORDER BY ts DESC
+        LIMIT 5000
+      `);
+
+      const sets = new Map();
+
+      for (const r of scanRows) {
+        let ev;
+        try {
+          ev = JSON.parse(r.raw_event);
+        } catch {
+          continue;
+        }
+
+        const domain = ev?.data?.domain;
+        if (!domain) continue;
+
+        if (!sets.has(r.site)) sets.set(r.site, new Set());
+        sets.get(r.site).add(domain);
+      }
+
+      for (const [site, set] of sets.entries()) {
+        uniqueMap.set(site, set.size);
+      }
+    }
+
+    // Match my existing dashboard expected output shape I already created
+    const list = baseRows.map((r) => ({
+      site: r.site,
+      firstSeen: Number(r.firstSeen) || 0,
+      lastSeen: Number(r.lastSeen) || 0,
+      totalEvents: Number(r.totalEvents) || 0,
+      blockedCount: Number(r.blockedCount) || 0,
+      observedCount: Number(r.observedCount) || 0,
+      uniqueThirdParties: uniqueMap.get(r.site) ?? 0,
+    }));
+
+    res.json(list);
+  } catch (err) {
+    console.error("Failed to build /api/sites summary from DB:", err);
+    res.status(500).json({ ok: false, error: "sites_query_failed" });
+  }
 });
 
 app.get("/api/sites/:site", (req, res) => {
