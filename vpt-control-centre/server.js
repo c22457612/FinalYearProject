@@ -306,11 +306,176 @@ app.get("/api/sites", async (req, res) => {
   }
 });
 
-app.get("/api/sites/:site", (req, res) => {
-  const site = req.params.site;
-  const s = siteStats.get(site);
-  if (!s) return res.status(404).json({ error: "unknown_site" });
-  res.json(s);
+app.get("/api/sites/:site", async (req, res) => {
+  try {
+    const dbCtx = app.locals.db;
+    if (!dbCtx) {
+      return res.status(500).json({ ok: false, error: "db_not_ready" });
+    }
+
+    const site = req.params.site;
+    const topLimit = Math.min(Number(req.query.top || 10), 50);
+    const recentLimit = Math.min(Number(req.query.recent || 50), 200);
+
+    // --- 1) Overall stats for this site ---
+    const base = await dbCtx.get(
+      `
+        SELECT
+          COALESCE(site, 'unknown') AS site,
+          MIN(ts) AS firstSeen,
+          MAX(ts) AS lastSeen,
+          COUNT(*) AS totalEvents,
+          SUM(CASE WHEN kind = 'network.blocked' THEN 1 ELSE 0 END) AS blockedCount,
+          SUM(CASE WHEN kind = 'network.observed' THEN 1 ELSE 0 END) AS observedCount
+        FROM events
+        WHERE COALESCE(site, 'unknown') = ?
+      `,
+      [site]
+    );
+
+    if (!base || !base.totalEvents) {
+      return res.status(404).json({ ok: false, error: "unknown_site" });
+    }
+
+    // --- 2) Breakdown by event kind ---
+    const kindRows = await dbCtx.all(
+      `
+        SELECT kind, COUNT(*) AS count
+        FROM events
+        WHERE COALESCE(site, 'unknown') = ?
+        GROUP BY kind
+        ORDER BY count DESC
+      `,
+      [site]
+    );
+
+    const kindBreakdown = {};
+    for (const r of kindRows) {
+      kindBreakdown[r.kind] = Number(r.count) || 0;
+    }
+
+    // --- 3) Top third-party domains (trackers) ---
+    let topThirdParties = [];
+    let uniqueThirdParties = 0;
+
+    try {
+      // Uses SQLite JSON1 extension (usually available)
+      const tpRows = await dbCtx.all(
+        `
+          SELECT
+            json_extract(raw_event, '$.data.domain') AS domain,
+            COUNT(*) AS seen,
+            SUM(CASE WHEN kind = 'network.blocked' THEN 1 ELSE 0 END) AS blocked,
+            SUM(CASE WHEN kind = 'network.observed' THEN 1 ELSE 0 END) AS observed
+          FROM events
+          WHERE COALESCE(site, 'unknown') = ?
+            AND kind IN ('network.blocked', 'network.observed')
+          GROUP BY domain
+          HAVING domain IS NOT NULL
+          ORDER BY seen DESC
+          LIMIT ?
+        `,
+        [site, topLimit]
+      );
+
+      topThirdParties = tpRows.map((r) => ({
+        domain: r.domain,
+        seen: Number(r.seen) || 0,
+        blocked: Number(r.blocked) || 0,
+        observed: Number(r.observed) || 0,
+      }));
+
+      // Also count total unique domains (not just top list)
+      const uniqueRow = await dbCtx.get(
+        `
+          SELECT COUNT(DISTINCT json_extract(raw_event, '$.data.domain')) AS uniqueCount
+          FROM events
+          WHERE COALESCE(site, 'unknown') = ?
+            AND kind IN ('network.blocked', 'network.observed')
+        `,
+        [site]
+      );
+
+      uniqueThirdParties = Number(uniqueRow?.uniqueCount) || 0;
+    } catch (e) {
+      // Fallback if JSON1 functions are unavailable: compute in JS from recent rows
+      const scanRows = await dbCtx.all(
+        `
+          SELECT raw_event
+          FROM events
+          WHERE COALESCE(site, 'unknown') = ?
+            AND kind IN ('network.blocked', 'network.observed')
+          ORDER BY ts DESC
+          LIMIT 5000
+        `,
+        [site]
+      );
+
+      const map = new Map();
+      for (const r of scanRows) {
+        let ev;
+        try {
+          ev = JSON.parse(r.raw_event);
+        } catch {
+          continue;
+        }
+
+        const domain = ev?.data?.domain;
+        if (!domain) continue;
+
+        if (!map.has(domain)) map.set(domain, { domain, seen: 0, blocked: 0, observed: 0 });
+
+        const obj = map.get(domain);
+        obj.seen++;
+        if (ev.kind === "network.blocked") obj.blocked++;
+        if (ev.kind === "network.observed") obj.observed++;
+      }
+
+      const all = Array.from(map.values()).sort((a, b) => b.seen - a.seen);
+      uniqueThirdParties = map.size;
+      topThirdParties = all.slice(0, topLimit);
+    }
+
+    // --- 4) Recent events for this site ---
+    const recentRows = await dbCtx.all(
+      `
+        SELECT raw_event
+        FROM events
+        WHERE COALESCE(site, 'unknown') = ?
+        ORDER BY ts DESC
+        LIMIT ?
+      `,
+      [site, recentLimit]
+    );
+
+    const recentEvents = recentRows
+      .map((r) => {
+        try {
+          return JSON.parse(r.raw_event);
+        } catch {
+          return null;
+        }
+      })
+      .filter(Boolean)
+      .reverse();
+
+    // --- Response object (stable + dashboard friendly) ---
+    res.json({
+      site: base.site,
+      firstSeen: Number(base.firstSeen) || 0,
+      lastSeen: Number(base.lastSeen) || 0,
+      totalEvents: Number(base.totalEvents) || 0,
+      blockedCount: Number(base.blockedCount) || 0,
+      observedCount: Number(base.observedCount) || 0,
+      uniqueThirdParties,
+      kindBreakdown,
+      topThirdParties,
+      recentEvents,
+    });
+  } catch (err) {
+    console.error("Failed to build /api/sites/:site from DB:", err);
+    res.status(500).json({ ok: false, error: "site_query_failed" });
+  }
 });
 
 // ---- Policies API ----
