@@ -179,6 +179,189 @@ app.get("/api/events", async (req, res) => {
   }
 });
 
+//Export events as JSON
+app.get("/api/export/events.json", async (req, res) => {
+  try {
+    const dbCtx = app.locals.db;
+    if (!dbCtx) {
+      return res.status(500).json({ ok: false, error: "db_not_ready" });
+    }
+
+    // Optional filters (handy for later)
+    const site = req.query.site || null;
+    const kind = req.query.kind || null;
+    const from = req.query.from ? Number(req.query.from) : null;
+    const to = req.query.to ? Number(req.query.to) : null;
+
+    // Limit (default large, but capped to avoid huge memory use)
+    const limit = Math.min(Number(req.query.limit || 50000), 200000);
+
+    const rows = await dbCtx.all(
+      `
+        SELECT raw_event
+        FROM events
+        WHERE (? IS NULL OR site = ?)
+          AND (? IS NULL OR kind = ?)
+          AND (? IS NULL OR ts >= ?)
+          AND (? IS NULL OR ts <= ?)
+        ORDER BY ts ASC
+        LIMIT ?
+      `,
+      [site, site, kind, kind, from, from, to, to, limit]
+    );
+
+    const events = rows
+      .map((r) => {
+        try {
+          return JSON.parse(r.raw_event);
+        } catch {
+          return null;
+        }
+      })
+      .filter(Boolean);
+
+    //force download as a file
+    const download = req.query.download === "1";
+    if (download) {
+      res.setHeader("Content-Disposition", "attachment; filename=vpt-events.json");
+    }
+
+    res.setHeader("Content-Type", "application/json; charset=utf-8");
+    res.status(200).send(JSON.stringify(events, null, 2));
+  } catch (err) {
+    console.error("Failed to export events.json:", err);
+    res.status(500).json({ ok: false, error: "export_failed" });
+  }
+});
+
+// Export events as CSV
+app.get("/api/export/events.csv", async (req, res) => {
+  try {
+    const dbCtx = app.locals.db;
+    if (!dbCtx) {
+      return res.status(500).json({ ok: false, error: "db_not_ready" });
+    }
+
+    // Optional filters (same as JSON export)
+    const site = req.query.site || null;
+    const kind = req.query.kind || null;
+    const from = req.query.from ? Number(req.query.from) : null;
+    const to = req.query.to ? Number(req.query.to) : null;
+
+    // Large default for export, but cap to avoid extreme memory use
+    const limit = Math.min(Number(req.query.limit || 50000), 200000);
+
+    const rows = await dbCtx.all(
+      `
+        SELECT raw_event
+        FROM events
+        WHERE (? IS NULL OR site = ?)
+          AND (? IS NULL OR kind = ?)
+          AND (? IS NULL OR ts >= ?)
+          AND (? IS NULL OR ts <= ?)
+        ORDER BY ts ASC
+        LIMIT ?
+      `,
+      [site, site, kind, kind, from, from, to, to, limit]
+    );
+
+    // CSV helpers
+    const csvEscape = (value) => {
+      if (value === null || value === undefined) return "";
+      const s = String(value);
+      // Escape quotes by doubling them
+      const escaped = s.replace(/"/g, '""');
+      // Wrap if contains comma/newline/quote
+      if (/[",\n\r]/.test(escaped)) return `"${escaped}"`;
+      return escaped;
+    };
+
+    // Define export columns (flat + useful for Excel)
+    const headers = [
+      "id",
+      "ts",
+      "datetime",
+      "site",
+      "kind",
+      "mode",
+      "tabId",
+      "topLevelUrl",
+      "domain",
+      "url",
+      "resourceType",
+      "isThirdParty",
+      "ruleId",
+      "cookieCount",
+      "thirdPartyCookieCount",
+      "clearedCookies",
+      "totalCookies",
+      "rawData", // JSON string of the "data" payload (handy for deep inspection)
+    ];
+
+    // Build CSV body
+    const lines = [];
+    lines.push(headers.join(","));
+
+    for (const r of rows) {
+      let ev;
+      try {
+        ev = JSON.parse(r.raw_event);
+      } catch {
+        continue;
+      }
+
+      const data = ev.data || {};
+
+      const row = [
+        ev.id,
+        ev.ts,
+        ev.ts ? new Date(ev.ts).toISOString() : "",
+        ev.site,
+        ev.kind,
+        ev.mode,
+        ev.tabId ?? "",
+        ev.topLevelUrl ?? "",
+
+        // Common "network.*" fields
+        data.domain ?? "",
+        data.url ?? "",
+        data.resourceType ?? "",
+        typeof data.isThirdParty === "boolean" ? data.isThirdParty : "",
+
+        // DNR rule id if present (network.blocked)
+        data.ruleId ?? "",
+
+        // Cookie snapshot/clear fields (if event kind is cookies.*)
+        data.count ?? "",
+        data.thirdPartyCount ?? "",
+        data.cleared ?? "",
+        data.total ?? "",
+
+        // Full event.data as JSON
+        JSON.stringify(data),
+      ].map(csvEscape);
+
+      lines.push(row.join(","));
+    }
+
+    const csv = lines.join("\n");
+
+    // Optional: force download
+    const download = req.query.download === "1";
+    if (download) {
+      res.setHeader("Content-Disposition", "attachment; filename=vpt-events.csv");
+    }
+
+    res.setHeader("Content-Type", "text/csv; charset=utf-8");
+    res.status(200).send(csv);
+  } catch (err) {
+    console.error("Failed to export events.csv:", err);
+    res.status(500).json({ ok: false, error: "export_failed" });
+  }
+});
+
+
+
 // --- Live control commands ---
 app.post("/api/commands/trust-site", (req, res) => {
   const { site } = req.body || {};
