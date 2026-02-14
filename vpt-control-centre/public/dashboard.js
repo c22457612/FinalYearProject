@@ -12,17 +12,10 @@ const POLL_MS = 3000; // poll every 3s
 
 let latestEvents = [];
 let selectedEvent = null;
-let selectedEventRow = null;
 let trustedSites = new Set(); // derived from /api/policies
 let selectedCookieSite = null; // for Cookies view selection
 let cookiesViewMode = "grid";  // "grid" (wall) or "detail"
 let latestSitesCache = [];
-
-
-
-
-
-
 
 function recomputePolicyState(policiesResponse) {
   const items = (policiesResponse && policiesResponse.items) || [];
@@ -43,92 +36,7 @@ function recomputePolicyState(policiesResponse) {
   trustedSites = trusted;
 }
 
-function renderEventDetails(ev) {
-  const body = document.getElementById("details-body");
-  const actions = document.getElementById("details-actions");
-  const subtitle = document.getElementById("details-subtitle");
 
-  if (!ev) {
-    updateExportButtons();
-    selectedEvent = null;
-    body.innerHTML = '<p class="muted">No event selected.</p>';
-    actions.style.display = "none";
-
-    const trustBtn = document.getElementById("trust-site-btn");
-    if (trustBtn) trustBtn.disabled = true;
-
-    subtitle.textContent = "Click an event in the table to see more information.";
-    return;
-  }
-
-
-  selectedEvent = ev;
-
-  const d = ev.data || {};
-  const domain = d.domain || "(none)";
-  const third = d.isThirdParty ? "third-party" : "first-party / unknown";
-
-  subtitle.textContent =
-    `Event at ${friendlyTime(ev.ts)} on ${ev.site || "unknown"}`;
-
-  const isTrusted = ev.site && trustedSites.has(ev.site);
-  const protectionStatus = isTrusted
-    ? "trusted (tracking protection bypassed)"
-    : "protected (tracking protection active)";
-
-  body.innerHTML = `
-    <div class="label">Event ID</div>
-    <div class="value">${ev.id || "(none)"}</div>
-
-    <div class="label">Site</div>
-    <div class="value">${ev.site || "unknown"}</div>
-
-    <div class="label">Protection status</div>
-    <div class="value">${protectionStatus}</div>
-
-    <div class="label">Kind</div>
-    <div class="value">${ev.kind || "-"}</div>
-
-    <div class="label">Mode</div>
-    <div class="value">${ev.mode || "-"}</div>
-
-    <div class="label">Domain</div>
-    <div class="value">${domain}</div>
-
-    <div class="label">Party</div>
-    <div class="value">${third}</div>
-
-    <div class="label">Resource type</div>
-    <div class="value">${d.resourceType || "-"}</div>
-
-    <div class="label">Summary</div>
-    <div class="value">${escapeHtml(summarizeEvent(ev))}</div>
-
-    <details class="raw">
-      <summary>Show raw event JSON</summary>
-      <pre>${escapeHtml(JSON.stringify(ev, null, 2))}</pre>
-    </details>
-  `;
-
-  // decide whether the trust button should be shown/enabled
-  const canTrustSite = !!ev.site;
-  actions.style.display = canTrustSite ? "flex" : "none";
-
-  const trustBtn = document.getElementById("trust-site-btn");
-  if (trustBtn) {
-    trustBtn.disabled = !canTrustSite;
-    if (!canTrustSite) {
-      trustBtn.textContent = "Trust this site (send to extension)";
-    } else if (trustedSites.has(ev.site)) {
-      trustBtn.textContent = `Stop trusting ${ev.site}`;
-    } else {
-      trustBtn.textContent = `Trust ${ev.site} (send to extension)`;
-    }
-  }
-
-  updateExportButtons();
-
-}
 
 function buildCookieSnapshots(events) {
   const bySite = new Map();
@@ -339,78 +247,6 @@ function renderCookiesView(events) {
   }
 }
 
-function renderSitesWall(sites) {
-  const statCount = document.getElementById("sitesStatCount");
-  const statEvents = document.getElementById("sitesStatEvents");
-  const statBlocked = document.getElementById("sitesStatBlocked");
-  const statThird = document.getElementById("sitesStatThird");
-  const grid = document.getElementById("sitesGrid");
-
-  if (!statCount || !statEvents || !statBlocked || !statThird || !grid) {
-    return;
-  }
-
-  const totalSites = sites.length;
-  const totalEvents = sites.reduce((sum, s) => sum + (s.totalEvents || 0), 0);
-  const totalBlocked = sites.reduce((sum, s) => sum + (s.blockedCount || 0), 0);
-  const totalThird = sites.reduce((sum, s) => sum + (s.uniqueThirdParties || 0), 0);
-
-  statCount.textContent = totalSites;
-  statEvents.textContent = totalEvents;
-  statBlocked.textContent = totalBlocked;
-  statThird.textContent = totalThird;
-
-  const search = (document.getElementById("sitesSearch")?.value || "").trim().toLowerCase();
-  const sort = document.getElementById("sitesSort")?.value || "events";
-
-  let rows = sites.slice();
-
-  if (search) {
-    rows = rows.filter(s => String(s.site || "").toLowerCase().includes(search));
-  }
-
-  rows.sort((a, b) => {
-    if (sort === "blocked") return (b.blockedCount || 0) - (a.blockedCount || 0);
-    if (sort === "third") return (b.uniqueThirdParties || 0) - (a.uniqueThirdParties || 0);
-    if (sort === "recent") return (b.lastSeen || 0) - (a.lastSeen || 0);
-    return (b.totalEvents || 0) - (a.totalEvents || 0);
-  });
-
-  grid.innerHTML = "";
-
-  if (!rows.length) {
-    grid.innerHTML = `<div class="site-empty">No matching sites yet.</div>`;
-    return;
-  }
-
-  for (const s of rows) {
-    const a = document.createElement("a");
-    a.className = "site-card";
-    a.href = `/site.html?site=${encodeURIComponent(s.site)}`;
-
-    const title = document.createElement("div");
-    title.className = "site-card-site";
-    title.textContent = s.site || "(unknown site)";
-
-    const row1 = document.createElement("div");
-    row1.className = "site-card-row";
-    row1.innerHTML = `<span>Events: <b>${s.totalEvents || 0}</b></span>
-                      <span>Blocked: <b>${s.blockedCount || 0}</b></span>`;
-
-    const row2 = document.createElement("div");
-    row2.className = "site-card-mini";
-    const lastSeenText = s.lastSeen ? new Date(s.lastSeen).toLocaleString() : "-";
-    row2.textContent = `3rd-party domains: ${s.uniqueThirdParties || 0} • Last seen: ${lastSeenText}`;
-
-    a.appendChild(title);
-    a.appendChild(row1);
-    a.appendChild(row2);
-
-    grid.appendChild(a);
-  }
-}
-
-
 function renderSummary(events, sites) {
   const total = events.length;
   const siteCount = sites.length;
@@ -424,129 +260,6 @@ function renderSummary(events, sites) {
   document.getElementById("statRecent").textContent = recent;
   document.getElementById("statRecentHint").textContent =
     recent ? "in the last 5 minutes" : "none in the last 5 minutes";
-}
-
-
-function summarizeEvent(ev) {
-  const kind = ev.kind || "event";
-  const d = ev.data || {};
-
-  if (kind === "network.blocked") {
-    const domain = d.domain || "tracker";
-    const t = d.isThirdParty ? "third-party" : "first-party";
-    return `${t} request to ${domain} blocked`;
-  }
-  if (kind === "network.observed") {
-    const domain = d.domain || "third-party";
-    return `preview saw request to ${domain}`;
-  }
-  if (kind === "preview.summary") {
-    const total = d.total || 0;
-    const domains = Array.isArray(d.domains) ? d.domains.slice(0, 3).join(", ") : "";
-    return `preview found ${total} third-party domain(s)${domains ? ` (${domains})` : ""}`;
-  }
-
-  if (kind === "cookies.snapshot") {
-    const site = ev.site || d.siteBase || "this site";
-    const count =
-      d.count != null
-        ? d.count
-        : (Array.isArray(d.cookies) ? d.cookies.length : 0);
-    const third = d.thirdPartyCount != null ? d.thirdPartyCount : 0;
-    const first = count - third;
-
-    if (!count) {
-      return `Cookie snapshot: no cookies found for ${site}`;
-    }
-
-    const parts = [`${count} cookie${count === 1 ? "" : "s"}`];
-    if (first >= 0 && third >= 0) {
-      parts.push(`${first} first-party`, `${third} third-party`);
-    }
-    return `Cookie snapshot for ${site}: ${parts.join(" · ")}`;
-  }
-
-  if (kind === "cookies.cleared") {
-    const site = ev.site || d.siteBase || "this site";
-    const cleared = d.cleared != null ? d.cleared : 0;
-    const total =
-      d.total != null
-        ? d.total
-        : (cleared || 0);
-
-    if (!cleared && !total) {
-      return `No cookies were cleared for ${site}`;
-    }
-
-    if (total && cleared !== total) {
-      return `Cleared ${cleared} of ${total} cookies for ${site}`;
-    }
-
-    const n = cleared || total;
-    return `Cleared ${n} cookie${n === 1 ? "" : "s"} for ${site}`;
-  }
-  return JSON.stringify(d) || "(no details)";
-}
-
-
-function renderEvents(events) {
-  const tbody = document.getElementById("eventsTableBody");
-  tbody.innerHTML = "";
-
-  latestEvents = events.slice().sort((a, b) => (b.ts || 0) - (a.ts || 0));
-  const latest = latestEvents.slice(0, 50);
-
-  latest.forEach(ev => {
-    const tr = document.createElement("tr");
-
-    const tdTime = document.createElement("td");
-    tdTime.textContent = friendlyTime(ev.ts);
-    tr.appendChild(tdTime);
-
-    const tdSite = document.createElement("td");
-    tdSite.textContent = ev.site || "unknown";
-    tr.appendChild(tdSite);
-
-    const tdKind = document.createElement("td");
-    const pillKind = document.createElement("span");
-    pillKind.className = "pill pill-kind";
-    pillKind.textContent = ev.kind || "event";
-    tdKind.appendChild(pillKind);
-    tr.appendChild(tdKind);
-
-    const tdDetails = document.createElement("td");
-    let text = summarizeEvent(ev);
-    tdDetails.textContent = text;
-    tr.appendChild(tdDetails);
-
-
-    const tdMode = document.createElement("td");
-    const pillMode = document.createElement("span");
-    pillMode.className = "pill pill-mode " + modeClass(ev.mode);
-    pillMode.textContent = ev.mode || "-";
-    tdMode.appendChild(pillMode);
-    tr.appendChild(tdMode);
-
-    // click to see details
-    tr.addEventListener("click", () => {
-      if (selectedEventRow) {
-        selectedEventRow.classList.remove("event-row-selected");
-      }
-      selectedEventRow = tr;
-      tr.classList.add("event-row-selected");
-      renderEventDetails(ev);
-    });
-
-
-    tbody.appendChild(tr);
-  });
-
-  const subtitle = document.getElementById("receiptSubtitle");
-  if (!latest.length) {
-    subtitle.textContent = "No events received yet. Browse a site with trackers to see activity.";
-  } else {
-    subtitle.textContent = `Showing ${latest.length} of ${events.length} event(s)`;
-  }
 }
 
 function renderSites(sites) {
@@ -603,12 +316,13 @@ async function fetchAndRender() {
     statusEl.style.color = "#10b981";
 
     renderSummary(events, sites);
-    renderEvents(events);
+    latestEvents = events; // keep for cookies back button etc.
+    window.VPT?.features?.events?.renderEvents?.(events);
     renderSites(sites);
-    renderSitesWall(sites);
+    window.VPT?.features?.sites?.renderSitesWall?.(sites); //modularisation call
 
     // refresh details panel so status + button reflect current trust state
-    renderEventDetails(selectedEvent);
+    window.VPT?.features?.events?.renderEventDetails?.(selectedEvent, { trustedSites });
     renderCookiesView(events);
   } catch (err) {
     console.error("fetch error", err);
@@ -637,32 +351,30 @@ function updateExportButtons() {
 
 
 window.addEventListener("load", () => {
-  // --- Sites view search/sort live re-render ---
-  const sitesSearch = document.getElementById("sitesSearch");
-  const sitesSort = document.getElementById("sitesSort");
-
   if (typeof window.initExportFeature === "function") {
     window.initExportFeature();
   }
-
-  if (sitesSearch) {
-    sitesSearch.addEventListener("input", () => {
-      renderSitesWall(latestSitesCache);
-    });
-  }
-
-  if (sitesSort) {
-    sitesSort.addEventListener("change", () => {
-      renderSitesWall(latestSitesCache);
-    });
-  }
+  // Init sites feature module
+  window.VPT?.features?.sites?.initSitesFeature?.({
+    getSitesCache: () => latestSitesCache
+  });
 
   // set correct disabled state on page load
   updateExportButtons();
 
+  // Init events feature module
+  window.VPT?.features?.events?.initEventsFeature?.({
+    onSelectEvent: (ev) => {
+      selectedEvent = ev;
+      updateExportButtons();
+    },
+    getTrustedSites: () => trustedSites
+  });
+  
   fetchAndRender();
   setInterval(fetchAndRender, POLL_MS);
 
+  
   // --- View switching (Home / Cookies) ---
   const homeView = document.getElementById("view-home");
   const sitesView = document.getElementById("view-sites");
@@ -712,7 +424,6 @@ window.addEventListener("load", () => {
     });
   }
 
-
   const trustBtn = document.getElementById("trust-site-btn");
   if (trustBtn) {
     trustBtn.addEventListener("click", async () => {
@@ -738,7 +449,7 @@ window.addEventListener("load", () => {
           next.delete(site);
         }
         trustedSites = next;
-        renderEventDetails(selectedEvent);
+        window.VPT?.features?.events?.renderEventDetails?.(selectedEvent, { trustedSites });
 
         trustBtn.textContent = op === "trust_site"
           ? `Sent: trust ${site}`
@@ -749,12 +460,9 @@ window.addEventListener("load", () => {
       } finally {
         setTimeout(() => {
           trustBtn.disabled = false;
-          renderEventDetails(selectedEvent);
+          window.VPT?.features?.events?.renderEventDetails?.(selectedEvent, { trustedSites });
         }, 1500);
       }
     });
   }
 });
-
-
-

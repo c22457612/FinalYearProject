@@ -20,6 +20,7 @@
     <aside class="sidebar">
       <div class="sidebar-title">Sections</div>
       <button class="nav-item active" data-view="home">Home</button>
+      <button class="nav-item" data-view="sites">Sites</button> 
       <button class="nav-item" data-view="cookies">Cookies</button>
     </aside>
 
@@ -32,7 +33,7 @@
             <div class="summary-card">
               <h2>Total events</h2>
               <div id="statTotalEvents" class="value">0</div>
-              <div class="hint">since server started</div>
+              <div class="hint">stored in SQLite</div>
             </div>
             <div class="summary-card">
               <h2>Active sites</h2>
@@ -80,7 +81,7 @@
               <div>
                 <div class="panel-title">Per-site summary</div>
                 <div class="panel-subtitle">
-                  Derived from current in-memory stats
+                  Derived from SQLite (Privacy.db)
                 </div>
               </div>
             </div>
@@ -130,32 +131,154 @@
             </button>
             <pre id="details-json" class="details-json" hidden></pre>
           </div>
-        </section>
-      </main>
+          <!-- Export data panel -->
+          <div class="panel export-panel">
+            <div class="panel-header">
+              <div>
+                <div class="panel-title">Export data</div>
+                <div class="panel-subtitle">
+                  Download privacy events for analysis (CSV/JSON)
+                </div>
+              </div>
+            </div>
 
-      <!-- COOKIES VIEW: placeholder for now -->
-      <main id="view-cookies" class="cookies-view hidden">
-        <section class="panel cookies-placeholder">
-          <div class="panel-header">
-            <div>
-              <div class="panel-title">Cookies overview</div>
-              <div class="panel-subtitle">
-                Cookie snapshots from the browser extension will appear here.
+            <div class="panel-body export-body">
+              <div class="export-group">
+                <div class="export-label">All events</div>
+                <div class="export-actions">
+                  <button id="exportAllCsvBtn" class="btn-export">Download CSV</button>
+                  <button id="exportAllJsonBtn" class="btn-export">Download JSON</button>
+                </div>
+              </div>
+
+              <div class="export-group">
+                <div class="export-label" id="exportSiteLabel">Selected site: none</div>
+                <div class="export-actions">
+                  <button id="exportSiteCsvBtn" class="btn-export" disabled>Download site CSV</button>
+                  <button id="exportSiteJsonBtn" class="btn-export" disabled>Download site JSON</button>
+                </div>
+                <div class="export-hint muted">
+                  Tip: click an event in the table to enable site export.
+                </div>
               </div>
             </div>
           </div>
-          <div class="panel-body">
-            <p>
-              In Phase&nbsp;1 this view is read-only. The extension will send
-              cookie snapshots per site, and the Control Centre will aggregate
-              them into a “wall of cookies” for exploration.
-            </p>
+
+        </section>
+      </main>
+
+      <!-- SITES VIEW -->
+    <main id="view-sites" class="sites-view hidden">
+
+      <!-- Summary cards -->
+      <section class="sites-summary-row">
+        <div class="summary-card">
+          <h2>Sites tracked</h2>
+          <div id="sitesStatCount" class="value">0</div>
+          <div class="hint">from SQLite</div>
+        </div>
+
+        <div class="summary-card">
+          <h2>Total events</h2>
+          <div id="sitesStatEvents" class="value">0</div>
+          <div class="hint">across all sites</div>
+        </div>
+
+        <div class="summary-card">
+          <h2>Total blocked</h2>
+          <div id="sitesStatBlocked" class="value">0</div>
+          <div class="hint">network.blocked</div>
+        </div>
+
+        <div class="summary-card">
+          <h2>3rd-party domains</h2>
+          <div id="sitesStatThird" class="value">0</div>
+          <div class="hint">sum per site</div>
+        </div>
+      </section>
+
+      <!-- Wall of sites -->
+      <div class="panel">
+        <div class="panel-header">
+          <div>
+            <div class="panel-title">Sites</div>
+            <div class="panel-subtitle">Click a site to open detailed insights</div>
+          </div>
+
+          <div class="sites-controls">
+            <input id="sitesSearch" class="sites-search" placeholder="Search site..." />
+            <select id="sitesSort" class="sites-sort">
+              <option value="events">Most events</option>
+              <option value="blocked">Most blocked</option>
+              <option value="third">Most 3rd parties</option>
+              <option value="recent">Most recent</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="panel-body">
+          <div id="sitesGrid" class="sites-grid">
+            <!-- site cards inserted by dashboard.js -->
+          </div>
+        </div>
+      </div>
+
+    </main>
+
+
+      <!-- COOKIES VIEW -->
+      <main id="view-cookies" class="cookies-view hidden">
+        <!-- Top summary cards -->
+        <section class="cookies-summary-row">
+          <div class="summary-card">
+            <h2>Sites with cookie snapshots</h2>
+            <div id="cookieStatSites" class="value">0</div>
+            <div class="hint">based on latest snapshots</div>
+          </div>
+          <div class="summary-card">
+            <h2>Total cookies</h2>
+            <div id="cookieStatTotal" class="value">0</div>
+            <div class="hint">in latest snapshots</div>
+          </div>
+          <div class="summary-card">
+            <h2>Third-party cookies</h2>
+            <div id="cookieStatThird" class="value">0</div>
+            <div class="hint">estimated from cookie domains</div>
+          </div>
+        </section>
+
+        <!-- 1) Wall of cookies (grid) -->
+        <section id="cookiesWall" class="cookies-layout">
+          <div class="cookies-grid" id="cookiesGrid">
+            <!-- site tiles inserted by dashboard.js -->
+          </div>
+        </section>
+
+        <!-- 2) Full-screen details for a single site -->
+        <section id="cookiesDetailView" class="cookies-detail-view hidden">
+          <div class="panel cookies-detail-panel">
+            <div class="panel-header cookies-detail-header">
+              <button id="cookiesBackBtn" class="btn-secondary">
+                ← Back to cookie wall
+              </button>
+              <div>
+                <div class="panel-title" id="cookies-detail-title">Cookie details</div>
+                <div id="cookies-details-subtitle" class="panel-subtitle">
+                  Click a site card to see its cookies.
+                </div>
+              </div>
+            </div>
+            <div id="cookies-details-body" class="panel-body cookies-details-body">
+              <div class="details-placeholder">No site selected.</div>
+            </div>
           </div>
         </section>
       </main>
 
+
+
       <footer>
-        <div>Prototype only: data resets when the backend restarts.</div>
+        <div>data persists locally in SQLite (privacy.db).</div>
         <div>Source: local extension events streamed to
           <code>http://127.0.0.1:4141</code>.
         </div>
@@ -163,6 +286,11 @@
     </div>
   </div>
 
+  <script type="module" src="app/core.js"></script>
+  <script type="module" src="app/features/export.js"></script>
+  <script type="module" src="app/features/sites.js"></script>
+  <script type="module" src="app/features/events.js"></script>
   <script src="dashboard.js" defer></script>
+
 </body>
 </html>
