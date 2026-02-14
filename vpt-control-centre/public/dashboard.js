@@ -6,7 +6,7 @@ if (!api || !utils) {
   console.error("VPT core not loaded. Check index.html includes app/core.js before dashboard.js");
 }
 
-const { friendlyTime, modeClass, escapeHtml, buildExportUrl, triggerDownload } = utils || {};
+const { friendlyTime, modeClass, escapeHtml } = utils || {};
 
 const POLL_MS = 3000; // poll every 3s
 
@@ -637,12 +637,6 @@ function updateExportButtons() {
 
 
 window.addEventListener("load", () => {
-    // --- Export buttons ---
-  const exportAllCsvBtn = document.getElementById("exportAllCsvBtn");
-  const exportAllJsonBtn = document.getElementById("exportAllJsonBtn");
-  const exportSiteCsvBtn = document.getElementById("exportSiteCsvBtn");
-  const exportSiteJsonBtn = document.getElementById("exportSiteJsonBtn");
-  
   // --- Sites view search/sort live re-render ---
   const sitesSearch = document.getElementById("sitesSearch");
   const sitesSort = document.getElementById("sitesSort");
@@ -660,38 +654,6 @@ window.addEventListener("load", () => {
   if (sitesSort) {
     sitesSort.addEventListener("change", () => {
       renderSitesWall(latestSitesCache);
-    });
-  }
-
-  if (exportAllCsvBtn) {
-    exportAllCsvBtn.addEventListener("click", () => {
-      const url = buildExportUrl("csv", { download: "1" });
-      triggerDownload(url);
-    });
-  }
-
-  if (exportAllJsonBtn) {
-    exportAllJsonBtn.addEventListener("click", () => {
-      const url = buildExportUrl("json", { download: "1" });
-      triggerDownload(url);
-    });
-  }
-
-  if (exportSiteCsvBtn) {
-    exportSiteCsvBtn.addEventListener("click", () => {
-      const site = selectedEvent?.site;
-      if (!site) return;
-      const url = buildExportUrl("csv", { download: "1", site });
-      triggerDownload(url);
-    });
-  }
-
-  if (exportSiteJsonBtn) {
-    exportSiteJsonBtn.addEventListener("click", () => {
-      const site = selectedEvent?.site;
-      if (!site) return;
-      const url = buildExportUrl("json", { download: "1", site });
-      triggerDownload(url);
     });
   }
 
@@ -767,10 +729,7 @@ window.addEventListener("load", () => {
         : `Trusting ${site}…`;
 
       try {
-        const res = await api.postPolicy(op, { site });
-        if (!res.ok) {
-          throw new Error(`HTTP ${res.status}`);
-        }
+        await api.postPolicy(op, { site }); // will throw automatically if HTTP not OK (if using fetchJson)
 
         const next = new Set(trustedSites);
         if (op === "trust_site") {
