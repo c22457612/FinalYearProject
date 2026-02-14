@@ -1,3 +1,13 @@
+// ---- Core modules (bridge from app/core.js) ----
+const api = window.VPT?.api;
+const utils = window.VPT?.utils;
+
+if (!api || !utils) {
+  console.error("VPT core not loaded. Check index.html includes app/core.js before dashboard.js");
+}
+
+const { friendlyTime, modeClass, escapeHtml, buildExportUrl, triggerDownload } = utils || {};
+
 const POLL_MS = 3000; // poll every 3s
 
 let latestEvents = [];
@@ -6,26 +16,13 @@ let selectedEventRow = null;
 let trustedSites = new Set(); // derived from /api/policies
 let selectedCookieSite = null; // for Cookies view selection
 let cookiesViewMode = "grid";  // "grid" (wall) or "detail"
+let latestSitesCache = [];
 
-function friendlyTime(ts) {
-  if (!ts) return "-";
-  const d = new Date(ts);
-  if (Number.isNaN(d.getTime())) return "-";
-  return d.toLocaleTimeString();
-}
 
-function modeClass(mode) {
-  const m = String(mode || "").toLowerCase();
-  if (m === "low" || m === "moderate" || m === "strict") return m;
-  return "";
-}
 
-function escapeHtml(str) {
-  return String(str)
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;");
-}
+
+
+
 
 function recomputePolicyState(policiesResponse) {
   const items = (policiesResponse && policiesResponse.items) || [];
@@ -52,6 +49,7 @@ function renderEventDetails(ev) {
   const subtitle = document.getElementById("details-subtitle");
 
   if (!ev) {
+    updateExportButtons();
     selectedEvent = null;
     body.innerHTML = '<p class="muted">No event selected.</p>';
     actions.style.display = "none";
@@ -127,6 +125,9 @@ function renderEventDetails(ev) {
       trustBtn.textContent = `Trust ${ev.site} (send to extension)`;
     }
   }
+
+  updateExportButtons();
+
 }
 
 function buildCookieSnapshots(events) {
@@ -338,9 +339,77 @@ function renderCookiesView(events) {
   }
 }
 
+function renderSitesWall(sites) {
+  const statCount = document.getElementById("sitesStatCount");
+  const statEvents = document.getElementById("sitesStatEvents");
+  const statBlocked = document.getElementById("sitesStatBlocked");
+  const statThird = document.getElementById("sitesStatThird");
+  const grid = document.getElementById("sitesGrid");
 
+  if (!statCount || !statEvents || !statBlocked || !statThird || !grid) {
+    return;
+  }
 
-// ---- Rendering ----
+  const totalSites = sites.length;
+  const totalEvents = sites.reduce((sum, s) => sum + (s.totalEvents || 0), 0);
+  const totalBlocked = sites.reduce((sum, s) => sum + (s.blockedCount || 0), 0);
+  const totalThird = sites.reduce((sum, s) => sum + (s.uniqueThirdParties || 0), 0);
+
+  statCount.textContent = totalSites;
+  statEvents.textContent = totalEvents;
+  statBlocked.textContent = totalBlocked;
+  statThird.textContent = totalThird;
+
+  const search = (document.getElementById("sitesSearch")?.value || "").trim().toLowerCase();
+  const sort = document.getElementById("sitesSort")?.value || "events";
+
+  let rows = sites.slice();
+
+  if (search) {
+    rows = rows.filter(s => String(s.site || "").toLowerCase().includes(search));
+  }
+
+  rows.sort((a, b) => {
+    if (sort === "blocked") return (b.blockedCount || 0) - (a.blockedCount || 0);
+    if (sort === "third") return (b.uniqueThirdParties || 0) - (a.uniqueThirdParties || 0);
+    if (sort === "recent") return (b.lastSeen || 0) - (a.lastSeen || 0);
+    return (b.totalEvents || 0) - (a.totalEvents || 0);
+  });
+
+  grid.innerHTML = "";
+
+  if (!rows.length) {
+    grid.innerHTML = `<div class="site-empty">No matching sites yet.</div>`;
+    return;
+  }
+
+  for (const s of rows) {
+    const a = document.createElement("a");
+    a.className = "site-card";
+    a.href = `/site.html?site=${encodeURIComponent(s.site)}`;
+
+    const title = document.createElement("div");
+    title.className = "site-card-site";
+    title.textContent = s.site || "(unknown site)";
+
+    const row1 = document.createElement("div");
+    row1.className = "site-card-row";
+    row1.innerHTML = `<span>Events: <b>${s.totalEvents || 0}</b></span>
+                      <span>Blocked: <b>${s.blockedCount || 0}</b></span>`;
+
+    const row2 = document.createElement("div");
+    row2.className = "site-card-mini";
+    const lastSeenText = s.lastSeen ? new Date(s.lastSeen).toLocaleString() : "-";
+    row2.textContent = `3rd-party domains: ${s.uniqueThirdParties || 0} • Last seen: ${lastSeenText}`;
+
+    a.appendChild(title);
+    a.appendChild(row1);
+    a.appendChild(row2);
+
+    grid.appendChild(a);
+  }
+}
+
 
 function renderSummary(events, sites) {
   const total = events.length;
@@ -356,6 +425,7 @@ function renderSummary(events, sites) {
   document.getElementById("statRecentHint").textContent =
     recent ? "in the last 5 minutes" : "none in the last 5 minutes";
 }
+
 
 function summarizeEvent(ev) {
   const kind = ev.kind || "event";
@@ -394,6 +464,26 @@ function summarizeEvent(ev) {
       parts.push(`${first} first-party`, `${third} third-party`);
     }
     return `Cookie snapshot for ${site}: ${parts.join(" · ")}`;
+  }
+
+  if (kind === "cookies.cleared") {
+    const site = ev.site || d.siteBase || "this site";
+    const cleared = d.cleared != null ? d.cleared : 0;
+    const total =
+      d.total != null
+        ? d.total
+        : (cleared || 0);
+
+    if (!cleared && !total) {
+      return `No cookies were cleared for ${site}`;
+    }
+
+    if (total && cleared !== total) {
+      return `Cleared ${cleared} of ${total} cookies for ${site}`;
+    }
+
+    const n = cleared || total;
+    return `Cleared ${n} cookie${n === 1 ? "" : "s"} for ${site}`;
   }
   return JSON.stringify(d) || "(no details)";
 }
@@ -469,8 +559,13 @@ function renderSites(sites) {
     const tr = document.createElement("tr");
 
     const tdSite = document.createElement("td");
-    tdSite.textContent = s.site;
+    const a = document.createElement("a");
+    a.href = `/site.html?site=${encodeURIComponent(s.site)}`;
+    a.textContent = s.site;
+    a.className = "site-link";
+    tdSite.appendChild(a);
     tr.appendChild(tdSite);
+
 
     const tdTotal = document.createElement("td");
     tdTotal.textContent = s.totalEvents;
@@ -497,18 +592,9 @@ function renderSites(sites) {
 async function fetchAndRender() {
   const statusEl = document.getElementById("connectionStatus");
   try {
-    const [eventsRes, sitesRes, policiesRes] = await Promise.all([
-      fetch("/api/events"),
-      fetch("/api/sites"),
-      fetch("/api/policies")
-    ]);
-    if (!eventsRes.ok || !sitesRes.ok || !policiesRes.ok) {
-      throw new Error("HTTP error");
-    }
+    const { events, sites, policies } = await api.fetchDashboardData();
 
-    const events = await eventsRes.json();   // server returns an ARRAY
-    const sites = await sitesRes.json();
-    const policies = await policiesRes.json();
+    latestSitesCache = Array.isArray(sites) ? sites : [];
 
     // update trustedSites set from policies
     recomputePolicyState(policies);
@@ -519,10 +605,11 @@ async function fetchAndRender() {
     renderSummary(events, sites);
     renderEvents(events);
     renderSites(sites);
+    renderSitesWall(sites);
 
     // refresh details panel so status + button reflect current trust state
     renderEventDetails(selectedEvent);
-    renderCookiesView(events); 
+    renderCookiesView(events);
   } catch (err) {
     console.error("fetch error", err);
     statusEl.textContent = "Backend unavailable – is server.js running?";
@@ -531,35 +618,118 @@ async function fetchAndRender() {
 }
 
 
+
+function updateExportButtons() {
+  const siteLabel = document.getElementById("exportSiteLabel");
+  const siteCsvBtn = document.getElementById("exportSiteCsvBtn");
+  const siteJsonBtn = document.getElementById("exportSiteJsonBtn");
+
+  const site = selectedEvent?.site || null;
+
+  if (siteLabel) {
+    siteLabel.textContent = site ? `Selected site: ${site}` : "Selected site: none";
+  }
+
+  const enabled = !!site;
+  if (siteCsvBtn) siteCsvBtn.disabled = !enabled;
+  if (siteJsonBtn) siteJsonBtn.disabled = !enabled;
+}
+
+
 window.addEventListener("load", () => {
+    // --- Export buttons ---
+  const exportAllCsvBtn = document.getElementById("exportAllCsvBtn");
+  const exportAllJsonBtn = document.getElementById("exportAllJsonBtn");
+  const exportSiteCsvBtn = document.getElementById("exportSiteCsvBtn");
+  const exportSiteJsonBtn = document.getElementById("exportSiteJsonBtn");
+  
+  // --- Sites view search/sort live re-render ---
+  const sitesSearch = document.getElementById("sitesSearch");
+  const sitesSort = document.getElementById("sitesSort");
+
+  if (typeof window.initExportFeature === "function") {
+    window.initExportFeature();
+  }
+
+  if (sitesSearch) {
+    sitesSearch.addEventListener("input", () => {
+      renderSitesWall(latestSitesCache);
+    });
+  }
+
+  if (sitesSort) {
+    sitesSort.addEventListener("change", () => {
+      renderSitesWall(latestSitesCache);
+    });
+  }
+
+  if (exportAllCsvBtn) {
+    exportAllCsvBtn.addEventListener("click", () => {
+      const url = buildExportUrl("csv", { download: "1" });
+      triggerDownload(url);
+    });
+  }
+
+  if (exportAllJsonBtn) {
+    exportAllJsonBtn.addEventListener("click", () => {
+      const url = buildExportUrl("json", { download: "1" });
+      triggerDownload(url);
+    });
+  }
+
+  if (exportSiteCsvBtn) {
+    exportSiteCsvBtn.addEventListener("click", () => {
+      const site = selectedEvent?.site;
+      if (!site) return;
+      const url = buildExportUrl("csv", { download: "1", site });
+      triggerDownload(url);
+    });
+  }
+
+  if (exportSiteJsonBtn) {
+    exportSiteJsonBtn.addEventListener("click", () => {
+      const site = selectedEvent?.site;
+      if (!site) return;
+      const url = buildExportUrl("json", { download: "1", site });
+      triggerDownload(url);
+    });
+  }
+
+  // set correct disabled state on page load
+  updateExportButtons();
+
   fetchAndRender();
   setInterval(fetchAndRender, POLL_MS);
 
   // --- View switching (Home / Cookies) ---
   const homeView = document.getElementById("view-home");
+  const sitesView = document.getElementById("view-sites");
   const cookiesView = document.getElementById("view-cookies");
   const navItems = document.querySelectorAll(".nav-item[data-view]");
 
   function switchView(view) {
-    if (!homeView || !cookiesView) return;
+    if (!homeView || !cookiesView || !sitesView) return;
 
+    // hide all
+    homeView.classList.add("hidden");
+    cookiesView.classList.add("hidden");
+    sitesView.classList.add("hidden");
+
+    // show chosen view
     if (view === "cookies") {
-      homeView.classList.add("hidden");
       cookiesView.classList.remove("hidden");
+    } else if (view === "sites") {
+      sitesView.classList.remove("hidden");
     } else {
       homeView.classList.remove("hidden");
-      cookiesView.classList.add("hidden");
       view = "home";
     }
 
     navItems.forEach(btn => {
-      if (btn.dataset.view === view) {
-        btn.classList.add("active");
-      } else {
-        btn.classList.remove("active");
-      }
+      btn.classList.toggle("active", btn.dataset.view === view);
     });
   }
+
 
   navItems.forEach(btn => {
     btn.addEventListener("click", () => {
@@ -597,12 +767,7 @@ window.addEventListener("load", () => {
         : `Trusting ${site}…`;
 
       try {
-        const res = await fetch("/api/policies", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ op, payload: { site } })
-        });
-
+        const res = await api.postPolicy(op, { site });
         if (!res.ok) {
           throw new Error(`HTTP ${res.status}`);
         }
