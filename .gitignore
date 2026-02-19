@@ -1,0 +1,27 @@
+# Large/local files (keep out of public repo)
+FYP_Documentation.pdf
+dataset.txt
+CODE_ANALYSIS_FOR_REPORT.MD
+FYP Project Proposal C22457612.pdf
+Interim Report Template v102.docx
+INTERIM_REPORT_PROGRESS.md
+INTERIM_REPORT_SECTIONS_CHECKLIST.md
+
+# Dependencies + local DB
+**/node_modules/
+**/data/
+*.db
+*.sqlite
+*.sqlite3
+*.log
+
+# Security scan outputs (keep local)
+eslint.json
+semgrep.json
+
+# OS/editor noise
+.DS_Store
+Thumbs.db
+*.tmp
+*.swp
+.vscode/
