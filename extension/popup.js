@@ -5,6 +5,7 @@ const thirdEl = document.getElementById("third");
 const notifyChk = document.getElementById("notify");
 const cookieCountEl = document.getElementById("cookieCount");
 const cookieSnapshotBtn = document.getElementById("cookieSnapshotBtn"); 
+const clearCookiesBtn = document.getElementById("clearCookiesBtn");
 
 // debug clear-trusted controls
 const clearTrustedBtn = document.getElementById("clearTrustedBtn");
@@ -64,6 +65,51 @@ modeSel.addEventListener("change", async () => {
   await chrome.storage.local.set({ privacyMode: modeSel.value });
   statusEl.textContent = `Saved: ${modeSel.value}`;
 });
+
+// clear cookies for the current site
+if (clearCookiesBtn) {
+  clearCookiesBtn.addEventListener("click", async () => {
+    try {
+      const url = await getCurrentTabUrl();
+      if (!url || !/^https?:/i.test(url)) {
+        statusEl.textContent = "Can only clear cookies on websites.";
+        return;
+      }
+
+      const originalLabel = clearCookiesBtn.textContent;
+      clearCookiesBtn.disabled = true;
+      clearCookiesBtn.textContent = "Clearing…";
+
+      const res = await chrome.runtime.sendMessage({
+        type: "cookies:clearForSite",
+        url
+      });
+
+      if (!res || !res.ok) {
+        statusEl.textContent = "Failed to clear cookies.";
+      } else {
+        const n = res.cleared ?? 0;
+        if (n === 0) {
+          statusEl.textContent = "No cookies to clear.";
+        } else {
+          statusEl.textContent = `Cleared ${n} cookie${n === 1 ? "" : "s"}.`;
+        }
+        // refresh the count in the popup
+        await updateCookieCount();
+      }
+
+      setTimeout(() => {
+        clearCookiesBtn.disabled = false;
+        clearCookiesBtn.textContent = originalLabel;
+      }, 1500);
+    } catch (e) {
+      console.error("Failed to clear cookies", e);
+      statusEl.textContent = "Error clearing cookies.";
+      clearCookiesBtn.disabled = false;
+      clearCookiesBtn.textContent = "Clear cookies for this site";
+    }
+  });
+}
 
 notifyChk.addEventListener("change", async () => {
   await chrome.storage.local.set({ notifyEnabled: notifyChk.checked });

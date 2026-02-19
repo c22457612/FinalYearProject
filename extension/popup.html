@@ -4,37 +4,157 @@
     <meta charset="utf-8" />
     <title>VPT</title>
     <style>
-      body{font-family:system-ui,sans-serif;padding:12px;min-width:260px}
-      .row{display:flex;justify-content:space-between;align-items:center;margin:8px 0}
-      .muted{color:#666;font-size:12px}
+      :root {
+        --space-sm: 0.5rem;
+        --space-md: 0.75rem;
+        --radius-sm: 0.5rem;
+
+        --color-bg: #0f172a;
+        --color-bg-panel: #020617;
+        --color-text-main: #e5e7eb;
+        --color-text-muted: #9ca3af;
+        --color-border: #1f2937;
+      }
+
+      body {
+        margin: 0;
+        padding: var(--space-sm);
+        min-width: 260px;
+        font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+        background: var(--color-bg);
+        color: var(--color-text-main);
+      }
+
+      .popup-card {
+        background: var(--color-bg-panel);
+        border-radius: var(--radius-sm);
+        border: 1px solid var(--color-border);
+        padding: var(--space-md);
+        display: flex;
+        flex-direction: column;
+        gap: 0.5rem;
+      }
+
+      h1 {
+        margin: 0 0 0.25rem 0;
+        font-size: 1rem;
+      }
+
+      .popup-subtitle {
+        margin: 0 0 0.75rem 0;
+        font-size: 0.75rem;
+        color: var(--color-text-muted);
+      }
+
+      .row {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        gap: 0.75rem;
+        margin: 0.25rem 0;
+        font-size: 0.85rem;
+      }
+
+      label,
+      .row span {
+        color: var(--color-text-muted);
+      }
+
+      strong {
+        font-weight: 600;
+      }
+
+      select,
+      button,
+      input[type="checkbox"] {
+        font-size: 0.85rem;
+      }
+
+      select,
+      button {
+        border-radius: 999px;
+        border: 1px solid var(--color-border);
+        background: #020617;
+        color: var(--color-text-main);
+        padding: 0.25rem 0.6rem;
+      }
+
+      button:hover {
+        border-color: #4b5563;
+        cursor: pointer;
+      }
+
+      #clearCookiesBtn,
+      #cookieSnapshotBtn,
+      #clearTrustedBtn {
+        width: 100%;
+        margin-top: 0.25rem;
+      }
+
+      #debugSection {
+        margin-top: 0.5rem;
+      }
+
+      .muted {
+        color: var(--color-text-muted);
+        font-size: 0.75rem;
+        margin-top: 0.5rem;
+      }
     </style>
+
   </head>
   <body>
-    <h1>Visual Privacy Toolkit</h1>
+    <div class="popup-card">
+      <h1>Visual Privacy Toolkit</h1>
+      <p class="popup-subtitle">Current tab · local prototype</p>
 
-    <div class="row">
-      <label for="mode">Privacy mode</label>
-      <select id="mode">
-        <option value="strict">Strict</option>
-        <option value="moderate" selected>Moderate</option>
-        <option value="low">Low</option>
-      </select>
+      <div class="row">
+        <label for="mode">Privacy mode</label>
+        <select id="mode">
+          <option value="strict">Strict</option>
+          <option value="moderate">Moderate</option>
+          <option value="low">Low</option>
+        </select>
+      </div>
+
+      <div class="row">
+        <span>First-party blocked</span>
+        <strong id="first">0</strong>
+      </div>
+      <div class="row">
+        <span>Third-party blocked</span>
+        <strong id="third">0</strong>
+      </div>
+
+      <div class="row">
+        <span>Cookies for this site</span>
+        <strong id="cookieCount">–</strong>
+      </div>
+
+      <div class="row">
+        <button id="clearCookiesBtn">Clear cookies for this site</button>
+      </div>
+
+      <div class="row">
+        <label for="notify">Show notifications</label>
+        <input type="checkbox" id="notify" />
+      </div>
+
+      <div id="debugSection">
+        <button id="clearTrustedBtn">Clear all trusted sites</button>
+        <div
+          id="clearTrustedStatus"
+          style="font-size: 11px; margin-top: 4px; color: #666;"
+        ></div>
+      </div>
+
+      <button id="cookieSnapshotBtn">
+        Send cookie snapshot to Control Centre
+      </button>
+
+      <p id="status" class="muted"></p>
     </div>
 
-    <div class="row"><span>First-party blocked</span><strong id="first">0</strong></div>
-    <div class="row"><span>Third-party blocked</span><strong id="third">0</strong></div>
-
-    <div class="row">
-      <label for="notify">Show notifications</label>
-      <input type="checkbox" id="notify" />
-    </div>
-
-    <div id="debugSection">
-      <button id="clearTrustedBtn">Clear all trusted sites</button>
-      <div id="clearTrustedStatus" style="font-size: 11px; margin-top: 4px; color: #666;"></div>
-    </div>
-
-    <p id="status" class="muted"></p>
     <script src="popup.js"></script>
   </body>
 </html>

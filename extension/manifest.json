@@ -8,8 +8,15 @@
     "storage",
     "declarativeNetRequest",
     "declarativeNetRequestFeedback",
-    "notifications"            
+    "notifications",
+    "webNavigation",
+    "tabs",
+    "webRequest",
+    "cookies"
   ],
-  "host_permissions": ["<all_urls>"],
+  "host_permissions": [
+  "<all_urls>",
+  "http://127.0.0.1:4141/*"
+  ],
   "background": { "service_worker": "background.js" }
 }

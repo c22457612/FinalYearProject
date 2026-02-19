@@ -18,7 +18,7 @@ let blockedFirst = 0;
 let blockedThird = 0;
 let notifyEnabled = false;
 const lastNotifyByDomain = new Map(); // throttle toasts
-let promptOnNewSites = true;   // default ON (toggle later in popup if you want)
+let promptOnNewSites = true;   // default ON 
 let trustedDomains = [];       // base domains user trusts
 let enterOnce = null; // { siteBase, ts }
 
@@ -48,7 +48,7 @@ async function logEvent(kind, data = {}, tabId = null) {
       topLevelUrl = locationCache[tabId];
       try {
         const host = new URL(topLevelUrl).hostname;
-        site = base(host); // your existing helper
+        site = base(host); 
       } catch (e) {
         // ignore parse errors
       }
@@ -111,12 +111,92 @@ function base(host) {
 function hostFromUrl(u) { try { return new URL(u).hostname; } catch { return ""; } }
 function hostFromOrigin(o) { try { return new URL(o).hostname; } catch { return ""; } }
 
+async function getCookieSummaryForUrl(url) {
+  if (!url || !/^https?:/i.test(url)) {
+    return { count: 0, site: null };
+  }
+  const cookies = await chrome.cookies.getAll({ url });
+  const host = hostFromUrl(url);
+  const site = base(host);
+  return { count: cookies.length, site };
+}
+
+async function buildCookieSnapshotForUrl(url) {
+  if (!url || !/^https?:/i.test(url)) {
+    return null;
+  }
+
+  const cookies = await chrome.cookies.getAll({ url });
+  const host = hostFromUrl(url);
+  const siteBase = base(host);
+
+  const items = cookies.map(c => {
+    const cookieHost = (c.domain || "").replace(/^\./, "");
+    const cookieBase = base(cookieHost);
+    const isThird = cookieBase && siteBase && cookieBase !== siteBase;
+
+    return {
+      name: c.name,
+      domain: c.domain,
+      path: c.path,
+      secure: c.secure,
+      httpOnly: c.httpOnly,
+      sameSite: c.sameSite || null,
+      session: c.session,
+      expiry: c.expirationDate || null,
+      hostOnly: c.hostOnly,
+      isThirdParty: !!isThird
+    };
+  });
+
+  const thirdPartyCount = items.filter(i => i.isThirdParty).length;
+
+  return {
+    url,
+    siteBase,
+    count: cookies.length,
+    thirdPartyCount,
+    cookies: items
+  };
+}
+
+async function clearCookiesForUrl(url) {
+  if (!url || !/^https?:/i.test(url)) {
+    return { cleared: 0, total: 0 };
+  }
+
+  const cookies = await chrome.cookies.getAll({ url });
+  const total = cookies.length;
+  if (!total) {
+    return { cleared: 0, total: 0 };
+  }
+
+  const { protocol } = new URL(url);
+  let cleared = 0;
+
+  for (const c of cookies) {
+    try {
+      const domain =
+        c.domain && c.domain.startsWith(".") ? c.domain.slice(1) : c.domain;
+      const path = c.path || "/";
+      const cookieUrl = `${protocol}//${domain}${path}`;
+      await chrome.cookies.remove({ url: cookieUrl, name: c.name });
+      cleared++;
+    } catch (e) {
+      console.warn("Failed to remove cookie", c, e);
+    }
+  }
+
+  return { cleared, total };
+}
+
 function isThirdParty(initiator, requestUrl) {
   const a = base(hostFromOrigin(initiator));
   const b = base(hostFromUrl(requestUrl));
   if (!a || !b) return true; // default to third-party if unknown
   return a !== b;
 }
+
 
 async function persistStats() {
   await chrome.storage.local.set({
@@ -309,7 +389,7 @@ async function endPreview() {
 //Boot & reactions
 async function init() {
   await loadTrustAndPromptFlag();
-  await loadCustomFilters(); // <-- add this line
+  await loadCustomFilters(); 
   setInterval(pollPolicies, 10000); // poll every 10s
   const { privacyMode, notifyEnabled: storedNotify } = await chrome.storage.local.get([
     "privacyMode",
@@ -334,7 +414,7 @@ chrome.storage.onChanged.addListener(async ch => {
   }
 
   if ("__enterOnce" in ch && ch.__enterOnce?.newValue) {
-  enterOnce = ch.__enterOnce.newValue;
+    enterOnce = ch.__enterOnce.newValue;
   }
 
   if ("customFilters" in ch) {
@@ -344,6 +424,89 @@ chrome.storage.onChanged.addListener(async ch => {
 
   if ("__preview" in ch && ch.__preview?.newValue) {
     previewReq = ch.__preview.newValue; // { siteBase, dest, ts }
+  }
+});
+
+chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
+  if (msg?.type === "cookies:getSummary") {
+    (async () => {
+      try {
+        const { count, site } = await getCookieSummaryForUrl(msg.url);
+        sendResponse({ ok: true, count, site });
+      } catch (e) {
+        console.error("cookies:getSummary failed", e);
+        sendResponse({ ok: false, error: e.message || String(e) });
+      }
+    })();
+    return true; // keep the message channel open for async sendResponse
+  }
+  if (msg?.type === "cookies:clearForSite") {
+    (async () => {
+      try {
+        const result = await clearCookiesForUrl(msg.url);
+
+        const host = hostFromUrl(msg.url || "");
+        const siteBase = base(host);
+        const tabId =
+          sender.tab && typeof sender.tab.id === "number"
+            ? sender.tab.id
+            : null;
+
+        await logEvent(
+          "cookies.cleared",
+          {
+            url: msg.url,
+            siteBase,
+            cleared: result.cleared,
+            total: result.total
+          },
+          tabId
+        );
+
+        sendResponse({ ok: true, ...result });
+      } catch (e) {
+        console.error("cookies:clearForSite failed", e);
+        sendResponse({ ok: false, error: e.message || String(e) });
+      }
+    })();
+
+    return true; // async sendResponse
+  }
+
+  if (msg?.type === "cookies:sendSnapshot") {
+    (async () => {
+      try {
+        const snapshot = await buildCookieSnapshotForUrl(msg.url);
+        if (!snapshot) {
+          sendResponse({ ok: false, error: "Invalid URL" });
+          return;
+        }
+
+        const tabId =
+          sender.tab && typeof sender.tab.id === "number"
+            ? sender.tab.id
+            : null;
+
+        await logEvent(
+          "cookies.snapshot",
+          {
+            url: snapshot.url,
+            siteBase: snapshot.siteBase,
+            count: snapshot.count,
+            thirdPartyCount: snapshot.thirdPartyCount,
+            cookies: snapshot.cookies
+          },
+          tabId
+        );
+
+        sendResponse({ ok: true, count: snapshot.count });
+      } catch (e) {
+        console.error("cookies:sendSnapshot failed", e);
+        sendResponse({ ok: false, error: e.message || String(e) });
+      }
+    })();
+
+    return true; // keep the message channel open for async sendResponse
   }
 });
 
@@ -370,9 +533,9 @@ chrome.webNavigation.onBeforeNavigate.addListener((details) => {
       return;           // let this navigation proceed
     }
 
-    // --- PREVIEW: if interstitial set __preview for this site/dest, start preview now
+    // if interstitial set __preview for this site/dest, start preview now
     if (previewReq && previewReq.siteBase === siteBase && previewReq.dest === url) {
-      startPreview(siteBase, details.tabId);   // <-- no rule changes; use current mode
+      startPreview(siteBase, details.tabId);   // use current mode
       return; // allow navigation to proceed
     }
 
@@ -433,7 +596,7 @@ chrome.webRequest.onBeforeRequest.addListener((details) => {
   rec.allowed = true;
   previewObserved.set(reqBase, rec);
 
-  // NEW: log a network.observed event (attempted request during preview)
+  // log a network.observed event (attempted request during preview)
   logEvent("network.observed", {
     url: details.url,
     domain: reqBase,
