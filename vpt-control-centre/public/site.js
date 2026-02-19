@@ -196,7 +196,54 @@ function ensureChart() {
       const viewId = VIEWS[vizIndex].id;
       handleChartClick(viewId, params);
     });
+
+    // ✅ bind once
+    chart.on("brushSelected", (params) => {
+      const viewId = VIEWS[vizIndex].id;
+      if (viewId !== "timeline") return;
+
+      const meta = chart?.__vptMeta?.built?.meta;
+      if (!meta) return;
+
+      const area = params?.batch?.[0]?.areas?.[0];
+      if (!area) {
+        if (latestSiteData) renderRecentEvents(latestSiteData);
+        return;
+      }
+
+      const toIndex = (x) => {
+        if (typeof x === "number") return Math.round(x);
+        const idx = meta.labels.indexOf(x);
+        return idx >= 0 ? idx : 0;
+      };
+
+      let [a, b] = area.coordRange || [];
+      let startIdx = toIndex(a);
+      let endIdx = toIndex(b);
+
+      startIdx = Math.max(0, Math.min(meta.binEvents.length - 1, startIdx));
+      endIdx = Math.max(0, Math.min(meta.binEvents.length - 1, endIdx));
+      if (startIdx > endIdx) [startIdx, endIdx] = [endIdx, startIdx];
+
+      const selected = [];
+      for (let i = startIdx; i <= endIdx; i++) selected.push(...(meta.binEvents[i] || []));
+
+      renderRecentEventsFromEvents(selected);
+
+      const startTs = meta.start + startIdx * meta.binMs;
+      const endTs = meta.start + (endIdx + 1) * meta.binMs;
+
+      const blocked = selected.filter(e => e.kind === "network.blocked").length;
+      const observed = selected.filter(e => e.kind === "network.observed").length;
+
+      openDrawer(
+        `Selected window ${new Date(startTs).toLocaleTimeString()}–${new Date(endTs).toLocaleTimeString()}`,
+        `<div class="muted">${selected.length} events • blocked ${blocked} • observed ${observed}</div>`,
+        selected
+      );
+    });
   }
+
   return chart;
 }
 
@@ -340,21 +387,34 @@ function buildTimelineOption(events) {
 
   return {
     option: {
-      tooltip: { trigger: "axis" },
-      grid: { left: 40, right: 18, top: 18, bottom: 50 },
-      xAxis: { type: "category", data: labels },
-      yAxis: { type: "value" },
-      dataZoom: [
-        { type: "inside" },
-        { type: "slider", height: 18, bottom: 18 },
-      ],
-      series: [
-        { name: "Blocked", type: "bar", stack: "total", data: blocked },
-        { name: "Observed", type: "bar", stack: "total", data: observed },
-        { name: "Other", type: "bar", stack: "total", data: other },
-      ],
+    tooltip: { trigger: "axis" },
+    legend: { top: 0 },
+    toolbox: {
+      right: 10,
+      feature: {
+        brush: { type: ["lineX", "clear"] },  // drag-select X range
+        restore: {},                          // reset chart zoom/brush
+      },
     },
-    meta: { start, binMs, binEvents },
+    brush: {
+      xAxisIndex: 0,
+      brushMode: "single",
+    },
+    grid: { left: 40, right: 18, top: 36, bottom: 60 },
+    xAxis: { type: "category", data: labels },
+    yAxis: { type: "value" },
+    dataZoom: [
+      { type: "inside" },
+      { type: "slider", height: 18, bottom: 18 },
+    ],
+    series: [
+      { name: "Blocked", type: "bar", stack: "total", data: blocked },
+      { name: "Observed", type: "bar", stack: "total", data: observed },
+      { name: "Other", type: "bar", stack: "total", data: other },
+    ],
+  },
+  meta: { start, binMs, binEvents, labels },
+
   };
 }
 
@@ -455,6 +515,11 @@ function renderECharts() {
   else built = buildTopDomainsOption(events, "seen"); // topSeen
 
   c.__vptMeta = { viewId, built };
+  try {
+    // Clear any timeline brush selection when switching views
+    chart?.dispatchAction?.({ type: "brush", areas: [] });
+  } catch {}
+
   c.setOption(built.option, true);
 }
 
@@ -622,10 +687,9 @@ window.addEventListener("load", () => {
   });
 
   qs("rangeSelect")?.addEventListener("change", async () => {
-    await fetchWindowEvents(); // refetch for new range
+    await fetchWindowEvents(true);
     renderECharts();
   });
-
 
 
   // initial fetch + poll
