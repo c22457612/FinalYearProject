@@ -149,183 +149,371 @@ function renderRecentEvents(data) {
   }
 }
 
-// ---------- Canvas visualisation ----------
+// ---------- ECharts visualisation ----------
 
-function setupCanvas(canvas) {
-  const dpr = window.devicePixelRatio || 1;
-  const rect = canvas.getBoundingClientRect();
-  canvas.width = Math.max(1, Math.floor(rect.width * dpr));
-  canvas.height = Math.max(1, Math.floor(rect.height * dpr));
-  const ctx = canvas.getContext("2d");
-  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-  return ctx;
+let chart = null;
+let windowEvents = [];
+let vizIndex = 0;
+let vizSelection = null; // { type: "domain"|"bin"|"kind", value, fromTs, toTs }
+let drawerMode = "normal"; // "normal" | "advanced"
+
+const VIEWS = [
+  { id: "timeline", title: "Activity timeline (last 24h)" },
+  { id: "topSeen", title: "Top third-party domains (seen)" },
+  { id: "kinds", title: "Event breakdown (kind)" },
+  { id: "apiGating", title: "3P API-like calls (heuristic)" },
+];
+
+const RANGE_MS = {
+  "1h": 60 * 60 * 1000,
+  "24h": 24 * 60 * 60 * 1000,
+  "7d": 7 * 24 * 60 * 60 * 1000,
+  "all": null,
+};
+
+function getRangeKey() {
+  return qs("rangeSelect")?.value || "24h";
 }
 
-function clearCanvas(ctx, canvas) {
-  ctx.clearRect(0, 0, canvas.width, canvas.height);
+function getRangeWindow() {
+  const key = getRangeKey();
+  const span = RANGE_MS[key];
+  const to = Date.now();
+  const from = span ? (to - span) : null;
+  return { key, from, to };
 }
 
-function drawBarChart(canvas, labels, values, title) {
-  const ctx = setupCanvas(canvas);
-  const w = canvas.getBoundingClientRect().width;
-  const h = canvas.getBoundingClientRect().height;
+function ensureChart() {
+  const el = qs("vizChart");
+  if (!el) return null;
 
-  clearCanvas(ctx, canvas);
+  if (!chart) {
+    chart = echarts.init(el);
 
-  ctx.font = "14px system-ui, -apple-system, Segoe UI, sans-serif";
-  ctx.fillStyle = "#e5e7eb";
-  ctx.fillText(title || "Bar chart", 12, 22);
+    window.addEventListener("resize", () => chart && chart.resize());
 
-  const padL = 12;
-  const padR = 12;
-  const padT = 40;
-  const padB = 28;
-
-  const chartW = w - padL - padR;
-  const chartH = h - padT - padB;
-
-  const maxVal = Math.max(1, ...values);
-  const n = Math.max(1, values.length);
-  const gap = 8;
-  const barW = Math.max(6, (chartW - gap * (n - 1)) / n);
-
-  // axis baseline
-  ctx.strokeStyle = "rgba(148,163,184,0.35)";
-  ctx.beginPath();
-  ctx.moveTo(padL, padT + chartH);
-  ctx.lineTo(padL + chartW, padT + chartH);
-  ctx.stroke();
-
-  // bars
-  for (let i = 0; i < n; i++) {
-    const v = values[i] || 0;
-    const bh = (v / maxVal) * chartH;
-    const x = padL + i * (barW + gap);
-    const y = padT + chartH - bh;
-
-    ctx.fillStyle = "rgba(59,130,246,0.55)";
-    ctx.fillRect(x, y, barW, bh);
-
-    // value label
-    ctx.fillStyle = "#cbd5e1";
-    ctx.font = "11px ui-monospace, SFMono-Regular, Menlo, monospace";
-    ctx.fillText(String(v), x, y - 6);
-
-    // truncated label
-    const rawLabel = labels[i] || "";
-    const short = rawLabel.length > 12 ? rawLabel.slice(0, 11) + "…" : rawLabel;
-    ctx.fillStyle = "#9ca3af";
-    ctx.fillText(short, x, padT + chartH + 18);
+    chart.on("click", (params) => {
+      const viewId = VIEWS[vizIndex].id;
+      handleChartClick(viewId, params);
+    });
   }
+  return chart;
 }
 
-function drawTimeline(canvas, events) {
-  const ctx = setupCanvas(canvas);
-  const w = canvas.getBoundingClientRect().width;
-  const h = canvas.getBoundingClientRect().height;
+function isThirdPartyNetwork(ev) {
+  return (ev?.kind === "network.blocked" || ev?.kind === "network.observed")
+    && ev?.data?.domain
+    && ev?.data?.isThirdParty === true;
+}
 
-  clearCanvas(ctx, canvas);
+function isApiLike(ev) {
+  const rt = (ev?.data?.resourceType || "").toLowerCase();
+  const url = (ev?.data?.url || "").toLowerCase();
 
-  ctx.font = "14px system-ui, -apple-system, Segoe UI, sans-serif";
-  ctx.fillStyle = "#e5e7eb";
-  ctx.fillText("Activity timeline (recent)", 12, 22);
+  const looksApiPath =
+    url.includes("/api/") || url.includes("/graphql") || url.includes("/v1/") || url.includes("/v2/") || url.includes("/rest/");
 
-  if (!events || events.length === 0) {
-    ctx.fillStyle = "#9ca3af";
-    ctx.fillText("No recent events available.", 12, 50);
-    return;
+  const looksFetch = rt.includes("xhr") || rt.includes("fetch") || rt.includes("xmlhttprequest");
+
+  return looksFetch || looksApiPath;
+}
+
+function explainEventNormal(ev) {
+  if (!ev) return "No event selected.";
+  const d = ev.data || {};
+  if (ev.kind === "network.blocked") {
+    return `A request to ${d.domain || "a domain"} was blocked (mode: ${ev.mode || "—"}). This can prevent trackers/ads/scripts from loading.`;
+  }
+  if (ev.kind === "network.observed") {
+    return `A request to ${d.domain || "a domain"} was observed (allowed). This can indicate third-party activity on the page.`;
+  }
+  if (String(ev.kind || "").startsWith("cookies.")) {
+    return `A cookies event occurred (${ev.kind}). Cookie-related activity was recorded for analysis.`;
+  }
+  return `Event recorded: ${ev.kind || "unknown"}.`;
+}
+
+function explainEventAdvanced(ev) {
+  if (!ev) return "";
+  const d = ev.data || {};
+  return [
+    `id: ${ev.id || "—"}`,
+    `ts: ${ev.ts ? new Date(ev.ts).toLocaleString() : "—"}`,
+    `site: ${ev.site || "—"}`,
+    `kind: ${ev.kind || "—"}`,
+    `mode: ${ev.mode || "—"}`,
+    `domain: ${d.domain || "—"}`,
+    `url: ${d.url || "—"}`,
+    `resourceType: ${d.resourceType || "—"}`,
+    `isThirdParty: ${typeof d.isThirdParty === "boolean" ? d.isThirdParty : "—"}`,
+    `ruleId: ${d.ruleId || "—"}`,
+  ].join("\n");
+}
+
+function openDrawer(title, summaryHtml, evidenceEvents) {
+  const drawer = qs("vizDrawer");
+  const backdrop = qs("vizDrawerBackdrop");
+  if (!drawer || !backdrop) return;
+
+  qs("drawerTitle").textContent = title || "Selection";
+  qs("drawerSummary").innerHTML = summaryHtml || "";
+
+  // Evidence list
+  const box = qs("drawerEvents");
+  box.innerHTML = "";
+  const list = (evidenceEvents || []).slice(-20).reverse();
+
+  if (!list.length) {
+    box.innerHTML = `<div class="muted">No matching events.</div>`;
+  } else {
+    for (const ev of list) {
+      const btn = document.createElement("button");
+      btn.className = "event-row";
+      btn.type = "button";
+      btn.style.display = "block";
+      btn.style.width = "100%";
+      btn.style.textAlign = "left";
+      btn.style.padding = "8px 10px";
+      btn.style.border = "1px solid rgba(148,163,184,0.18)";
+      btn.style.background = "rgba(15,23,42,0.3)";
+      btn.style.color = "#e5e7eb";
+      btn.style.marginBottom = "8px";
+      btn.innerHTML = `<div style="font-size:12px;opacity:.8">${friendlyTime(ev.ts)} · ${ev.kind || "—"} · ${ev.mode || "—"}</div>
+                       <div style="font-size:13px">${ev.data?.domain || "—"}</div>`;
+      btn.addEventListener("click", () => {
+        const normal = explainEventNormal(ev);
+        const adv = explainEventAdvanced(ev).replaceAll("\n", "<br/>");
+        const content = drawerMode === "advanced"
+          ? `<pre style="white-space:pre-wrap">${adv}</pre>`
+          : `<div>${normal}</div>`;
+        qs("drawerSummary").innerHTML = content;
+      });
+      box.appendChild(btn);
+    }
   }
 
-  // bucket into 12 bins across the range
-  const times = events.map(e => e.ts).filter(Boolean);
-  const minT = Math.min(...times);
-  const maxT = Math.max(...times);
-  const bins = 12;
+  drawer.classList.remove("hidden");
+  backdrop.classList.remove("hidden");
+}
 
-  const counts = new Array(bins).fill(0);
-  const span = Math.max(1, maxT - minT);
+function closeDrawer() {
+  qs("vizDrawer")?.classList.add("hidden");
+  qs("vizDrawerBackdrop")?.classList.add("hidden");
+}
+
+function setDrawerMode(mode) {
+  drawerMode = mode;
+  qs("drawerNormalBtn")?.classList.toggle("active", mode === "normal");
+  qs("drawerAdvancedBtn")?.classList.toggle("active", mode === "advanced");
+}
+
+function buildTimelineOption(events) {
+  // 5-minute bins across the active range
+  const { from, to } = getRangeWindow();
+  const start = from ?? (events[0]?.ts ?? Date.now());
+  const end = to ?? (events[events.length - 1]?.ts ?? Date.now());
+  const binMs = 5 * 60 * 1000;
+  const bins = Math.max(1, Math.ceil((end - start) / binMs));
+
+  const labels = [];
+  const blocked = new Array(bins).fill(0);
+  const observed = new Array(bins).fill(0);
+  const other = new Array(bins).fill(0);
+
+  // map bin -> evidence events
+  const binEvents = new Array(bins).fill(0).map(() => []);
 
   for (const ev of events) {
-    const t = ev.ts || minT;
-    const idx = Math.min(bins - 1, Math.floor(((t - minT) / span) * bins));
-    counts[idx]++;
+    if (!ev?.ts) continue;
+    const idx = Math.min(bins - 1, Math.max(0, Math.floor((ev.ts - start) / binMs)));
+    binEvents[idx].push(ev);
+
+    if (ev.kind === "network.blocked") blocked[idx]++;
+    else if (ev.kind === "network.observed") observed[idx]++;
+    else other[idx]++;
   }
 
-  const padL = 12;
-  const padR = 12;
-  const padT = 40;
-  const padB = 28;
-
-  const chartW = w - padL - padR;
-  const chartH = h - padT - padB;
-
-  const maxVal = Math.max(1, ...counts);
-
-  // baseline
-  ctx.strokeStyle = "rgba(148,163,184,0.35)";
-  ctx.beginPath();
-  ctx.moveTo(padL, padT + chartH);
-  ctx.lineTo(padL + chartW, padT + chartH);
-  ctx.stroke();
-
-  // line
-  ctx.strokeStyle = "rgba(16,185,129,0.9)";
-  ctx.lineWidth = 2;
-  ctx.beginPath();
-
   for (let i = 0; i < bins; i++) {
-    const x = padL + (i / (bins - 1)) * chartW;
-    const y = padT + chartH - (counts[i] / maxVal) * chartH;
-    if (i === 0) ctx.moveTo(x, y);
-    else ctx.lineTo(x, y);
+    const t = new Date(start + i * binMs);
+    labels.push(t.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }));
   }
-  ctx.stroke();
 
-  // points
-  ctx.fillStyle = "rgba(16,185,129,0.9)";
-  for (let i = 0; i < bins; i++) {
-    const x = padL + (i / (bins - 1)) * chartW;
-    const y = padT + chartH - (counts[i] / maxVal) * chartH;
-    ctx.beginPath();
-    ctx.arc(x, y, 3, 0, Math.PI * 2);
-    ctx.fill();
+  return {
+    option: {
+      tooltip: { trigger: "axis" },
+      grid: { left: 40, right: 18, top: 18, bottom: 50 },
+      xAxis: { type: "category", data: labels },
+      yAxis: { type: "value" },
+      dataZoom: [
+        { type: "inside" },
+        { type: "slider", height: 18, bottom: 18 },
+      ],
+      series: [
+        { name: "Blocked", type: "bar", stack: "total", data: blocked },
+        { name: "Observed", type: "bar", stack: "total", data: observed },
+        { name: "Other", type: "bar", stack: "total", data: other },
+      ],
+    },
+    meta: { start, binMs, binEvents },
+  };
+}
+
+function buildTopDomainsOption(events, metric = "seen") {
+  const map = new Map(); // domain -> { seen, blocked, observed, events[] }
+
+  for (const ev of events) {
+    if (!isThirdPartyNetwork(ev)) continue;
+    const d = ev.data.domain;
+    if (!map.has(d)) map.set(d, { domain: d, seen: 0, blocked: 0, observed: 0, evs: [] });
+    const obj = map.get(d);
+    obj.seen++;
+    if (ev.kind === "network.blocked") obj.blocked++;
+    if (ev.kind === "network.observed") obj.observed++;
+    obj.evs.push(ev);
+  }
+
+  const list = Array.from(map.values()).sort((a, b) => (b[metric] || 0) - (a[metric] || 0)).slice(0, 20);
+  const labels = list.map(x => x.domain);
+  const values = list.map(x => x[metric] || 0);
+
+  // store evidence map for click
+  const evidenceByDomain = new Map(list.map(x => [x.domain, x.evs]));
+
+  return {
+    option: {
+      tooltip: { trigger: "axis" },
+      grid: { left: 40, right: 18, top: 18, bottom: 120 },
+      xAxis: { type: "category", data: labels, axisLabel: { rotate: 45 } },
+      yAxis: { type: "value" },
+      series: [{ name: metric, type: "bar", data: values }],
+    },
+    meta: { evidenceByDomain, metric },
+  };
+}
+
+function buildKindsOption(events) {
+  const map = new Map();
+  for (const ev of events) {
+    const k = ev?.kind || "unknown";
+    map.set(k, (map.get(k) || 0) + 1);
+  }
+  const list = Array.from(map.entries()).sort((a, b) => b[1] - a[1]).slice(0, 18);
+  return {
+    option: {
+      tooltip: { trigger: "axis" },
+      grid: { left: 40, right: 18, top: 18, bottom: 120 },
+      xAxis: { type: "category", data: list.map(x => x[0]), axisLabel: { rotate: 45 } },
+      yAxis: { type: "value" },
+      series: [{ type: "bar", data: list.map(x => x[1]) }],
+    },
+    meta: { list },
+  };
+}
+
+function buildApiGatingOption(events) {
+  const map = new Map(); // domain -> evs
+  for (const ev of events) {
+    if (!isThirdPartyNetwork(ev)) continue;
+    if (!isApiLike(ev)) continue;
+    const d = ev.data.domain;
+    if (!map.has(d)) map.set(d, []);
+    map.get(d).push(ev);
+  }
+  const list = Array.from(map.entries())
+    .map(([domain, evs]) => ({ domain, count: evs.length, evs }))
+    .sort((a, b) => b.count - a.count)
+    .slice(0, 20);
+
+  const evidenceByDomain = new Map(list.map(x => [x.domain, x.evs]));
+
+  return {
+    option: {
+      tooltip: { trigger: "axis" },
+      grid: { left: 40, right: 18, top: 18, bottom: 120 },
+      xAxis: { type: "category", data: list.map(x => x.domain), axisLabel: { rotate: 45 } },
+      yAxis: { type: "value" },
+      series: [{ name: "API-like calls", type: "bar", data: list.map(x => x.count) }],
+    },
+    meta: { evidenceByDomain },
+  };
+}
+
+function renderECharts() {
+  const c = ensureChart();
+  if (!c) return;
+
+  const viewId = VIEWS[vizIndex].id;
+  const titleEl = qs("vizTitle");
+  if (titleEl) titleEl.textContent = `Visualisation — ${VIEWS[vizIndex].title}`;
+
+  const events = windowEvents || [];
+
+  let built;
+  if (viewId === "timeline") built = buildTimelineOption(events);
+  else if (viewId === "kinds") built = buildKindsOption(events);
+  else if (viewId === "apiGating") built = buildApiGatingOption(events);
+  else built = buildTopDomainsOption(events, "seen"); // topSeen
+
+  c.__vptMeta = { viewId, built };
+  c.setOption(built.option, true);
+}
+
+function handleChartClick(viewId, params) {
+  const meta = chart?.__vptMeta?.built?.meta;
+  if (!meta) return;
+
+  // Timeline: click bin
+  if (viewId === "timeline") {
+    const idx = params?.dataIndex;
+    const binEvents = meta.binEvents?.[idx] || [];
+    const start = meta.start + idx * meta.binMs;
+    const end = start + meta.binMs;
+
+    // charts drive list (filter recent table to this bin)
+    renderRecentEventsFromEvents(binEvents);
+
+    openDrawer(
+      `Time bin ${new Date(start).toLocaleTimeString()}–${new Date(end).toLocaleTimeString()}`,
+      `<div class="muted">${binEvents.length} events in this interval.</div>`,
+      binEvents
+    );
+    return;
+  }
+
+  // Bars: click domain or kind label
+  if (viewId === "topSeen" || viewId === "apiGating") {
+    const domain = params?.name;
+    const evs = meta.evidenceByDomain?.get(domain) || [];
+
+    renderRecentEventsFromEvents(evs);
+
+    openDrawer(
+      domain,
+      `<div class="muted">${evs.length} matching events (current range).</div>`,
+      evs
+    );
+    return;
+  }
+
+  if (viewId === "kinds") {
+    const kind = params?.name;
+    const evs = (windowEvents || []).filter(e => e?.kind === kind);
+
+    renderRecentEventsFromEvents(evs);
+
+    openDrawer(
+      `Kind: ${kind}`,
+      `<div class="muted">${evs.length} events of this kind (current range).</div>`,
+      evs
+    );
   }
 }
 
-function renderViz(data) {
-  const canvas = qs("vizCanvas");
-  if (!canvas) return;
-
-  const mode = qs("vizSelect")?.value || "topSeen";
-  const top = Array.isArray(data.topThirdParties) ? data.topThirdParties : [];
-  const kinds = data.kindBreakdown || {};
-  const recent = Array.isArray(data.recentEvents) ? data.recentEvents : [];
-
-  if (mode === "topBlocked") {
-    const labels = top.map(x => x.domain);
-    const values = top.map(x => x.blocked ?? 0);
-    drawBarChart(canvas, labels, values, "Top third-party domains (blocked)");
-    return;
-  }
-
-  if (mode === "kinds") {
-    const entries = Object.entries(kinds).sort((a, b) => b[1] - a[1]).slice(0, 12);
-    const labels = entries.map(e => e[0]);
-    const values = entries.map(e => e[1]);
-    drawBarChart(canvas, labels, values, "Event breakdown (kind)");
-    return;
-  }
-
-  if (mode === "timeline") {
-    drawTimeline(canvas, recent.slice(-100));
-    return;
-  }
-
-  // default: topSeen
-  const labels = top.map(x => x.domain);
-  const values = top.map(x => x.seen ?? 0);
-  drawBarChart(canvas, labels, values, "Top third-party domains (seen)");
+function renderRecentEventsFromEvents(events) {
+  // reuse the existing table renderer but feed it a "data-like" object
+  renderRecentEvents({ recentEvents: events });
 }
+
 
 // ---------- Polling ----------
 
@@ -345,11 +533,38 @@ async function fetchSite() {
     renderStats(data);
     renderTopThirdParties(data);
     renderRecentEvents(data);
-    renderViz(data);
+    await fetchWindowEvents();
+    renderECharts();
   } catch (err) {
     console.error(err);
     setStatus(false, "Backend unavailable");
   }
+}
+
+let lastWindowFetchKey = null;
+let lastWindowFetchAt = 0;
+
+async function fetchWindowEvents(force = false) {
+  const { key, from, to } = getRangeWindow();
+  const fetchKey = `${key}:${from ?? "null"}:${to ?? "null"}`;
+
+  const now = Date.now();
+  const stale = (now - lastWindowFetchAt) > 5000; // refetch every 5s while polling
+
+  if (!force && fetchKey === lastWindowFetchKey && windowEvents?.length && !stale) return;
+
+  lastWindowFetchKey = fetchKey;
+  lastWindowFetchAt = now;
+
+  const q = new URLSearchParams();
+  q.set("site", siteName);
+  if (from) q.set("from", String(from));
+  if (to) q.set("to", String(to));
+  q.set("limit", "20000");
+
+  const res = await fetch(`/api/events?${q.toString()}`);
+  if (!res.ok) throw new Error(`events window HTTP ${res.status}`);
+  windowEvents = await res.json();
 }
 
 window.addEventListener("load", () => {
@@ -380,13 +595,38 @@ window.addEventListener("load", () => {
     });
   }
 
-  // re-render chart when mode changes
-  const sel = qs("vizSelect");
-  if (sel) {
-    sel.addEventListener("change", () => {
-      if (latestSiteData) renderViz(latestSiteData);
-    });
-  }
+  qs("drawerCloseBtn")?.addEventListener("click", closeDrawer);
+  qs("vizDrawerBackdrop")?.addEventListener("click", closeDrawer);
+
+  qs("drawerNormalBtn")?.addEventListener("click", () => setDrawerMode("normal"));
+  qs("drawerAdvancedBtn")?.addEventListener("click", () => setDrawerMode("advanced"));
+  setDrawerMode("normal");
+
+  qs("vizPrevBtn")?.addEventListener("click", () => {
+    vizIndex = (vizIndex - 1 + VIEWS.length) % VIEWS.length;
+    qs("vizSelect").value = VIEWS[vizIndex].id;
+    renderECharts();
+  });
+
+  qs("vizNextBtn")?.addEventListener("click", () => {
+    vizIndex = (vizIndex + 1) % VIEWS.length;
+    qs("vizSelect").value = VIEWS[vizIndex].id;
+    renderECharts();
+  });
+
+  qs("vizSelect")?.addEventListener("change", () => {
+    const id = qs("vizSelect").value;
+    const idx = VIEWS.findIndex(v => v.id === id);
+    vizIndex = idx >= 0 ? idx : 0;
+    renderECharts();
+  });
+
+  qs("rangeSelect")?.addEventListener("change", async () => {
+    await fetchWindowEvents(); // refetch for new range
+    renderECharts();
+  });
+
+
 
   // initial fetch + poll
   fetchSite();

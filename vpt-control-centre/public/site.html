@@ -63,18 +63,29 @@
           </div>
 
           <div class="viz-controls">
+            <button id="vizPrevBtn" class="viz-nav" title="Previous">←</button>
+            <button id="vizNextBtn" class="viz-nav" title="Next">→</button>
+
             <label class="viz-label" for="vizSelect">Mode</label>
             <select id="vizSelect" class="viz-select">
+              <option value="timeline">Activity timeline (last 24h)</option>
               <option value="topSeen">Top third-party domains (seen)</option>
-              <option value="topBlocked">Top third-party domains (blocked)</option>
               <option value="kinds">Event breakdown (kind)</option>
-              <option value="timeline">Activity timeline (recent)</option>
+              <option value="apiGating">3P API-like calls (heuristic)</option>
+            </select>
+
+            <label class="viz-label" for="rangeSelect">Range</label>
+            <select id="rangeSelect" class="viz-select">
+              <option value="24h" selected>Last 24h</option>
+              <option value="1h">Last 1h</option>
+              <option value="7d">Last 7d</option>
+              <option value="all">All time</option>
             </select>
           </div>
-        </div>
+
 
         <div class="viz-wrap">
-          <canvas id="vizCanvas"></canvas>
+          <div id="vizChart" class="viz-chart"></div>
         </div>
       </div>
 
@@ -133,6 +144,27 @@
     </section>
   </div>
 
+  <div id="vizDrawerBackdrop" class="drawer-backdrop hidden"></div>
+
+  <aside id="vizDrawer" class="drawer hidden">
+    <div class="drawer-header">
+      <div id="drawerTitle" class="drawer-title">Selection</div>
+      <button id="drawerCloseBtn" class="drawer-close">×</button>
+    </div>
+
+    <div class="drawer-body">
+      <div class="drawer-toggle">
+        <button id="drawerNormalBtn" class="drawer-tab active">Normal</button>
+        <button id="drawerAdvancedBtn" class="drawer-tab">Advanced</button>
+      </div>
+
+      <div id="drawerSummary" class="drawer-summary"></div>
+      <div id="drawerEvents" class="drawer-events"></div>
+    </div>
+  </aside>
+
+
+  <script src="https://cdn.jsdelivr.net/npm/echarts@5/dist/echarts.min.js"></script>
   <script src="site.js"></script>
 </body>
 </html>
