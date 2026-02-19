@@ -1,32 +1,27 @@
 // public/app/features/export.js
-
 export function initExportFeature() {
   const utils = window.VPT?.utils;
-  if (!utils) {
-    console.error("[export] VPT.utils missing (did app/core.js load first?)");
-    return;
-  }
+  if (!utils) return;
 
   const { buildExportUrl, triggerDownload } = utils;
 
-  // Dashboard export buttons 
-  const btnJson = document.getElementById("btnExportJson");
-  const btnCsv = document.getElementById("btnExportCsv");
+  const allCsv = document.getElementById("exportAllCsvBtn");
+  const allJson = document.getElementById("exportAllJsonBtn");
+  const siteCsv = document.getElementById("exportSiteCsvBtn");
+  const siteJson = document.getElementById("exportSiteJsonBtn");
 
-  if (btnJson) {
-    btnJson.addEventListener("click", () => {
-      const url = buildExportUrl("json", {});
-      triggerDownload(url);
-    });
-  }
+  if (allCsv) allCsv.addEventListener("click", () => triggerDownload(buildExportUrl("csv", {})));
+  if (allJson) allJson.addEventListener("click", () => triggerDownload(buildExportUrl("json", {})));
 
-  if (btnCsv) {
-    btnCsv.addEventListener("click", () => {
-      const url = buildExportUrl("csv", {});
-      triggerDownload(url);
-    });
-  }
+  if (siteCsv) siteCsv.addEventListener("click", () => {
+    const site = window.VPT?.state?.selectedSite || null;
+    triggerDownload(buildExportUrl("csv", site ? { site } : {}));
+  });
+
+  if (siteJson) siteJson.addEventListener("click", () => {
+    const site = window.VPT?.state?.selectedSite || null;
+    triggerDownload(buildExportUrl("json", site ? { site } : {}));
+  });
 }
 
-// make available to non-module dashboard.js
 window.initExportFeature = initExportFeature;
