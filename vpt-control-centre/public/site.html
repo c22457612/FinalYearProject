@@ -60,29 +60,10 @@
           </div>
 
           <div class="viz-controls">
-            <button id="vizPrevBtn" class="viz-nav" title="Previous">&larr;</button>
-            <button id="vizNextBtn" class="viz-nav" title="Next">&rarr;</button>
-
             <label class="viz-label" for="viewModeSelect">View</label>
             <select id="viewModeSelect" class="viz-select">
               <option value="easy" selected>Easy</option>
               <option value="power">Power</option>
-            </select>
-
-            <label class="viz-label" for="vizSelect">Mode</label>
-            <select id="vizSelect" class="viz-select">
-              <option value="vendorOverview">Vendor activity overview</option>
-              <option value="riskTrend">Risk trend timeline</option>
-              <option value="timeline">Activity timeline (last 24h)</option>
-              <option value="topSeen">Top third-party domains (seen)</option>
-              <option value="kinds">Event breakdown (kind)</option>
-              <option value="apiGating">3P API-like calls (heuristic)</option>
-              <option value="vendorKindMatrix">Vendor-kind matrix</option>
-              <option value="ruleIdFrequency">Rule ID frequency</option>
-              <option value="resourceTypes">Resource type breakdown</option>
-              <option value="modeBreakdown">Protection mode breakdown</option>
-              <option value="partySplit">Party split (first vs third)</option>
-              <option value="hourHeatmap">Activity heatmap (hour x day)</option>
             </select>
 
             <label class="viz-label" for="rangeSelect">Range</label>
@@ -186,6 +167,30 @@
         <div class="viz-wrap">
           <div id="vizChart" class="viz-chart"></div>
         </div>
+        <div class="viz-bottom-nav">
+          <div class="viz-arrow-group">
+            <button id="vizPrevBtn" class="viz-nav" type="button" title="Previous">&larr;</button>
+            <button id="vizNextBtn" class="viz-nav" type="button" title="Next">&rarr;</button>
+          </div>
+          <div class="viz-mode-group">
+            <label class="viz-label" for="vizSelect">Mode</label>
+            <select id="vizSelect" class="viz-select">
+              <option value="vendorOverview">Vendor activity overview</option>
+              <option value="riskTrend">Risk trend timeline</option>
+              <option value="timeline">Activity timeline (last 24h)</option>
+              <option value="topSeen">Top third-party domains (seen)</option>
+              <option value="kinds">Event breakdown (kind)</option>
+              <option value="apiGating">3P API-like calls (heuristic)</option>
+              <option value="vendorKindMatrix">Vendor-kind matrix</option>
+              <option value="ruleIdFrequency">Rule ID frequency</option>
+              <option value="resourceTypes">Resource type breakdown</option>
+              <option value="modeBreakdown">Protection mode breakdown</option>
+              <option value="partySplit">Party split (first vs third)</option>
+              <option value="hourHeatmap">Activity heatmap (hour x day)</option>
+            </select>
+          </div>
+          <div id="vizPositionLabel" class="viz-position-label">1 / 1</div>
+        </div>
 
         <section id="insightSheet" class="insight-sheet">
           <div class="insight-sheet-header">
@@ -196,6 +201,7 @@
           </div>
           <div class="insight-sheet-body">
             <div id="insightSeverity" class="insight-severity severity-info">Info</div>
+            <div id="insightSelectedLead" class="insight-selected-lead">You selected: no datapoint yet.</div>
             <div class="insight-block">
               <div class="insight-label">What</div>
               <div id="insightSummary"></div>

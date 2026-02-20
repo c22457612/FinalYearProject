@@ -20,6 +20,15 @@ let activeEvidence = [];
 let pendingConfirmAction = null;
 let forceVendorCompareOnce = false;
 const dataZoomStateByView = new Map(); // key: effective view id, value: { start, end }
+let selectedChartPoint = null; // { viewId, effectiveViewId, seriesIndex, dataIndex, semanticKey }
+let selectedRecentEventKey = "";
+const SELECTED_POINT_STYLE = Object.freeze({
+  borderColor: "#f8fafc",
+  borderWidth: 2,
+  shadowBlur: 22,
+  shadowColor: "rgba(56, 189, 248, 0.85)",
+  opacity: 1,
+});
 
 function defaultFilterState() {
   return {
@@ -109,6 +118,60 @@ function friendlyTime(ts) {
   return d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" });
 }
 
+function getEventKey(ev) {
+  if (!ev) return "";
+
+  if (ev.id !== null && ev.id !== undefined && ev.id !== "") {
+    return `id:${String(ev.id)}`;
+  }
+
+  const d = ev.data || {};
+  const ruleId = d.ruleId !== null && d.ruleId !== undefined && d.ruleId !== ""
+    ? String(d.ruleId)
+    : "-";
+
+  return [
+    "sig",
+    String(ev.ts ?? "-"),
+    String(ev.kind || "-"),
+    String(d.domain || "-"),
+    String(ev.mode || "-"),
+    ruleId,
+  ].join("|");
+}
+
+function pickPrimarySelectedEvent(events) {
+  const list = Array.isArray(events) ? events.filter(Boolean) : [];
+  let best = null;
+  let bestTs = Number.NEGATIVE_INFINITY;
+  let bestKey = "";
+
+  for (const ev of list) {
+    const rawTs = Number(ev?.ts);
+    const ts = Number.isFinite(rawTs) ? rawTs : Number.NEGATIVE_INFINITY;
+    const key = getEventKey(ev);
+    if (!best || ts > bestTs || (ts === bestTs && key > bestKey)) {
+      best = ev;
+      bestTs = ts;
+      bestKey = key;
+    }
+  }
+
+  return best;
+}
+
+function formatSelectedLead(selection, primaryEvent) {
+  if (!selection) return "You selected: no datapoint yet.";
+
+  const label = selection?.title || selection?.value || "current scope";
+  if (!primaryEvent) return `You selected: ${label}. No representative event available.`;
+
+  const kind = primaryEvent.kind || "event";
+  const domain = primaryEvent?.data?.domain ? ` on ${primaryEvent.data.domain}` : "";
+  const when = primaryEvent?.ts ? friendlyTime(primaryEvent.ts) : "unknown time";
+  return `You selected: ${label}. Representative event: ${kind}${domain} at ${when}.`;
+}
+
 function setStatus(ok, text) {
   const el = qs("siteConnectionStatus");
   if (!el) return;
@@ -170,9 +233,28 @@ function getAllowedViews(mode = viewMode) {
   return VIEWS.filter((v) => isViewAllowed(v.id, mode));
 }
 
+function updateVizPositionLabel() {
+  const el = qs("vizPositionLabel");
+  if (!el) return;
+
+  const allowed = getAllowedViews(viewMode);
+  if (!allowed.length) {
+    el.textContent = "- / 0";
+    return;
+  }
+
+  const currentId = VIEWS[vizIndex]?.id;
+  let idx = allowed.findIndex((v) => v.id === currentId);
+  if (idx < 0) idx = 0;
+  el.textContent = `${idx + 1} / ${allowed.length}`;
+}
+
 function syncVizSelectByMode() {
   const select = qs("vizSelect");
-  if (!select) return;
+  if (!select) {
+    updateVizPositionLabel();
+    return;
+  }
 
   for (const opt of select.options) {
     const allowed = isViewAllowed(opt.value, viewMode);
@@ -190,6 +272,8 @@ function syncVizSelectByMode() {
   } else {
     select.value = currentId;
   }
+
+  updateVizPositionLabel();
 }
 
 function setViewMode(mode, { rerender = true } = {}) {
@@ -304,12 +388,13 @@ function renderRecentEvents(data) {
   renderRecentEventsFromEvents(events, "No events for this site yet.");
 }
 
-function renderRecentEventsFromEvents(events, emptyMessage = "No events match current filters.") {
+function renderRecentEventsFromEvents(events, emptyMessage = "No events match current filters.", opts = {}) {
   const tbody = qs("recentEventsBody");
   if (!tbody) return;
   tbody.innerHTML = "";
 
   const list = Array.isArray(events) ? events : [];
+  const selectedEventKey = String(opts?.selectedEventKey || "");
 
   if (!list.length) {
     const tr = document.createElement("tr");
@@ -324,6 +409,10 @@ function renderRecentEventsFromEvents(events, emptyMessage = "No events match cu
 
   for (const ev of list.slice(-100)) {
     const tr = document.createElement("tr");
+    const rowKey = getEventKey(ev);
+    if (selectedEventKey && rowKey === selectedEventKey) {
+      tr.classList.add("event-row-selected");
+    }
 
     const tdTime = document.createElement("td");
     tdTime.textContent = friendlyTime(ev.ts);
@@ -685,6 +774,7 @@ function ensureInsightVisible({ force = false } = {}) {
 function resetInsightSection() {
   if (qs("insightTitle")) qs("insightTitle").textContent = "Info";
   if (qs("insightMeta")) qs("insightMeta").textContent = "Select a chart point to explain current evidence.";
+  if (qs("insightSelectedLead")) qs("insightSelectedLead").textContent = "You selected: no datapoint yet.";
   if (qs("insightSummary")) qs("insightSummary").textContent = "No selection yet. Choose a datapoint or press Explain / Info to summarize the current scope.";
   if (qs("insightHow")) qs("insightHow").textContent = "This section describes deterministic evidence from current range, filters, and selected scope.";
   renderListItems(qs("insightWhy"), [], "No immediate risk narrative until evidence is selected.");
@@ -878,6 +968,7 @@ function openInsightSheet(selection, evidence, { forceScroll = false } = {}) {
   const insightApi = getInsightRules();
   const evs = Array.isArray(evidence) ? evidence.filter(Boolean) : [];
   activeEvidence = evs;
+  const primaryEvent = pickPrimarySelectedEvent(evs);
 
   const context = {
     events: evs,
@@ -894,6 +985,7 @@ function openInsightSheet(selection, evidence, { forceScroll = false } = {}) {
 
   if (qs("insightTitle")) qs("insightTitle").textContent = insight.title || "Info";
   if (qs("insightMeta")) qs("insightMeta").textContent = `${evs.length} events selected`;
+  if (qs("insightSelectedLead")) qs("insightSelectedLead").textContent = formatSelectedLead(selection, primaryEvent);
   if (qs("insightSummary")) qs("insightSummary").textContent = insight.summary || "No summary generated.";
 
   setInsightSeverity(insight.severity, insight.confidence);
@@ -985,10 +1077,181 @@ function clearBrushSelection() {
   }
 }
 
+function buildChartPointState(viewId, params) {
+  if (!params) return null;
+
+  const seriesIndex = typeof params.seriesIndex === "number" ? params.seriesIndex : 0;
+  const dataIndex = typeof params.dataIndex === "number" ? params.dataIndex : null;
+  const effectiveViewId = chart?.__vptMeta?.effectiveViewId || viewId;
+  let semanticKey = "";
+
+  if (viewId === "timeline" || viewId === "riskTrend") {
+    semanticKey = `bin:${typeof dataIndex === "number" ? dataIndex : ""}`;
+  } else if (viewId === "hourHeatmap" || viewId === "vendorKindMatrix") {
+    const value = Array.isArray(params?.value) ? params.value : [];
+    semanticKey = `cell:${Number(value[0] || 0)}:${Number(value[1] || 0)}`;
+  } else {
+    semanticKey = `label:${String(params?.name ?? params?.axisValue ?? "")}`;
+  }
+
+  return {
+    viewId,
+    effectiveViewId,
+    seriesIndex,
+    dataIndex,
+    semanticKey,
+  };
+}
+
+function resolveChartPointForOption(point, option, effectiveViewId) {
+  if (!point || !option) return null;
+  if (point.effectiveViewId && effectiveViewId && point.effectiveViewId !== effectiveViewId) return null;
+
+  const seriesList = Array.isArray(option?.series) ? option.series : [];
+  if (!seriesList.length) return null;
+
+  let seriesIndex = typeof point.seriesIndex === "number" ? point.seriesIndex : 0;
+  if (seriesIndex < 0 || seriesIndex >= seriesList.length) seriesIndex = 0;
+
+  const seriesData = Array.isArray(seriesList[seriesIndex]?.data) ? seriesList[seriesIndex].data : [];
+  let dataIndex = typeof point.dataIndex === "number" ? point.dataIndex : -1;
+  if (dataIndex >= 0 && dataIndex < seriesData.length) {
+    return { seriesIndex, dataIndex };
+  }
+
+  const semanticKey = String(point.semanticKey || "");
+  if (semanticKey.startsWith("bin:")) {
+    const idx = Number(semanticKey.slice(4));
+    if (Number.isInteger(idx) && idx >= 0 && idx < seriesData.length) {
+      return { seriesIndex, dataIndex: idx };
+    }
+  }
+
+  if (semanticKey.startsWith("label:")) {
+    const label = semanticKey.slice(6);
+    const xAxisData = Array.isArray(option.xAxis?.[0]?.data)
+      ? option.xAxis[0].data
+      : Array.isArray(option.xAxis?.data)
+        ? option.xAxis.data
+        : [];
+    const idx = xAxisData.findIndex((v) => String(v) === label);
+    if (idx >= 0 && idx < seriesData.length) {
+      return { seriesIndex, dataIndex: idx };
+    }
+  }
+
+  if (semanticKey.startsWith("cell:")) {
+    const [rawX, rawY] = semanticKey.slice(5).split(":");
+    const x = Number(rawX);
+    const y = Number(rawY);
+    const idx = seriesData.findIndex((item) => {
+      const value = Array.isArray(item)
+        ? item
+        : Array.isArray(item?.value)
+          ? item.value
+          : null;
+      return Array.isArray(value) && Number(value[0]) === x && Number(value[1]) === y;
+    });
+    if (idx >= 0) {
+      return { seriesIndex, dataIndex: idx };
+    }
+  }
+
+  return null;
+}
+
+function resolveChartPointForCurrentChart(point) {
+  if (!point || !chart) return null;
+  const option = chart.getOption?.();
+  const currentEffectiveView = chart?.__vptMeta?.effectiveViewId || VIEWS[vizIndex]?.id;
+  return resolveChartPointForOption(point, option, currentEffectiveView);
+}
+
+function createSelectedDataPoint(value) {
+  if (Array.isArray(value)) {
+    return {
+      value: value.slice(),
+      itemStyle: { ...SELECTED_POINT_STYLE },
+    };
+  }
+
+  if (value && typeof value === "object") {
+    const next = { ...value };
+    if (Array.isArray(next.value)) next.value = next.value.slice();
+    next.itemStyle = {
+      ...(next.itemStyle || {}),
+      ...SELECTED_POINT_STYLE,
+    };
+    return next;
+  }
+
+  return {
+    value,
+    itemStyle: { ...SELECTED_POINT_STYLE },
+  };
+}
+
+function applyPersistentSelectionStyleToOption(option, effectiveViewId) {
+  if (!option || !selectedChartPoint) return null;
+  const resolved = resolveChartPointForOption(selectedChartPoint, option, effectiveViewId);
+  if (!resolved) return null;
+
+  const seriesList = Array.isArray(option.series) ? option.series : [];
+  const targetSeries = seriesList[resolved.seriesIndex];
+  if (!targetSeries || !Array.isArray(targetSeries.data) || !targetSeries.data.length) return null;
+  if (resolved.dataIndex < 0 || resolved.dataIndex >= targetSeries.data.length) return null;
+
+  targetSeries.data[resolved.dataIndex] = createSelectedDataPoint(targetSeries.data[resolved.dataIndex]);
+  return resolved;
+}
+
+function clearChartSelectionHighlight() {
+  if (selectedChartPoint && chart) {
+    const resolved = resolveChartPointForCurrentChart(selectedChartPoint) || selectedChartPoint;
+    try {
+      if (typeof resolved?.seriesIndex === "number" && typeof resolved?.dataIndex === "number") {
+        chart.dispatchAction({ type: "downplay", seriesIndex: resolved.seriesIndex, dataIndex: resolved.dataIndex });
+      } else if (typeof resolved?.seriesIndex === "number") {
+        chart.dispatchAction({ type: "downplay", seriesIndex: resolved.seriesIndex });
+      }
+    } catch {
+      // ignore downplay errors on chart reset
+    }
+  }
+  selectedChartPoint = null;
+}
+
+function applyChartSelectionHighlight() {
+  if (!selectedChartPoint || !chart) return;
+
+  const resolved = resolveChartPointForCurrentChart(selectedChartPoint);
+  if (!resolved) return;
+
+  try {
+    chart.dispatchAction({ type: "downplay", seriesIndex: resolved.seriesIndex });
+    chart.dispatchAction({ type: "highlight", seriesIndex: resolved.seriesIndex, dataIndex: resolved.dataIndex });
+  } catch {
+    // ignore highlight errors when chart updates between renders
+  }
+
+  selectedChartPoint = {
+    ...selectedChartPoint,
+    seriesIndex: resolved.seriesIndex,
+    dataIndex: resolved.dataIndex,
+  };
+}
+
+function reapplyChartSelectionHighlight() {
+  if (!vizSelection?.events?.length || !selectedChartPoint) return;
+  applyChartSelectionHighlight();
+}
+
 function clearVizSelection({ close = true, clearBrush = true, renderTable = true } = {}) {
   vizSelection = null;
   selectedInsightTarget = null;
   activeEvidence = [];
+  selectedRecentEventKey = "";
+  clearChartSelectionHighlight();
 
   if (clearBrush) clearBrushSelection();
   if (close) {
@@ -1003,7 +1266,7 @@ function clearVizSelection({ close = true, clearBrush = true, renderTable = true
   updateFilterSummary();
 }
 
-function setVizSelection({ type, value, fromTs = null, toTs = null, title, summaryHtml, events }) {
+function setVizSelection({ type, value, fromTs = null, toTs = null, title, summaryHtml, events, chartPoint = null }) {
   const evidence = Array.isArray(events) ? events.filter(Boolean) : [];
 
   vizSelection = {
@@ -1016,7 +1279,17 @@ function setVizSelection({ type, value, fromTs = null, toTs = null, title, summa
     events: evidence,
   };
 
-  renderRecentEventsFromEvents(evidence, "No events match selection.");
+  const primaryEvent = pickPrimarySelectedEvent(evidence);
+  selectedRecentEventKey = getEventKey(primaryEvent);
+  renderRecentEventsFromEvents(evidence, "No events match selection.", { selectedEventKey: selectedRecentEventKey });
+
+  if (chartPoint) {
+    selectedChartPoint = chartPoint;
+    applyChartSelectionHighlight();
+  } else {
+    clearChartSelectionHighlight();
+  }
+
   selectedInsightTarget = { type, value };
   openInsightSheet(vizSelection, evidence, { forceScroll: false });
   if (viewMode === "power") {
@@ -1063,6 +1336,7 @@ function selectionStillValid() {
   }
 
   vizSelection.events = refreshed;
+  selectedRecentEventKey = getEventKey(pickPrimarySelectedEvent(refreshed));
   return true;
 }
 
@@ -1097,6 +1371,19 @@ function getSeriesType(defaultType = "bar") {
 function buildSeries(name, data, { defaultType = "bar", stackKey = null } = {}) {
   const type = getSeriesType(defaultType);
   const series = { name, type, data };
+
+  series.emphasis = {
+    focus: "self",
+    itemStyle: {
+      borderColor: SELECTED_POINT_STYLE.borderColor,
+      borderWidth: SELECTED_POINT_STYLE.borderWidth,
+      shadowBlur: SELECTED_POINT_STYLE.shadowBlur,
+      shadowColor: SELECTED_POINT_STYLE.shadowColor,
+    },
+    lineStyle: {
+      width: 3,
+    },
+  };
 
   if (type === "line") {
     series.smooth = 0.2;
@@ -1816,6 +2103,7 @@ function renderECharts() {
       built: { option: empty, meta: null },
     };
     c.setOption(empty, true);
+    clearChartSelectionHighlight();
     return;
   }
 
@@ -1874,16 +2162,29 @@ function renderECharts() {
       built: { option: empty, meta: null },
     };
     c.setOption(empty, true);
+    clearChartSelectionHighlight();
     return;
+  }
+
+  const persistentSelection = applyPersistentSelectionStyleToOption(built.option, effectiveViewId);
+  if (persistentSelection && selectedChartPoint) {
+    selectedChartPoint = {
+      ...selectedChartPoint,
+      effectiveViewId,
+      seriesIndex: persistentSelection.seriesIndex,
+      dataIndex: persistentSelection.dataIndex,
+    };
   }
 
   c.__vptMeta = { viewId: requestedViewId, effectiveViewId, lensPivotActive, built };
   c.setOption(built.option, true);
+  reapplyChartSelectionHighlight();
 }
 
 function handleChartClick(viewId, params) {
   const meta = chart?.__vptMeta?.built?.meta;
   if (!meta) return;
+  const chartPoint = buildChartPointState(viewId, params);
 
   if (viewId === "timeline" || viewId === "riskTrend") {
     const idx = params?.dataIndex;
@@ -1901,6 +2202,7 @@ function handleChartClick(viewId, params) {
       title: `Time bin ${new Date(start).toLocaleTimeString()}-${new Date(end).toLocaleTimeString()}`,
       summaryHtml: `<div class="muted">${binEvents.length} events in this interval.</div>`,
       events: binEvents,
+      chartPoint,
     });
     return;
   }
@@ -1923,6 +2225,7 @@ function handleChartClick(viewId, params) {
       title: label || "Vendor",
       summaryHtml: `<div class="muted">${evs.length} vendor-scoped events (current filters/range).</div>`,
       events: evs,
+      chartPoint,
     });
     return;
   }
@@ -1937,6 +2240,7 @@ function handleChartClick(viewId, params) {
       title: domain || "Selection",
       summaryHtml: `<div class="muted">${evs.length} matching events (current filters/range).</div>`,
       events: evs,
+      chartPoint,
     });
     return;
   }
@@ -1951,6 +2255,7 @@ function handleChartClick(viewId, params) {
       title: viewId === "kinds" ? `Kind: ${kind}` : `Rule ID: ${kind}`,
       summaryHtml: `<div class="muted">${evs.length} events in this group (current filters/range).</div>`,
       events: evs,
+      chartPoint,
     });
     return;
   }
@@ -1965,6 +2270,7 @@ function handleChartClick(viewId, params) {
       title: label || "Selection",
       summaryHtml: `<div class="muted">${evs.length} events in this group (current filters/range).</div>`,
       events: evs,
+      chartPoint,
     });
     return;
   }
@@ -1986,6 +2292,7 @@ function handleChartClick(viewId, params) {
       title: `Heat cell: ${dayName} ${hourLabel}`,
       summaryHtml: `<div class="muted">${evs.length} events in this hour/day bucket.</div>`,
       events: evs,
+      chartPoint,
     });
     return;
   }
@@ -2005,6 +2312,7 @@ function handleChartClick(viewId, params) {
       title: `${vendor} / ${kind}`,
       summaryHtml: `<div class="muted">${evs.length} events in this vendor-kind cell.</div>`,
       events: evs,
+      chartPoint,
     });
   }
 }
@@ -2172,7 +2480,7 @@ async function fetchSite() {
     renderECharts();
 
     if (vizSelection?.events?.length && selectionStillValid()) {
-      renderRecentEventsFromEvents(vizSelection.events, "No events match selection.");
+      renderRecentEventsFromEvents(vizSelection.events, "No events match selection.", { selectedEventKey: selectedRecentEventKey });
     } else {
       renderRecentEventsFromEvents(getChartEvents(), "No events match current filters.");
     }
@@ -2291,6 +2599,7 @@ window.addEventListener("load", () => {
     const absoluteIdx = VIEWS.findIndex((v) => v.id === chosen.id);
     vizIndex = absoluteIdx >= 0 ? absoluteIdx : 0;
     if (qs("vizSelect")) qs("vizSelect").value = VIEWS[vizIndex].id;
+    updateVizPositionLabel();
 
     clearVizSelection({ close: true, clearBrush: true, renderTable: false });
     renderECharts();
