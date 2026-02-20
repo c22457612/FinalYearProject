@@ -14,12 +14,14 @@ export function initExportFeature() {
   if (allJson) allJson.addEventListener("click", () => triggerDownload(buildExportUrl("json", {})));
 
   if (siteCsv) siteCsv.addEventListener("click", () => {
-    const site = window.VPT?.state?.selectedSite || null;
+    const selectedSite = window.VPT?.state?.selectedSite;
+    const site = typeof selectedSite === "string" && selectedSite.trim() ? selectedSite : null;
     triggerDownload(buildExportUrl("csv", site ? { site } : {}));
   });
 
   if (siteJson) siteJson.addEventListener("click", () => {
-    const site = window.VPT?.state?.selectedSite || null;
+    const selectedSite = window.VPT?.state?.selectedSite;
+    const site = typeof selectedSite === "string" && selectedSite.trim() ? selectedSite : null;
     triggerDownload(buildExportUrl("json", site ? { site } : {}));
   });
 }

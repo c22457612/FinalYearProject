@@ -15,6 +15,13 @@ let selectedEvent = null;
 let trustedSites = new Set(); // derived from /api/policies
 let latestSitesCache = [];
 
+function setSelectedSite(site) {
+  const normalized = typeof site === "string" && site.trim() ? site.trim() : null;
+  window.VPT = window.VPT || {};
+  window.VPT.state = window.VPT.state || { selectedSite: null };
+  window.VPT.state.selectedSite = normalized;
+}
+
 function recomputePolicyState(policiesResponse) {
   const items = (policiesResponse && policiesResponse.items) || [];
   const trusted = new Set();
@@ -96,6 +103,12 @@ async function fetchAndRender() {
 
     latestSitesCache = Array.isArray(sites) ? sites : [];
 
+    // Clear selection if the selected event no longer exists in the latest poll window.
+    if (selectedEvent?.id && !events.some(e => e?.id === selectedEvent.id)) {
+      selectedEvent = null;
+      setSelectedSite(null);
+    }
+
     // update trustedSites set from policies
     recomputePolicyState(policies);
 
@@ -125,7 +138,8 @@ function updateExportButtons() {
   const siteCsvBtn = document.getElementById("exportSiteCsvBtn");
   const siteJsonBtn = document.getElementById("exportSiteJsonBtn");
 
-  const site = selectedEvent?.site || null;
+  const selectedSite = window.VPT?.state?.selectedSite;
+  const site = typeof selectedSite === "string" && selectedSite.trim() ? selectedSite : null;
 
   if (siteLabel) {
     siteLabel.textContent = site ? `Selected site: ${site}` : "Selected site: none";
@@ -136,15 +150,18 @@ function updateExportButtons() {
   if (siteJsonBtn) siteJsonBtn.disabled = !enabled;
 }
 
-
 window.addEventListener("load", () => {
   if (typeof window.initExportFeature === "function") {
     window.initExportFeature();
   }
-  // Init sites feature module
-  window.VPT?.features?.sites?.initSitesFeature?.({
-    getSitesCache: () => latestSitesCache
-  });
+
+  // Init sites feature module (only on pages that include the Sites container)
+  const sitesGrid = document.getElementById("sitesGrid");
+  if (sitesGrid && window.VPT?.features?.sites?.initSitesFeature) {
+    window.VPT.features.sites.initSitesFeature({
+      getSitesCache: () => latestSitesCache
+    });
+  }
 
   window.VPT?.features?.cookies?.initCookiesFeature?.({
     getLatestEvents: () => latestEvents
@@ -152,12 +169,14 @@ window.addEventListener("load", () => {
 
 
   // set correct disabled state on page load
+  setSelectedSite(null);
   updateExportButtons();
 
   // Init events feature module
   window.VPT?.features?.events?.initEventsFeature?.({
     onSelectEvent: (ev) => {
       selectedEvent = ev;
+      setSelectedSite(ev?.site || null);
       updateExportButtons();
     },
     getTrustedSites: () => trustedSites
@@ -249,3 +268,6 @@ window.addEventListener("load", () => {
     });
   }
 });
+
+
+
