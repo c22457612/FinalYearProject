@@ -25,3 +25,8 @@ Thumbs.db
 *.tmp
 *.swp
 .vscode/
+
+# Local agent/session context docs
+AGENTS.md
+CHECKPOINT.md
+GOALS.md

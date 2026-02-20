@@ -19,12 +19,7 @@ let selectedInsightTarget = null;
 let activeEvidence = [];
 let pendingConfirmAction = null;
 let forceVendorCompareOnce = false;
-let uiZoom = 1;
-
-const UI_ZOOM_MIN = 0.8;
-const UI_ZOOM_MAX = 1.8;
-const UI_ZOOM_STEP = 0.1;
-const UI_ZOOM_KEY = "vpt.site.zoom";
+const dataZoomStateByView = new Map(); // key: effective view id, value: { start, end }
 
 function defaultFilterState() {
   return {
@@ -106,46 +101,6 @@ function qs(id) {
 function getQueryParam(name) {
   const u = new URL(window.location.href);
   return u.searchParams.get(name);
-}
-
-function clampUiZoom(value) {
-  const n = Number(value);
-  if (!Number.isFinite(n)) return 1;
-  return Math.min(UI_ZOOM_MAX, Math.max(UI_ZOOM_MIN, n));
-}
-
-function updateZoomControlsUi() {
-  if (qs("zoomLevelValue")) qs("zoomLevelValue").textContent = `${Math.round(uiZoom * 100)}%`;
-  if (qs("zoomOutBtn")) qs("zoomOutBtn").disabled = uiZoom <= UI_ZOOM_MIN;
-  if (qs("zoomInBtn")) qs("zoomInBtn").disabled = uiZoom >= UI_ZOOM_MAX;
-}
-
-function applyUiZoom(nextZoom, { persist = true } = {}) {
-  uiZoom = clampUiZoom(Number(nextZoom).toFixed(2));
-  document.body.style.zoom = String(uiZoom);
-  updateZoomControlsUi();
-
-  if (persist) {
-    try {
-      window.localStorage.setItem(UI_ZOOM_KEY, String(uiZoom));
-    } catch {
-      // ignore storage failures
-    }
-  }
-}
-
-function initZoomControls() {
-  let saved = null;
-  try {
-    saved = window.localStorage.getItem(UI_ZOOM_KEY);
-  } catch {
-    // ignore storage read failures
-  }
-
-  applyUiZoom(saved ? Number(saved) : 1, { persist: false });
-
-  qs("zoomOutBtn")?.addEventListener("click", () => applyUiZoom(uiZoom - UI_ZOOM_STEP));
-  qs("zoomInBtn")?.addEventListener("click", () => applyUiZoom(uiZoom + UI_ZOOM_STEP));
 }
 
 function friendlyTime(ts) {
@@ -710,8 +665,35 @@ function renderListItems(el, items, emptyText) {
   }
 }
 
+function isOffScreen(el) {
+  if (!el) return false;
+  const rect = el.getBoundingClientRect();
+  const viewportH = window.innerHeight || document.documentElement.clientHeight || 0;
+  const topSafe = 72;
+  const bottomSafe = viewportH - 48;
+  return rect.top < topSafe || rect.bottom > bottomSafe;
+}
+
+function ensureInsightVisible({ force = false } = {}) {
+  const section = qs("insightSheet");
+  if (!section) return;
+  if (force || isOffScreen(section)) {
+    section.scrollIntoView({ behavior: "smooth", block: "start" });
+  }
+}
+
+function resetInsightSection() {
+  if (qs("insightTitle")) qs("insightTitle").textContent = "Info";
+  if (qs("insightMeta")) qs("insightMeta").textContent = "Select a chart point to explain current evidence.";
+  if (qs("insightSummary")) qs("insightSummary").textContent = "No selection yet. Choose a datapoint or press Explain / Info to summarize the current scope.";
+  if (qs("insightHow")) qs("insightHow").textContent = "This section describes deterministic evidence from current range, filters, and selected scope.";
+  renderListItems(qs("insightWhy"), [], "No immediate risk narrative until evidence is selected.");
+  renderListItems(qs("insightLimits"), [], "Derived from captured events only; not a complete audit of all page behavior.");
+  renderInsightActions([]);
+}
+
 function closeInsightSheet() {
-  qs("insightSheet")?.classList.add("hidden");
+  resetInsightSection();
 }
 
 function setInsightSeverity(severity, confidence) {
@@ -892,7 +874,7 @@ function buildFallbackInsight(selection, evidence) {
   };
 }
 
-function openInsightSheet(selection, evidence) {
+function openInsightSheet(selection, evidence, { forceScroll = false } = {}) {
   const insightApi = getInsightRules();
   const evs = Array.isArray(evidence) ? evidence.filter(Boolean) : [];
   activeEvidence = evs;
@@ -910,15 +892,11 @@ function openInsightSheet(selection, evidence) {
     ? insightApi.buildInsightResult(context)
     : buildFallbackInsight(selection, evs);
 
-  if (qs("insightTitle")) qs("insightTitle").textContent = insight.title || "Insight";
+  if (qs("insightTitle")) qs("insightTitle").textContent = insight.title || "Info";
   if (qs("insightMeta")) qs("insightMeta").textContent = `${evs.length} events selected`;
-  if (qs("insightSummary")) qs("insightSummary").textContent = insight.summary || "";
+  if (qs("insightSummary")) qs("insightSummary").textContent = insight.summary || "No summary generated.";
 
   setInsightSeverity(insight.severity, insight.confidence);
-
-  renderListItems(qs("insightWarnings"), insight.warnings, "No immediate warning.");
-  renderListItems(qs("insightDangers"), insight.dangers, "No direct danger indicators in current evidence.");
-  renderListItems(qs("insightPrecautions"), insight.precautions, "No specific precautions generated.");
 
   const summary = insight.evidenceSummary || {};
   const firstText = summary.firstTs ? new Date(summary.firstTs).toLocaleTimeString() : "-";
@@ -926,12 +904,30 @@ function openInsightSheet(selection, evidence) {
   const dominant = Array.isArray(summary.dominantKinds) && summary.dominantKinds.length
     ? summary.dominantKinds.map((d) => `${d.kind}:${d.count}`).join(", ")
     : "-";
-  if (qs("insightEvidence")) {
-    qs("insightEvidence").textContent = `Total ${summary.total || 0}, blocked ${summary.blocked || 0}, observed ${summary.observed || 0}, first ${firstText}, last ${lastText}, dominant ${dominant}`;
+
+  if (qs("insightHow")) {
+    const label = selection?.title || "current scope";
+    qs("insightHow").textContent = `From ${label}: total ${summary.total || 0}, blocked ${summary.blocked || 0}, observed ${summary.observed || 0}, first ${firstText}, last ${lastText}, dominant ${dominant}.`;
   }
 
+  const whyItems = [
+    ...(Array.isArray(insight.warnings) ? insight.warnings : []),
+    ...(Array.isArray(insight.dangers) ? insight.dangers : []),
+  ];
+  const baseLimits = Array.isArray(insight.precautions) ? insight.precautions : [];
+  const limits = [
+    ...baseLimits,
+    "Evidence is constrained by current range/filters and captured events only.",
+  ];
+  if (evs.length < 8) {
+    limits.push("Low confidence due to small sample size; gather more events before acting.");
+  }
+
+  renderListItems(qs("insightWhy"), whyItems, "No immediate risk narrative for this scope.");
+  renderListItems(qs("insightLimits"), limits, "No additional caveats.");
+
   renderInsightActions(insight.actions || []);
-  qs("insightSheet")?.classList.remove("hidden");
+  ensureInsightVisible({ force: !!forceScroll });
 }
 
 function openDrawer(title, summaryHtml, evidenceEvents) {
@@ -1022,11 +1018,32 @@ function setVizSelection({ type, value, fromTs = null, toTs = null, title, summa
 
   renderRecentEventsFromEvents(evidence, "No events match selection.");
   selectedInsightTarget = { type, value };
-  openInsightSheet(vizSelection, evidence);
+  openInsightSheet(vizSelection, evidence, { forceScroll: false });
   if (viewMode === "power") {
     openDrawer(title, summaryHtml, evidence);
   }
   updateFilterSummary();
+}
+
+function explainCurrentScope({ forceScroll = true } = {}) {
+  const existing = vizSelection?.events?.length ? vizSelection : null;
+  const evidence = existing ? existing.events : getChartEvents();
+  const scopeTitle = existing?.title || `${VIEWS[vizIndex]?.title || "Current view"} scope`;
+  const scopeSelection = existing || {
+    type: "scope",
+    value: VIEWS[vizIndex]?.id || "scope",
+    title: scopeTitle,
+    summaryHtml: "",
+    events: evidence,
+  };
+
+  if (!evidence.length) {
+    resetInsightSection();
+    ensureInsightVisible({ force: forceScroll });
+    return;
+  }
+
+  openInsightSheet(scopeSelection, evidence, { forceScroll });
 }
 
 function selectionStillValid() {
@@ -1666,6 +1683,39 @@ function getModeEmptyMessage(viewId) {
   if (viewId === "hourHeatmap") return "No heatmap data matches current filters";
   return "No events match current filters";
 }
+
+function readPrimaryDataZoomState() {
+  const option = chart?.getOption?.();
+  const list = Array.isArray(option?.dataZoom) ? option.dataZoom : [];
+  const first = list[0];
+  if (!first) return null;
+
+  const start = Number(first.start);
+  const end = Number(first.end);
+  if (!Number.isFinite(start) || !Number.isFinite(end)) return null;
+  return { start, end };
+}
+
+function rememberCurrentDataZoomState() {
+  const key = chart?.__vptMeta?.effectiveViewId;
+  if (!key) return;
+  const state = readPrimaryDataZoomState();
+  if (!state) return;
+  dataZoomStateByView.set(key, state);
+}
+
+function applyPersistedDataZoom(option, key) {
+  if (!option || !Array.isArray(option.dataZoom) || !option.dataZoom.length || !key) return;
+  const state = dataZoomStateByView.get(key);
+  if (!state) return;
+
+  option.dataZoom = option.dataZoom.map((dz) => ({
+    ...dz,
+    start: state.start,
+    end: state.end,
+  }));
+}
+
 function ensureChart() {
   const el = qs("vizChart");
   if (!el) return null;
@@ -1729,6 +1779,10 @@ function ensureChart() {
         events: selected,
       });
     });
+
+    chart.on("datazoom", () => {
+      rememberCurrentDataZoomState();
+    });
   }
 
   return chart;
@@ -1737,6 +1791,7 @@ function ensureChart() {
 function renderECharts() {
   const c = ensureChart();
   if (!c) return;
+  rememberCurrentDataZoomState();
 
   const requestedViewId = VIEWS[vizIndex].id;
   let effectiveViewId = requestedViewId;
@@ -1796,6 +1851,7 @@ function renderECharts() {
   else if (requestedViewId === "hourHeatmap") built = buildHourHeatmapOption(events);
   else built = buildTopDomainsOption(events, vizOptions.metric);
   if (requestedViewId !== "vendorOverview") forceVendorCompareOnce = false;
+  applyPersistedDataZoom(built?.option, effectiveViewId);
 
   renderLensNotice({
     active: lensPivotActive,
@@ -2159,7 +2215,6 @@ async function fetchWindowEvents(force = false) {
 }
 
 window.addEventListener("load", () => {
-  initZoomControls();
   siteName = getQueryParam("site");
 
   if (!siteName) {
@@ -2208,7 +2263,9 @@ window.addEventListener("load", () => {
     updateFilterSummary();
   });
 
-  qs("insightCloseBtn")?.addEventListener("click", () => closeInsightSheet());
+  qs("vizInfoBtn")?.addEventListener("click", () => {
+    explainCurrentScope({ forceScroll: true });
+  });
   qs("confirmModalBackdrop")?.addEventListener("click", () => closeConfirmModal());
   qs("confirmCancelBtn")?.addEventListener("click", () => closeConfirmModal());
   qs("confirmOkBtn")?.addEventListener("click", async () => {
@@ -2302,6 +2359,7 @@ window.addEventListener("load", () => {
   renderVendorChips();
   syncVizSelectByMode();
   updateFilterSummary();
+  resetInsightSection();
 
   fetchSite();
   setInterval(fetchSite, POLL_MS);

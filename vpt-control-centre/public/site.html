@@ -92,6 +92,7 @@
               <option value="7d">Last 7d</option>
               <option value="all">All time</option>
             </select>
+            <button id="vizInfoBtn" class="viz-nav" type="button">Explain / Info</button>
           </div>
         </div>
 
@@ -185,6 +186,35 @@
         <div class="viz-wrap">
           <div id="vizChart" class="viz-chart"></div>
         </div>
+
+        <section id="insightSheet" class="insight-sheet">
+          <div class="insight-sheet-header">
+            <div>
+              <div id="insightTitle" class="panel-title">Info</div>
+              <div id="insightMeta" class="panel-subtitle">Select a chart point to explain current evidence.</div>
+            </div>
+          </div>
+          <div class="insight-sheet-body">
+            <div id="insightSeverity" class="insight-severity severity-info">Info</div>
+            <div class="insight-block">
+              <div class="insight-label">What</div>
+              <div id="insightSummary"></div>
+            </div>
+            <div class="insight-block">
+              <div class="insight-label">How</div>
+              <div id="insightHow"></div>
+            </div>
+            <div class="insight-block">
+              <div class="insight-label">Why</div>
+              <ul id="insightWhy" class="insight-list"></ul>
+            </div>
+            <div class="insight-block">
+              <div class="insight-label">Limits</div>
+              <ul id="insightLimits" class="insight-list"></ul>
+            </div>
+            <div id="insightActions" class="insight-actions"></div>
+          </div>
+        </section>
       </div>
 
       <div class="site-right">
@@ -260,40 +290,6 @@
     </div>
   </aside>
 
-  <div id="insightSheet" class="insight-sheet hidden">
-    <div class="insight-sheet-header">
-      <div>
-        <div id="insightTitle" class="panel-title">Insight</div>
-        <div id="insightMeta" class="panel-subtitle"></div>
-      </div>
-      <button id="insightCloseBtn" class="drawer-close" type="button">&times;</button>
-    </div>
-    <div class="insight-sheet-body">
-      <div id="insightSeverity" class="insight-severity severity-info">Info</div>
-      <div class="insight-block">
-        <div class="insight-label">What happened</div>
-        <div id="insightSummary"></div>
-      </div>
-      <div class="insight-block">
-        <div class="insight-label">Potential dangers</div>
-        <ul id="insightDangers" class="insight-list"></ul>
-      </div>
-      <div class="insight-block">
-        <div class="insight-label">Precautions</div>
-        <ul id="insightPrecautions" class="insight-list"></ul>
-      </div>
-      <div class="insight-block">
-        <div class="insight-label">Warnings</div>
-        <ul id="insightWarnings" class="insight-list"></ul>
-      </div>
-      <div class="insight-block">
-        <div class="insight-label">Evidence summary</div>
-        <div id="insightEvidence"></div>
-      </div>
-      <div id="insightActions" class="insight-actions"></div>
-    </div>
-  </div>
-
   <div id="confirmModalBackdrop" class="modal-backdrop hidden"></div>
   <div id="confirmModal" class="confirm-modal hidden">
     <div class="panel-title" id="confirmTitle">Confirm action</div>
@@ -305,12 +301,6 @@
   </div>
 
   <div id="actionToast" class="action-toast hidden"></div>
-  <div class="zoom-controls" aria-label="Zoom controls">
-    <button id="zoomOutBtn" class="zoom-btn" type="button" aria-label="Zoom out">-</button>
-    <div id="zoomLevelValue" class="zoom-level">100%</div>
-    <button id="zoomInBtn" class="zoom-btn" type="button" aria-label="Zoom in">+</button>
-  </div>
-
   <script src="https://cdn.jsdelivr.net/npm/echarts@5/dist/echarts.min.js"></script>
   <script src="app/vendor-taxonomy.js"></script>
   <script src="app/insight-rules.js"></script>

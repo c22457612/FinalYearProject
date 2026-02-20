@@ -963,17 +963,11 @@ footer code {
 }
 
 .insight-sheet {
-  position: fixed;
-  left: 1rem;
-  right: 1rem;
-  bottom: 0.7rem;
-  max-height: 46vh;
-  overflow: auto;
+  margin-top: 0.65rem;
   background: #0b1220;
   border: 1px solid rgba(148, 163, 184, 0.25);
   border-radius: 0.8rem;
-  z-index: 65;
-  box-shadow: 0 16px 36px rgba(0, 0, 0, 0.35);
+  box-shadow: 0 8px 22px rgba(0, 0, 0, 0.25);
 }
 
 .insight-sheet-header {
@@ -1235,10 +1229,7 @@ footer code {
   }
 
   .insight-sheet {
-    left: 0.45rem;
-    right: 0.45rem;
-    bottom: 0.45rem;
-    max-height: 56vh;
+    margin-top: 0.55rem;
   }
 }
 
@@ -1256,54 +1247,4 @@ footer code {
 
 .viz-nav:hover {
   border-color: rgba(59, 130, 246, 0.8);
-}
-
-.zoom-controls {
-  position: fixed;
-  left: 1rem;
-  bottom: 1rem;
-  display: flex;
-  align-items: center;
-  gap: 0.4rem;
-  z-index: 90;
-  background: rgba(2, 6, 23, 0.92);
-  border: 1px solid rgba(148, 163, 184, 0.3);
-  border-radius: 999px;
-  padding: 0.3rem 0.35rem;
-}
-
-.zoom-btn {
-  width: 1.85rem;
-  height: 1.85rem;
-  border-radius: 999px;
-  border: 1px solid rgba(148, 163, 184, 0.35);
-  background: rgba(15, 23, 42, 0.75);
-  color: var(--color-text-main);
-  cursor: pointer;
-  font-size: 1rem;
-  line-height: 1;
-}
-
-.zoom-btn:hover:not(:disabled) {
-  border-color: rgba(59, 130, 246, 0.8);
-}
-
-.zoom-btn:disabled {
-  opacity: 0.45;
-  cursor: not-allowed;
-}
-
-.zoom-level {
-  min-width: 3rem;
-  text-align: center;
-  color: var(--color-text-main);
-  font-size: 0.78rem;
-  font-weight: 600;
-}
-
-@media (max-width: 1024px) {
-  .zoom-controls {
-    left: 0.45rem;
-    bottom: 0.45rem;
-  }
 }
