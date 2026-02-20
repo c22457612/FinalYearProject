@@ -22,12 +22,18 @@ let forceVendorCompareOnce = false;
 const dataZoomStateByView = new Map(); // key: effective view id, value: { start, end }
 let selectedChartPoint = null; // { viewId, effectiveViewId, seriesIndex, dataIndex, semanticKey }
 let selectedRecentEventKey = "";
+const CHART_SELECTED_ACCENT = "#A78BFA";
+const CHART_HOVER_ACCENT = "#38BDF8";
+const CHART_SELECTED_BAND_FILL = "rgba(167,139,250,0.14)";
+const CHART_HOVER_BAND_FILL = "rgba(56,189,248,0.10)";
+const INTERACTION_OVERLAY_SERIES_ID = "__vpt-interaction-overlay";
 const SELECTED_POINT_STYLE = Object.freeze({
-  borderColor: "#f8fafc",
+  borderColor: CHART_SELECTED_ACCENT,
   borderWidth: 2,
-  shadowBlur: 22,
-  shadowColor: "rgba(56, 189, 248, 0.85)",
-  opacity: 1,
+});
+const HOVER_POINT_STYLE = Object.freeze({
+  borderColor: CHART_HOVER_ACCENT,
+  borderWidth: 1,
 });
 
 function defaultFilterState() {
@@ -409,6 +415,7 @@ function renderRecentEventsFromEvents(events, emptyMessage = "No events match cu
 
   for (const ev of list.slice(-100)) {
     const tr = document.createElement("tr");
+    tr.classList.add("recent-event-row");
     const rowKey = getEventKey(ev);
     if (selectedEventKey && rowKey === selectedEventKey) {
       tr.classList.add("event-row-selected");
@@ -1167,6 +1174,53 @@ function resolveChartPointForCurrentChart(point) {
   return resolveChartPointForOption(point, option, currentEffectiveView);
 }
 
+function readPointXValue(item, fallbackIndex) {
+  if (Array.isArray(item) && item.length) return item[0];
+  if (item && typeof item === "object") {
+    if (Array.isArray(item.value) && item.value.length) return item.value[0];
+    if (item.value !== null && item.value !== undefined) return item.value;
+  }
+  return fallbackIndex;
+}
+
+function buildSelectionMarkerForOption(option, effectiveViewId) {
+  if (!option || !selectedChartPoint) return null;
+  const resolved = resolveChartPointForOption(selectedChartPoint, option, effectiveViewId);
+  if (!resolved) return null;
+
+  const xAxis = Array.isArray(option.xAxis) ? option.xAxis[0] : option.xAxis;
+  const axisType = String(xAxis?.type || "category");
+  const series = Array.isArray(option.series) ? option.series[resolved.seriesIndex] : null;
+  const seriesData = Array.isArray(series?.data) ? series.data : [];
+  const item = seriesData[resolved.dataIndex];
+  const rawX = readPointXValue(item, resolved.dataIndex);
+
+  if (axisType === "category") {
+    let center = Number(rawX);
+    if (!Number.isFinite(center)) center = resolved.dataIndex;
+    if (!Number.isFinite(center)) return null;
+    return {
+      center,
+      start: center - 0.18,
+      end: center + 0.18,
+      resolved,
+    };
+  }
+
+  const center = Number(rawX);
+  if (!Number.isFinite(center)) return null;
+  const span = axisType === "time"
+    ? Math.max(1000, Math.round(getTimelineBinMs() / 10))
+    : Math.max(0.001, Math.abs(center) * 0.01 || 1);
+
+  return {
+    center,
+    start: center - span,
+    end: center + span,
+    resolved,
+  };
+}
+
 function createSelectedDataPoint(value) {
   if (Array.isArray(value)) {
     return {
@@ -1203,6 +1257,49 @@ function applyPersistentSelectionStyleToOption(option, effectiveViewId) {
 
   targetSeries.data[resolved.dataIndex] = createSelectedDataPoint(targetSeries.data[resolved.dataIndex]);
   return resolved;
+}
+
+function buildInteractionOverlaySeries(marker) {
+  return {
+    id: INTERACTION_OVERLAY_SERIES_ID,
+    type: "line",
+    data: [],
+    symbol: "none",
+    silent: true,
+    animation: false,
+    tooltip: { show: false },
+    lineStyle: { opacity: 0 },
+    markLine: {
+      symbol: ["none", "none"],
+      silent: true,
+      label: { show: false },
+      lineStyle: {
+        color: CHART_SELECTED_ACCENT,
+        width: 2,
+        type: "solid",
+      },
+      data: marker ? [{ xAxis: marker.center }] : [],
+    },
+    markArea: {
+      silent: true,
+      itemStyle: { color: CHART_SELECTED_BAND_FILL },
+      data: marker ? [[{ xAxis: marker.start }, { xAxis: marker.end }]] : [],
+    },
+  };
+}
+
+function syncInteractionOverlayOnCurrentChart() {
+  if (!chart) return;
+  const option = chart.getOption?.();
+  const effectiveViewId = chart?.__vptMeta?.effectiveViewId || VIEWS[vizIndex]?.id;
+  const marker = buildSelectionMarkerForOption(option, effectiveViewId);
+  const overlay = buildInteractionOverlaySeries(marker);
+
+  try {
+    chart.setOption({ series: [overlay] }, false);
+  } catch {
+    // ignore overlay merge failures during rapid chart updates
+  }
 }
 
 function clearChartSelectionHighlight() {
@@ -1263,6 +1360,7 @@ function clearVizSelection({ close = true, clearBrush = true, renderTable = true
     renderRecentEventsFromEvents(getChartEvents(), "No events match current filters.");
   }
 
+  syncInteractionOverlayOnCurrentChart();
   updateFilterSummary();
 }
 
@@ -1289,6 +1387,7 @@ function setVizSelection({ type, value, fromTs = null, toTs = null, title, summa
   } else {
     clearChartSelectionHighlight();
   }
+  syncInteractionOverlayOnCurrentChart();
 
   selectedInsightTarget = { type, value };
   openInsightSheet(vizSelection, evidence, { forceScroll: false });
@@ -1371,17 +1470,22 @@ function getSeriesType(defaultType = "bar") {
 function buildSeries(name, data, { defaultType = "bar", stackKey = null } = {}) {
   const type = getSeriesType(defaultType);
   const series = { name, type, data };
+  series.selectedMode = "single";
 
   series.emphasis = {
-    focus: "self",
+    focus: "none",
+    itemStyle: {
+      borderColor: HOVER_POINT_STYLE.borderColor,
+      borderWidth: HOVER_POINT_STYLE.borderWidth,
+    },
+    lineStyle: {
+      width: 2,
+    },
+  };
+  series.select = {
     itemStyle: {
       borderColor: SELECTED_POINT_STYLE.borderColor,
       borderWidth: SELECTED_POINT_STYLE.borderWidth,
-      shadowBlur: SELECTED_POINT_STYLE.shadowBlur,
-      shadowColor: SELECTED_POINT_STYLE.shadowColor,
-    },
-    lineStyle: {
-      width: 3,
     },
   };
 
@@ -1781,7 +1885,7 @@ function buildHourHeatmapOption(events) {
           type: "heatmap",
           data,
           label: { show: false },
-          emphasis: { itemStyle: { shadowBlur: 10, shadowColor: "rgba(0, 0, 0, 0.45)" } },
+          emphasis: { focus: "none" },
         },
       ],
     },
@@ -2003,6 +2107,93 @@ function applyPersistedDataZoom(option, key) {
   }));
 }
 
+function applyHoverPointerToXAxis(axis) {
+  const base = axis || {};
+  return {
+    ...base,
+    axisPointer: {
+      ...(base.axisPointer || {}),
+      show: true,
+      snap: true,
+      type: "shadow",
+      shadowStyle: {
+        color: CHART_HOVER_BAND_FILL,
+      },
+      lineStyle: {
+        color: CHART_HOVER_ACCENT,
+        width: 1,
+        type: "dashed",
+      },
+      label: {
+        ...((base.axisPointer && base.axisPointer.label) || {}),
+        show: false,
+      },
+    },
+  };
+}
+
+function applyHoverPointerConfigToOption(option) {
+  if (!option || !option.xAxis) return;
+
+  const tooltip = option.tooltip || {};
+  if (tooltip.trigger !== "item") {
+    option.tooltip = {
+      ...tooltip,
+      trigger: tooltip.trigger || "axis",
+      axisPointer: {
+        ...(tooltip.axisPointer || {}),
+        type: "line",
+        snap: true,
+        lineStyle: {
+          color: CHART_HOVER_ACCENT,
+          width: 1,
+          type: "dashed",
+        },
+        label: {
+          ...((tooltip.axisPointer && tooltip.axisPointer.label) || {}),
+          show: false,
+        },
+      },
+    };
+  }
+
+  if (Array.isArray(option.xAxis)) {
+    option.xAxis = option.xAxis.map((axis) => applyHoverPointerToXAxis(axis));
+  } else {
+    option.xAxis = applyHoverPointerToXAxis(option.xAxis);
+  }
+}
+
+function decorateSeriesInteractionStyles(option) {
+  if (!option || !Array.isArray(option.series)) return;
+
+  option.series = option.series.map((series) => {
+    if (!series || series.id === INTERACTION_OVERLAY_SERIES_ID) return series;
+
+    return {
+      ...series,
+      selectedMode: "single",
+      emphasis: {
+        ...(series.emphasis || {}),
+        focus: "none",
+        itemStyle: {
+          ...((series.emphasis && series.emphasis.itemStyle) || {}),
+          borderColor: CHART_HOVER_ACCENT,
+          borderWidth: 1,
+        },
+      },
+      select: {
+        ...(series.select || {}),
+        itemStyle: {
+          ...((series.select && series.select.itemStyle) || {}),
+          borderColor: CHART_SELECTED_ACCENT,
+          borderWidth: 2,
+        },
+      },
+    };
+  });
+}
+
 function ensureChart() {
   const el = qs("vizChart");
   if (!el) return null;
@@ -2140,6 +2331,8 @@ function renderECharts() {
   else built = buildTopDomainsOption(events, vizOptions.metric);
   if (requestedViewId !== "vendorOverview") forceVendorCompareOnce = false;
   applyPersistedDataZoom(built?.option, effectiveViewId);
+  applyHoverPointerConfigToOption(built?.option);
+  decorateSeriesInteractionStyles(built?.option);
 
   renderLensNotice({
     active: lensPivotActive,
@@ -2179,6 +2372,7 @@ function renderECharts() {
   c.__vptMeta = { viewId: requestedViewId, effectiveViewId, lensPivotActive, built };
   c.setOption(built.option, true);
   reapplyChartSelectionHighlight();
+  syncInteractionOverlayOnCurrentChart();
 }
 
 function handleChartClick(viewId, params) {
