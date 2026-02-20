@@ -3,20 +3,20 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>VPT Control Centre — Site Insights</title>
+  <title>VPT Control Centre - Site Insights</title>
   <link rel="stylesheet" href="styles.css" />
 </head>
 
 <body class="site-page">
   <header class="site-header">
     <div class="site-header-left">
-      <a class="back-link" href="/">← Back to Control Centre</a>
+      <a class="back-link" href="/">&larr; Back to Control Centre</a>
       <h1 id="siteTitle">Site insights</h1>
-      <div id="siteSubtitle" class="site-subtitle">Loading…</div>
+      <div id="siteSubtitle" class="site-subtitle">Loading...</div>
     </div>
 
     <div class="site-header-right">
-      <span id="siteConnectionStatus" class="badge">Connecting…</span>
+      <span id="siteConnectionStatus" class="badge">Connecting...</span>
       <div class="site-actions">
         <button id="exportSiteCsvBtn" class="btn-export" disabled>Download CSV</button>
         <button id="exportSiteJsonBtn" class="btn-export" disabled>Download JSON</button>
@@ -25,7 +25,6 @@
   </header>
 
   <div class="site-content">
-    <!-- Summary cards -->
     <section class="summary site-summary">
       <div class="summary-card">
         <h2>Total events</h2>
@@ -52,9 +51,7 @@
       </div>
     </section>
 
-    <!-- Main grid -->
     <section class="site-grid">
-      <!-- Big visualisation panel -->
       <div class="panel site-viz-panel">
         <div class="panel-header">
           <div>
@@ -63,15 +60,29 @@
           </div>
 
           <div class="viz-controls">
-            <button id="vizPrevBtn" class="viz-nav" title="Previous">←</button>
-            <button id="vizNextBtn" class="viz-nav" title="Next">→</button>
+            <button id="vizPrevBtn" class="viz-nav" title="Previous">&larr;</button>
+            <button id="vizNextBtn" class="viz-nav" title="Next">&rarr;</button>
+
+            <label class="viz-label" for="viewModeSelect">View</label>
+            <select id="viewModeSelect" class="viz-select">
+              <option value="easy" selected>Easy</option>
+              <option value="power">Power</option>
+            </select>
 
             <label class="viz-label" for="vizSelect">Mode</label>
             <select id="vizSelect" class="viz-select">
+              <option value="vendorOverview">Vendor activity overview</option>
+              <option value="riskTrend">Risk trend timeline</option>
               <option value="timeline">Activity timeline (last 24h)</option>
               <option value="topSeen">Top third-party domains (seen)</option>
               <option value="kinds">Event breakdown (kind)</option>
               <option value="apiGating">3P API-like calls (heuristic)</option>
+              <option value="vendorKindMatrix">Vendor-kind matrix</option>
+              <option value="ruleIdFrequency">Rule ID frequency</option>
+              <option value="resourceTypes">Resource type breakdown</option>
+              <option value="modeBreakdown">Protection mode breakdown</option>
+              <option value="partySplit">Party split (first vs third)</option>
+              <option value="hourHeatmap">Activity heatmap (hour x day)</option>
             </select>
 
             <label class="viz-label" for="rangeSelect">Range</label>
@@ -82,14 +93,100 @@
               <option value="all">All time</option>
             </select>
           </div>
+        </div>
 
+        <div class="viz-filters">
+          <div class="kind-toggles">
+            <label class="kind-toggle"><input id="kindBlockedToggle" type="checkbox" checked />Blocked</label>
+            <label class="kind-toggle"><input id="kindObservedToggle" type="checkbox" checked />Observed</label>
+            <label class="kind-toggle"><input id="kindOtherToggle" type="checkbox" checked />Other</label>
+          </div>
+
+          <label class="viz-label" for="partyFilter">Party</label>
+          <select id="partyFilter" class="viz-select">
+            <option value="all" selected>All</option>
+            <option value="third">Third-party</option>
+            <option value="first_or_unknown">First/unknown</option>
+          </select>
+
+          <label class="viz-label" for="resourceFilter">Resource</label>
+          <select id="resourceFilter" class="viz-select">
+            <option value="all" selected>All</option>
+            <option value="script">Script</option>
+            <option value="xhr_fetch">XHR/Fetch</option>
+            <option value="image">Image</option>
+            <option value="sub_frame">Sub-frame</option>
+            <option value="other">Other</option>
+          </select>
+
+          <input id="domainFilter" class="viz-select viz-domain-input" placeholder="Filter domain/url..." />
+          <button id="filterResetBtn" class="viz-nav" type="button">Reset filters</button>
+          <button id="vizClearSelectionBtn" class="viz-nav" type="button">Clear selection</button>
+        </div>
+
+        <div class="viz-advanced-options">
+          <label class="viz-label" for="vizMetricSelect">Metric</label>
+          <select id="vizMetricSelect" class="viz-select">
+            <option value="seen" selected>Seen</option>
+            <option value="blocked">Blocked</option>
+            <option value="observed">Observed</option>
+          </select>
+
+          <label class="viz-label" for="vizSeriesTypeSelect">Series</label>
+          <select id="vizSeriesTypeSelect" class="viz-select">
+            <option value="auto" selected>Auto</option>
+            <option value="bar">Bar</option>
+            <option value="line">Line</option>
+            <option value="area">Area</option>
+          </select>
+
+          <label class="viz-label" for="vizTopNSelect">Top N</label>
+          <select id="vizTopNSelect" class="viz-select">
+            <option value="10">10</option>
+            <option value="20" selected>20</option>
+            <option value="40">40</option>
+          </select>
+
+          <label class="viz-label" for="vizSortSelect">Sort</label>
+          <select id="vizSortSelect" class="viz-select">
+            <option value="value_desc" selected>Value desc</option>
+            <option value="value_asc">Value asc</option>
+            <option value="label_asc">Label A-Z</option>
+          </select>
+
+          <label class="viz-label" for="vizBinSizeSelect">Bin size</label>
+          <select id="vizBinSizeSelect" class="viz-select">
+            <option value="1m">1m</option>
+            <option value="5m" selected>5m</option>
+            <option value="15m">15m</option>
+            <option value="60m">60m</option>
+          </select>
+
+          <label class="kind-toggle"><input id="vizNormalizeToggle" type="checkbox" />Normalize %</label>
+          <label class="kind-toggle"><input id="vizStackToggle" type="checkbox" checked />Stack bars</label>
+        </div>
+
+        <div class="vendor-drilldown">
+          <div class="vendor-drill-header">
+            <div class="panel-subtitle">Vendor drilldown</div>
+            <button id="clearVendorBtn" class="viz-nav" type="button">Clear vendor</button>
+          </div>
+          <div id="vendorChips" class="vendor-chips"></div>
+        </div>
+
+        <div id="filterSummary" class="panel-subtitle filter-summary">
+          Showing 0 of 0 events
+        </div>
+
+        <div id="vizLensNotice" class="viz-lens-notice hidden"></div>
+        <div id="vizKpiStrip" class="viz-kpi-strip"></div>
+        <ul id="vizCallouts" class="viz-callouts"></ul>
 
         <div class="viz-wrap">
           <div id="vizChart" class="viz-chart"></div>
         </div>
       </div>
 
-      <!-- Right detail column -->
       <div class="site-right">
         <div class="panel">
           <div class="panel-header">
@@ -110,7 +207,7 @@
                 </tr>
               </thead>
               <tbody id="topThirdBody">
-                <tr><td colspan="4" class="muted">Loading…</td></tr>
+                <tr><td colspan="4" class="muted">Loading...</td></tr>
               </tbody>
             </table>
           </div>
@@ -135,7 +232,7 @@
                 </tr>
               </thead>
               <tbody id="recentEventsBody">
-                <tr><td colspan="4" class="muted">Loading…</td></tr>
+                <tr><td colspan="4" class="muted">Loading...</td></tr>
               </tbody>
             </table>
           </div>
@@ -149,7 +246,7 @@
   <aside id="vizDrawer" class="drawer hidden">
     <div class="drawer-header">
       <div id="drawerTitle" class="drawer-title">Selection</div>
-      <button id="drawerCloseBtn" class="drawer-close">×</button>
+      <button id="drawerCloseBtn" class="drawer-close">&times;</button>
     </div>
 
     <div class="drawer-body">
@@ -163,8 +260,61 @@
     </div>
   </aside>
 
+  <div id="insightSheet" class="insight-sheet hidden">
+    <div class="insight-sheet-header">
+      <div>
+        <div id="insightTitle" class="panel-title">Insight</div>
+        <div id="insightMeta" class="panel-subtitle"></div>
+      </div>
+      <button id="insightCloseBtn" class="drawer-close" type="button">&times;</button>
+    </div>
+    <div class="insight-sheet-body">
+      <div id="insightSeverity" class="insight-severity severity-info">Info</div>
+      <div class="insight-block">
+        <div class="insight-label">What happened</div>
+        <div id="insightSummary"></div>
+      </div>
+      <div class="insight-block">
+        <div class="insight-label">Potential dangers</div>
+        <ul id="insightDangers" class="insight-list"></ul>
+      </div>
+      <div class="insight-block">
+        <div class="insight-label">Precautions</div>
+        <ul id="insightPrecautions" class="insight-list"></ul>
+      </div>
+      <div class="insight-block">
+        <div class="insight-label">Warnings</div>
+        <ul id="insightWarnings" class="insight-list"></ul>
+      </div>
+      <div class="insight-block">
+        <div class="insight-label">Evidence summary</div>
+        <div id="insightEvidence"></div>
+      </div>
+      <div id="insightActions" class="insight-actions"></div>
+    </div>
+  </div>
+
+  <div id="confirmModalBackdrop" class="modal-backdrop hidden"></div>
+  <div id="confirmModal" class="confirm-modal hidden">
+    <div class="panel-title" id="confirmTitle">Confirm action</div>
+    <div class="panel-subtitle" id="confirmBody"></div>
+    <div class="confirm-actions">
+      <button id="confirmCancelBtn" class="viz-nav" type="button">Cancel</button>
+      <button id="confirmOkBtn" class="btn-export" type="button">Confirm</button>
+    </div>
+  </div>
+
+  <div id="actionToast" class="action-toast hidden"></div>
+  <div class="zoom-controls" aria-label="Zoom controls">
+    <button id="zoomOutBtn" class="zoom-btn" type="button" aria-label="Zoom out">-</button>
+    <div id="zoomLevelValue" class="zoom-level">100%</div>
+    <button id="zoomInBtn" class="zoom-btn" type="button" aria-label="Zoom in">+</button>
+  </div>
 
   <script src="https://cdn.jsdelivr.net/npm/echarts@5/dist/echarts.min.js"></script>
+  <script src="app/vendor-taxonomy.js"></script>
+  <script src="app/insight-rules.js"></script>
+  <script src="app/site-lens.js"></script>
   <script src="site.js"></script>
 </body>
 </html>
