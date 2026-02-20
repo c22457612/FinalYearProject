@@ -140,13 +140,15 @@ app.post("/api/events", async (req, res) => {
 app.get("/api/events", async (req, res) => {
   try {
     const dbCtx = app.locals.db;
-    if (!dbCtx) {
-      return res.status(500).json({ ok: false, error: "db_not_ready" });
-    }
+    if (!dbCtx) return res.status(500).json({ ok: false, error: "db_not_ready" });
 
     const site = req.query.site || null;
     const kind = req.query.kind || null;
-    const limit = Math.min(Number(req.query.limit || 200), 1000);
+    const from = req.query.from ? Number(req.query.from) : null;
+    const to = req.query.to ? Number(req.query.to) : null;
+
+    // UI needs more than 1000 for 24h sometimes
+    const limit = Math.min(Number(req.query.limit || 5000), 20000);
 
     const rows = await dbCtx.all(
       `
@@ -154,23 +156,17 @@ app.get("/api/events", async (req, res) => {
         FROM events
         WHERE (? IS NULL OR site = ?)
           AND (? IS NULL OR kind = ?)
-        ORDER BY ts DESC
+          AND (? IS NULL OR ts >= ?)
+          AND (? IS NULL OR ts <= ?)
+        ORDER BY ts ASC
         LIMIT ?
       `,
-      [site, site, kind, kind, limit]
+      [site, site, kind, kind, from, from, to, to, limit]
     );
 
-    // Parse and return in chronological order (oldest -> newest)
     const parsed = rows
-      .map((r) => {
-        try {
-          return JSON.parse(r.raw_event);
-        } catch {
-          return null;
-        }
-      })
-      .filter(Boolean)
-      .reverse();
+      .map(r => { try { return JSON.parse(r.raw_event); } catch { return null; } })
+      .filter(Boolean);
 
     res.json(parsed);
   } catch (err) {
