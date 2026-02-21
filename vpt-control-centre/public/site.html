@@ -61,19 +61,6 @@
           </div>
 
           <div class="viz-controls">
-            <label class="viz-label" for="viewModeSelect">View</label>
-            <select id="viewModeSelect" class="viz-select">
-              <option value="easy" selected>Easy</option>
-              <option value="power">Power</option>
-            </select>
-
-            <label class="viz-label" for="rangeSelect">Range</label>
-            <select id="rangeSelect" class="viz-select">
-              <option value="24h" selected>Last 24h</option>
-              <option value="1h">Last 1h</option>
-              <option value="7d">Last 7d</option>
-              <option value="all">All time</option>
-            </select>
             <button id="vizInfoBtn" class="viz-nav" type="button">Explain / Info</button>
           </div>
         </div>
@@ -156,6 +143,10 @@
           </div>
           <div id="vendorChips" class="vendor-chips"></div>
         </div>
+        <div id="vendorSelectionCue" class="vendor-selection-cue hidden" aria-live="polite">
+          <div id="vendorSelectionCueText" class="vendor-selection-cue-text"></div>
+          <button id="vendorSelectionCueBtn" class="viz-nav" type="button">View details</button>
+        </div>
 
         <div id="filterSummary" class="panel-subtitle filter-summary">
           Showing 0 of 0 events
@@ -225,7 +216,23 @@
       </div>
 
       <div class="site-right">
-        <div class="panel">
+        <div class="panel sidebar-config-panel">
+          <div class="panel-header">
+            <div>
+              <div class="panel-title">Sidebar modules</div>
+              <div class="panel-subtitle">Select one module to show in this column</div>
+            </div>
+          </div>
+          <div class="sidebar-module-picker" role="tablist" aria-label="Sidebar module selector">
+            <button id="sidebarModuleBtnFilters" class="sidebar-module-btn sidebar-module-btn-priority" type="button" role="tab">View</button>
+            <button id="sidebarModuleBtnRecentEvents" class="sidebar-module-btn" type="button" role="tab">Recent events</button>
+            <button id="sidebarModuleBtnSelectedEvidence" class="sidebar-module-btn" type="button" role="tab">Selected evidence</button>
+            <button id="sidebarModuleBtnVendorProfile" class="sidebar-module-btn" type="button" role="tab">Vendor profile</button>
+            <button id="sidebarModuleBtnTopThirdParties" class="sidebar-module-btn" type="button" role="tab">Top third-party domains</button>
+          </div>
+        </div>
+
+        <div id="sidebarModuleTopThirdParties" class="panel sidebar-module" data-sidebar-module="topThirdParties">
           <div class="panel-header">
             <div>
               <div class="panel-title">Top third-party domains</div>
@@ -250,7 +257,7 @@
           </div>
         </div>
 
-        <div class="panel">
+        <div id="sidebarModuleRecentEvents" class="panel sidebar-module" data-sidebar-module="recentEvents">
           <div class="panel-header">
             <div>
               <div class="panel-title">Recent events</div>
@@ -273,6 +280,60 @@
               </tbody>
             </table>
           </div>
+        </div>
+
+        <div id="sidebarModuleSelectedEvidence" class="panel sidebar-module" data-sidebar-module="selectedEvidence">
+          <div class="panel-header">
+            <div>
+              <div class="panel-title">Selected evidence</div>
+              <div id="sidebarSelectedEvidenceMeta" class="panel-subtitle">No datapoint selected yet.</div>
+            </div>
+          </div>
+          <div id="sidebarSelectedEvidenceBody" class="sidebar-module-body"></div>
+        </div>
+
+        <div id="sidebarModuleFilters" class="panel sidebar-module" data-sidebar-module="filters">
+          <div class="panel-header">
+            <div>
+              <div class="panel-title">View controls</div>
+              <div id="sidebarFiltersMeta" class="panel-subtitle">Primary mode and range controls</div>
+            </div>
+          </div>
+          <div class="sidebar-module-body">
+            <div class="view-module-controls">
+              <div class="view-module-row">
+                <label class="viz-label" for="viewModeSelect">View</label>
+                <select id="viewModeSelect" class="viz-select view-module-select">
+                  <option value="easy" selected>Easy</option>
+                  <option value="power">Power</option>
+                </select>
+              </div>
+              <div class="view-module-row">
+                <label class="viz-label" for="rangeSelect">Range</label>
+                <select id="rangeSelect" class="viz-select view-module-select">
+                  <option value="24h" selected>Last 24h</option>
+                  <option value="1h">Last 1h</option>
+                  <option value="7d">Last 7d</option>
+                  <option value="all">All time</option>
+                </select>
+              </div>
+            </div>
+            <div id="sidebarFiltersSummary" class="panel-subtitle">No filters applied.</div>
+            <ul id="sidebarFiltersList" class="sidebar-mini-list"></ul>
+            <div class="sidebar-actions">
+              <button id="sidebarResetFiltersBtn" class="viz-nav" type="button">Reset filters</button>
+            </div>
+          </div>
+        </div>
+
+        <div id="sidebarModuleVendorProfile" class="panel sidebar-module" data-sidebar-module="vendorProfile">
+          <div class="panel-header">
+            <div>
+              <div class="panel-title">Vendor profile</div>
+              <div id="sidebarVendorProfileMeta" class="panel-subtitle">Quick stats for current vendor scope</div>
+            </div>
+          </div>
+          <div id="sidebarVendorProfileBody" class="sidebar-module-body"></div>
         </div>
       </div>
     </section>
