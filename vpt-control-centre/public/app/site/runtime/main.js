@@ -346,6 +346,14 @@ function syncVizSelectByMode() {
   updateVizPositionLabel();
 }
 
+function syncAdvancedControlsByMode() {
+  const panel = qs("advancedControlsPanel");
+  if (!panel) return;
+  if (viewMode === "easy") {
+    panel.open = false;
+  }
+}
+
 function setViewMode(mode, { rerender = true } = {}) {
   viewMode = mode === "power" ? "power" : "easy";
   document.body.classList.toggle("mode-easy", viewMode === "easy");
@@ -356,6 +364,7 @@ function setViewMode(mode, { rerender = true } = {}) {
     closeDrawer();
   }
 
+  syncAdvancedControlsByMode();
   syncVizSelectByMode();
   const policyChanged = applyViewFilterPolicy();
   if (policyChanged) {

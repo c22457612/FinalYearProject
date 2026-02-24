@@ -65,108 +65,116 @@
           </div>
         </div>
 
-        <div class="viz-filters">
-          <div class="kind-toggles">
-            <label class="kind-toggle"><input id="kindBlockedToggle" type="checkbox" checked />Blocked</label>
-            <label class="kind-toggle"><input id="kindObservedToggle" type="checkbox" checked />Observed</label>
-            <label class="kind-toggle"><input id="kindOtherToggle" type="checkbox" checked />Other</label>
-          </div>
-
-          <label class="viz-label" for="partyFilter">Party</label>
-          <select id="partyFilter" class="viz-select">
-            <option value="all" selected>All</option>
-            <option value="third">Third-party</option>
-            <option value="first_or_unknown">First/unknown</option>
-          </select>
-
-          <label class="viz-label" for="resourceFilter">Resource</label>
-          <select id="resourceFilter" class="viz-select">
-            <option value="all" selected>All</option>
-            <option value="script">Script</option>
-            <option value="xhr_fetch">XHR/Fetch</option>
-            <option value="image">Image</option>
-            <option value="sub_frame">Sub-frame</option>
-            <option value="other">Other</option>
-          </select>
-
-          <label class="viz-label" for="surfaceFilter">Surface</label>
-          <select id="surfaceFilter" class="viz-select">
-            <option value="all" selected>All</option>
-            <option value="network">Network</option>
-            <option value="cookies">Cookies</option>
-            <option value="storage">Storage</option>
-            <option value="browser_api">Browser API</option>
-            <option value="script">Script</option>
-            <option value="unknown">Unknown</option>
-          </select>
-
-          <label class="viz-label" for="privacyStatusFilter">Privacy</label>
-          <select id="privacyStatusFilter" class="viz-select">
-            <option value="all" selected>All</option>
-            <option value="baseline">Baseline</option>
-            <option value="signal_detected">Signal detected</option>
-            <option value="high_risk">High risk</option>
-            <option value="policy_blocked">Policy blocked</option>
-            <option value="policy_allowed">Policy allowed</option>
-            <option value="unknown">Unknown</option>
-          </select>
-
-          <label class="viz-label" for="mitigationStatusFilter">Mitigation</label>
-          <select id="mitigationStatusFilter" class="viz-select">
-            <option value="all" selected>All</option>
-            <option value="allowed">Allowed</option>
-            <option value="blocked">Blocked</option>
-            <option value="observed_only">Observed only</option>
-            <option value="modified">Modified</option>
-            <option value="unknown">Unknown</option>
-          </select>
-
-          <input id="domainFilter" class="viz-select viz-domain-input" placeholder="Filter domain/url..." />
+        <div class="viz-guided-actions">
           <button id="filterResetBtn" class="viz-nav" type="button">Reset filters</button>
-          <button id="vizClearSelectionBtn" class="viz-nav" type="button">Clear selection</button>
         </div>
 
-        <div class="viz-advanced-options">
-          <label class="viz-label" for="vizMetricSelect">Metric</label>
-          <select id="vizMetricSelect" class="viz-select">
-            <option value="seen" selected>Seen</option>
-            <option value="blocked">Blocked</option>
-            <option value="observed">Observed</option>
-          </select>
+        <details id="advancedControlsPanel" class="viz-advanced-panel">
+          <summary>Advanced chart options</summary>
+          <div class="viz-advanced-panel-body">
+            <div class="viz-filters">
+              <div class="kind-toggles">
+                <label class="kind-toggle"><input id="kindBlockedToggle" type="checkbox" checked />Blocked</label>
+                <label class="kind-toggle"><input id="kindObservedToggle" type="checkbox" checked />Observed</label>
+                <label class="kind-toggle"><input id="kindOtherToggle" type="checkbox" checked />Other</label>
+              </div>
 
-          <label class="viz-label" for="vizSeriesTypeSelect">Series</label>
-          <select id="vizSeriesTypeSelect" class="viz-select">
-            <option value="auto" selected>Auto</option>
-            <option value="bar">Bar</option>
-            <option value="line">Line</option>
-            <option value="area">Area</option>
-          </select>
+              <label class="viz-label" for="partyFilter">Party</label>
+              <select id="partyFilter" class="viz-select">
+                <option value="all" selected>All</option>
+                <option value="third">Third-party</option>
+                <option value="first_or_unknown">First/unknown</option>
+              </select>
 
-          <label class="viz-label" for="vizTopNSelect">Top N</label>
-          <select id="vizTopNSelect" class="viz-select">
-            <option value="10">10</option>
-            <option value="20" selected>20</option>
-            <option value="40">40</option>
-          </select>
+              <label class="viz-label" for="resourceFilter">Resource</label>
+              <select id="resourceFilter" class="viz-select">
+                <option value="all" selected>All</option>
+                <option value="script">Script</option>
+                <option value="xhr_fetch">XHR/Fetch</option>
+                <option value="image">Image</option>
+                <option value="sub_frame">Sub-frame</option>
+                <option value="other">Other</option>
+              </select>
 
-          <label class="viz-label" for="vizSortSelect">Sort</label>
-          <select id="vizSortSelect" class="viz-select">
-            <option value="value_desc" selected>Value desc</option>
-            <option value="value_asc">Value asc</option>
-            <option value="label_asc">Label A-Z</option>
-          </select>
+              <label class="viz-label" for="surfaceFilter">Surface</label>
+              <select id="surfaceFilter" class="viz-select">
+                <option value="all" selected>All</option>
+                <option value="network">Network</option>
+                <option value="cookies">Cookies</option>
+                <option value="storage">Storage</option>
+                <option value="browser_api">Browser API</option>
+                <option value="script">Script</option>
+                <option value="unknown">Unknown</option>
+              </select>
 
-          <label class="viz-label" for="vizBinSizeSelect">Bin size</label>
-          <select id="vizBinSizeSelect" class="viz-select">
-            <option value="1m">1m</option>
-            <option value="5m" selected>5m</option>
-            <option value="15m">15m</option>
-            <option value="60m">60m</option>
-          </select>
+              <label class="viz-label" for="privacyStatusFilter">Privacy</label>
+              <select id="privacyStatusFilter" class="viz-select">
+                <option value="all" selected>All</option>
+                <option value="baseline">Baseline</option>
+                <option value="signal_detected">Signal detected</option>
+                <option value="high_risk">High risk</option>
+                <option value="policy_blocked">Policy blocked</option>
+                <option value="policy_allowed">Policy allowed</option>
+                <option value="unknown">Unknown</option>
+              </select>
 
-          <label class="kind-toggle"><input id="vizNormalizeToggle" type="checkbox" />Normalize %</label>
-          <label class="kind-toggle"><input id="vizStackToggle" type="checkbox" checked />Stack bars</label>
-        </div>
+              <label class="viz-label" for="mitigationStatusFilter">Mitigation</label>
+              <select id="mitigationStatusFilter" class="viz-select">
+                <option value="all" selected>All</option>
+                <option value="allowed">Allowed</option>
+                <option value="blocked">Blocked</option>
+                <option value="observed_only">Observed only</option>
+                <option value="modified">Modified</option>
+                <option value="unknown">Unknown</option>
+              </select>
+
+              <input id="domainFilter" class="viz-select viz-domain-input" placeholder="Filter domain/url..." />
+              <button id="vizClearSelectionBtn" class="viz-nav" type="button">Clear selection</button>
+            </div>
+
+            <div class="viz-advanced-options">
+              <label class="viz-label" for="vizMetricSelect">Metric</label>
+              <select id="vizMetricSelect" class="viz-select">
+                <option value="seen" selected>Seen</option>
+                <option value="blocked">Blocked</option>
+                <option value="observed">Observed</option>
+              </select>
+
+              <label class="viz-label" for="vizSeriesTypeSelect">Series</label>
+              <select id="vizSeriesTypeSelect" class="viz-select">
+                <option value="auto" selected>Auto</option>
+                <option value="bar">Bar</option>
+                <option value="line">Line</option>
+                <option value="area">Area</option>
+              </select>
+
+              <label class="viz-label" for="vizTopNSelect">Top N</label>
+              <select id="vizTopNSelect" class="viz-select">
+                <option value="10">10</option>
+                <option value="20" selected>20</option>
+                <option value="40">40</option>
+              </select>
+
+              <label class="viz-label" for="vizSortSelect">Sort</label>
+              <select id="vizSortSelect" class="viz-select">
+                <option value="value_desc" selected>Value desc</option>
+                <option value="value_asc">Value asc</option>
+                <option value="label_asc">Label A-Z</option>
+              </select>
+
+              <label class="viz-label" for="vizBinSizeSelect">Bin size</label>
+              <select id="vizBinSizeSelect" class="viz-select">
+                <option value="1m">1m</option>
+                <option value="5m" selected>5m</option>
+                <option value="15m">15m</option>
+                <option value="60m">60m</option>
+              </select>
+
+              <label class="kind-toggle"><input id="vizNormalizeToggle" type="checkbox" />Normalize %</label>
+              <label class="kind-toggle"><input id="vizStackToggle" type="checkbox" checked />Stack bars</label>
+            </div>
+          </div>
+        </details>
 
         <div class="vendor-drilldown">
           <div class="vendor-drill-header">
