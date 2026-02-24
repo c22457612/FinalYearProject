@@ -5,6 +5,7 @@ const path = require("path");
 
 // SQLite initialisation
 const { initDb } = require("./db");
+const { buildEnrichmentRecord } = require("./enrichment");
 
 const app = express();
 const PORT = process.env.PORT || 4141;
@@ -30,120 +31,6 @@ app.use(express.static(path.join(__dirname, "public")));
 // ---- Helpers ----
 function makeId(prefix) {
   return `${prefix}-${Date.now()}-${Math.random().toString(16).slice(2, 8)}`;
-}
-
-function deriveSurface(kind = "") {
-  if (kind.startsWith("network.")) return "network";
-  if (kind.startsWith("cookies.")) return "cookies";
-  if (kind.startsWith("storage.")) return "storage";
-  if (kind.startsWith("browser_api.") || kind.startsWith("api.")) return "browser_api";
-  if (kind.startsWith("script.")) return "script";
-  return "unknown";
-}
-
-function deriveSurfaceDetail(kind = "") {
-  if (kind.startsWith("network.")) return "network_request";
-  if (kind === "cookies.snapshot") return "cookie_snapshot";
-  if (kind.startsWith("cookies.")) return "cookie_operation";
-  if (kind.startsWith("storage.local")) return "local_storage";
-  if (kind.startsWith("storage.session")) return "session_storage";
-  if (kind.startsWith("storage.indexeddb")) return "indexeddb";
-  if (kind.startsWith("storage.cache")) return "cache_api";
-  if (kind.includes("canvas")) return "canvas";
-  if (kind.includes("webgl")) return "webgl";
-  if (kind.includes("webrtc")) return "webrtc";
-  if (kind.includes("audiocontext") || kind.includes("audio_context")) return "audiocontext";
-  if (kind.startsWith("script.")) return "script_execution";
-  return "unknown";
-}
-
-function deriveMitigationStatus(kind = "") {
-  if (kind === "network.blocked") return "blocked";
-  if (kind === "network.allowed") return "allowed";
-  if (kind === "cookies.cleared" || kind === "cookies.removed") return "modified";
-  if (
-    kind === "network.observed" ||
-    kind.startsWith("cookies.") ||
-    kind.startsWith("storage.") ||
-    kind.startsWith("browser_api.") ||
-    kind.startsWith("api.") ||
-    kind.startsWith("script.")
-  ) {
-    return "observed_only";
-  }
-  return "unknown";
-}
-
-function derivePrivacyStatus(kind = "", mitigationStatus = "unknown") {
-  if (mitigationStatus === "blocked") return "policy_blocked";
-  if (mitigationStatus === "allowed") return "policy_allowed";
-  if (kind === "network.allowed") return "baseline";
-  if (
-    kind === "network.observed" ||
-    kind.startsWith("cookies.") ||
-    kind.startsWith("storage.") ||
-    kind.startsWith("browser_api.") ||
-    kind.startsWith("api.") ||
-    kind.startsWith("script.")
-  ) {
-    return "signal_detected";
-  }
-  return "unknown";
-}
-
-function deriveSignalType(surface = "unknown", kind = "") {
-  if (surface === "network" || surface === "cookies") return "tracking_signal";
-  if (surface === "storage") return "state_change";
-  if (surface === "script") return "capability_probe";
-  if (surface === "browser_api") {
-    if (kind.includes("canvas") || kind.includes("webgl") || kind.includes("webrtc") || kind.includes("audio")) {
-      return "fingerprinting_signal";
-    }
-    return "capability_probe";
-  }
-  return "unknown";
-}
-
-function toConfidence(value) {
-  if (typeof value !== "number" || Number.isNaN(value)) return null;
-  if (value < 0 || value > 1) return null;
-  return value;
-}
-
-function buildEnrichmentRecord(ev, site) {
-  const kind = typeof ev?.kind === "string" ? ev.kind : "unknown";
-  const data = ev?.data && typeof ev.data === "object" ? ev.data : {};
-
-  const surface = deriveSurface(kind);
-  const surfaceDetail = deriveSurfaceDetail(kind);
-  const mitigationStatus = deriveMitigationStatus(kind);
-  const privacyStatus = derivePrivacyStatus(kind, mitigationStatus);
-  const signalType = deriveSignalType(surface, kind);
-
-  return {
-    enrichedTs: Number(ev?.ts) || Date.now(),
-    enrichmentVersion: "v1",
-    surface,
-    surfaceDetail,
-    privacyStatus,
-    mitigationStatus,
-    signalType,
-    patternId: data.patternId || null,
-    confidence: toConfidence(data.confidence),
-    vendorId: data.vendorId || null,
-    vendorName: data.vendorName || null,
-    vendorFamily: data.vendorFamily || null,
-    requestDomain: data.domain || null,
-    requestUrl: data.url || null,
-    firstPartySite: site || null,
-    isThirdParty: typeof data.isThirdParty === "boolean" ? (data.isThirdParty ? 1 : 0) : null,
-    ruleId: data.ruleId || null,
-    rawContext: JSON.stringify({
-      kind,
-      mode: ev?.mode || null,
-      source: ev?.source || null,
-    }),
-  };
 }
 
 function updateSiteStatsFromEvent(ev) {
