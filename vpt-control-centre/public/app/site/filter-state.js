@@ -7,6 +7,9 @@ export function defaultFilterState() {
     },
     party: "all",
     resource: "all",
+    surface: "all",
+    privacyStatus: "all",
+    mitigationStatus: "all",
     domainText: "",
   };
 }
@@ -34,6 +37,74 @@ export function getPartyBucket(ev) {
   return "first_or_unknown";
 }
 
+export function getSurfaceBucket(ev) {
+  const enriched = String(ev?.enrichment?.surface || "").trim();
+  if (enriched) return enriched;
+
+  const kind = String(ev?.kind || "");
+  if (kind.startsWith("network.")) return "network";
+  if (kind.startsWith("cookies.")) return "cookies";
+  if (kind.startsWith("storage.")) return "storage";
+  if (kind.startsWith("browser_api.") || kind.startsWith("api.")) return "browser_api";
+  if (kind.startsWith("script.")) return "script";
+  return "unknown";
+}
+
+export function getMitigationStatusBucket(ev) {
+  const enriched = String(ev?.enrichment?.mitigationStatus || "").trim();
+  if (enriched) return enriched;
+
+  const kind = String(ev?.kind || "");
+  if (kind === "network.blocked") return "blocked";
+  if (kind === "network.allowed") return "allowed";
+  if (kind === "cookies.cleared" || kind === "cookies.removed") return "modified";
+  if (
+    kind === "network.observed" ||
+    kind.startsWith("cookies.") ||
+    kind.startsWith("storage.") ||
+    kind.startsWith("browser_api.") ||
+    kind.startsWith("api.") ||
+    kind.startsWith("script.")
+  ) {
+    return "observed_only";
+  }
+  return "unknown";
+}
+
+export function getPrivacyStatusBucket(ev) {
+  const enriched = String(ev?.enrichment?.privacyStatus || "").trim();
+  if (enriched) return enriched;
+
+  const kind = String(ev?.kind || "");
+  const mitigation = getMitigationStatusBucket(ev);
+  if (mitigation === "blocked") return "policy_blocked";
+  if (mitigation === "allowed") return "policy_allowed";
+
+  if (kind === "network.observed") {
+    return ev?.data?.isThirdParty === true ? "signal_detected" : "baseline";
+  }
+
+  if (kind === "cookies.snapshot") {
+    const thirdPartyCount = Number(ev?.data?.thirdPartyCount);
+    if (Number.isFinite(thirdPartyCount) && thirdPartyCount > 0) return "signal_detected";
+
+    const cookies = Array.isArray(ev?.data?.cookies) ? ev.data.cookies : [];
+    const hasThirdPartyCookie = cookies.some((c) => c?.isThirdParty === true);
+    if (hasThirdPartyCookie) return "signal_detected";
+    return "baseline";
+  }
+
+  if (kind.startsWith("cookies.")) {
+    return mitigation === "modified" ? "policy_blocked" : "baseline";
+  }
+
+  if (kind.startsWith("storage.")) return "baseline";
+  if (kind.startsWith("browser_api.") || kind.startsWith("api.") || kind.startsWith("script.")) {
+    return "signal_detected";
+  }
+  return "unknown";
+}
+
 export function getResourceBucket(ev) {
   const rt = String(ev?.data?.resourceType || "").toLowerCase();
 
@@ -51,6 +122,12 @@ export function matchesFilters(ev, state) {
   if (state.party !== "all" && getPartyBucket(ev) !== state.party) return false;
 
   if (state.resource !== "all" && getResourceBucket(ev) !== state.resource) return false;
+
+  if (state.surface !== "all" && getSurfaceBucket(ev) !== state.surface) return false;
+
+  if (state.privacyStatus !== "all" && getPrivacyStatusBucket(ev) !== state.privacyStatus) return false;
+
+  if (state.mitigationStatus !== "all" && getMitigationStatusBucket(ev) !== state.mitigationStatus) return false;
 
   const term = String(state.domainText || "").trim().toLowerCase();
   if (term) {
@@ -77,6 +154,9 @@ export function getActiveFilterLabels(filterState) {
 
   if (filterState.party !== "all") labels.push(`party=${filterState.party}`);
   if (filterState.resource !== "all") labels.push(`resource=${filterState.resource}`);
+  if (filterState.surface !== "all") labels.push(`surface=${filterState.surface}`);
+  if (filterState.privacyStatus !== "all") labels.push(`privacy=${filterState.privacyStatus}`);
+  if (filterState.mitigationStatus !== "all") labels.push(`mitigation=${filterState.mitigationStatus}`);
 
   const term = String(filterState.domainText || "").trim();
   if (term) labels.push(`text=${term}`);
@@ -106,6 +186,9 @@ export function readFilterStateFromControls(qs, filterState) {
 
   filterState.party = qs("partyFilter")?.value || "all";
   filterState.resource = qs("resourceFilter")?.value || "all";
+  filterState.surface = qs("surfaceFilter")?.value || "all";
+  filterState.privacyStatus = qs("privacyStatusFilter")?.value || "all";
+  filterState.mitigationStatus = qs("mitigationStatusFilter")?.value || "all";
   filterState.domainText = qs("domainFilter")?.value || "";
 }
 
@@ -116,6 +199,9 @@ export function writeFilterStateToControls(qs, filterState) {
 
   if (qs("partyFilter")) qs("partyFilter").value = filterState.party;
   if (qs("resourceFilter")) qs("resourceFilter").value = filterState.resource;
+  if (qs("surfaceFilter")) qs("surfaceFilter").value = filterState.surface;
+  if (qs("privacyStatusFilter")) qs("privacyStatusFilter").value = filterState.privacyStatus;
+  if (qs("mitigationStatusFilter")) qs("mitigationStatusFilter").value = filterState.mitigationStatus;
   if (qs("domainFilter")) qs("domainFilter").value = filterState.domainText;
 }
 

@@ -89,6 +89,38 @@
             <option value="other">Other</option>
           </select>
 
+          <label class="viz-label" for="surfaceFilter">Surface</label>
+          <select id="surfaceFilter" class="viz-select">
+            <option value="all" selected>All</option>
+            <option value="network">Network</option>
+            <option value="cookies">Cookies</option>
+            <option value="storage">Storage</option>
+            <option value="browser_api">Browser API</option>
+            <option value="script">Script</option>
+            <option value="unknown">Unknown</option>
+          </select>
+
+          <label class="viz-label" for="privacyStatusFilter">Privacy</label>
+          <select id="privacyStatusFilter" class="viz-select">
+            <option value="all" selected>All</option>
+            <option value="baseline">Baseline</option>
+            <option value="signal_detected">Signal detected</option>
+            <option value="high_risk">High risk</option>
+            <option value="policy_blocked">Policy blocked</option>
+            <option value="policy_allowed">Policy allowed</option>
+            <option value="unknown">Unknown</option>
+          </select>
+
+          <label class="viz-label" for="mitigationStatusFilter">Mitigation</label>
+          <select id="mitigationStatusFilter" class="viz-select">
+            <option value="all" selected>All</option>
+            <option value="allowed">Allowed</option>
+            <option value="blocked">Blocked</option>
+            <option value="observed_only">Observed only</option>
+            <option value="modified">Modified</option>
+            <option value="unknown">Unknown</option>
+          </select>
+
           <input id="domainFilter" class="viz-select viz-domain-input" placeholder="Filter domain/url..." />
           <button id="filterResetBtn" class="viz-nav" type="button">Reset filters</button>
           <button id="vizClearSelectionBtn" class="viz-nav" type="button">Clear selection</button>

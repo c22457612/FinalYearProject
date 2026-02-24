@@ -16,6 +16,9 @@ export function createSidebarModules(deps) {
     buildVendorRollup,
     partyLabels,
     resourceLabels,
+    surfaceLabels,
+    privacyStatusLabels,
+    mitigationStatusLabels,
     onResetFilters,
   } = deps;
 
@@ -201,6 +204,13 @@ export function createSidebarModules(deps) {
     labels.push(filterState.kind.other ? null : "Other kinds hidden");
     if (filterState.party !== "all") labels.push(`Party: ${partyLabels[filterState.party] || filterState.party}`);
     if (filterState.resource !== "all") labels.push(`Resource: ${resourceLabels[filterState.resource] || filterState.resource}`);
+    if (filterState.surface !== "all") labels.push(`Surface: ${surfaceLabels[filterState.surface] || filterState.surface}`);
+    if (filterState.privacyStatus !== "all") {
+      labels.push(`Privacy: ${privacyStatusLabels[filterState.privacyStatus] || filterState.privacyStatus}`);
+    }
+    if (filterState.mitigationStatus !== "all") {
+      labels.push(`Mitigation: ${mitigationStatusLabels[filterState.mitigationStatus] || filterState.mitigationStatus}`);
+    }
 
     const text = String(filterState.domainText || "").trim();
     if (text) labels.push(`Text filter: ${text}`);

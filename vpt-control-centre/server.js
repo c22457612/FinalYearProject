@@ -226,20 +226,41 @@ app.get("/api/events", async (req, res) => {
 
     const rows = await dbCtx.all(
       `
-        SELECT raw_event
-        FROM events
-        WHERE (? IS NULL OR site = ?)
-          AND (? IS NULL OR kind = ?)
-          AND (? IS NULL OR ts >= ?)
-          AND (? IS NULL OR ts <= ?)
-        ORDER BY ts ASC
+        SELECT
+          e.raw_event,
+          ee.surface,
+          ee.surface_detail AS surfaceDetail,
+          ee.privacy_status AS privacyStatus,
+          ee.mitigation_status AS mitigationStatus,
+          ee.signal_type AS signalType
+        FROM events e
+        LEFT JOIN event_enrichment ee ON ee.event_pk = e.pk
+        WHERE (? IS NULL OR e.site = ?)
+          AND (? IS NULL OR e.kind = ?)
+          AND (? IS NULL OR e.ts >= ?)
+          AND (? IS NULL OR e.ts <= ?)
+        ORDER BY e.ts ASC
         LIMIT ?
       `,
       [site, site, kind, kind, from, from, to, to, limit]
     );
 
     const parsed = rows
-      .map(r => { try { return JSON.parse(r.raw_event); } catch { return null; } })
+      .map((r) => {
+        try {
+          const ev = JSON.parse(r.raw_event);
+          ev.enrichment = {
+            surface: r.surface || "",
+            surfaceDetail: r.surfaceDetail || "",
+            privacyStatus: r.privacyStatus || "",
+            mitigationStatus: r.mitigationStatus || "",
+            signalType: r.signalType || "",
+          };
+          return ev;
+        } catch {
+          return null;
+        }
+      })
       .filter(Boolean);
 
     res.json(parsed);

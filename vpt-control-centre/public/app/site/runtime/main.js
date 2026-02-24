@@ -115,6 +115,32 @@ const PARTY_LABELS = {
   first_or_unknown: "First/unknown",
 };
 
+const SURFACE_LABELS = {
+  network: "Network",
+  cookies: "Cookies",
+  storage: "Storage",
+  browser_api: "Browser API",
+  script: "Script",
+  unknown: "Unknown",
+};
+
+const PRIVACY_STATUS_LABELS = {
+  baseline: "Baseline",
+  signal_detected: "Signal detected",
+  high_risk: "High risk",
+  policy_blocked: "Policy blocked",
+  policy_allowed: "Policy allowed",
+  unknown: "Unknown",
+};
+
+const MITIGATION_STATUS_LABELS = {
+  allowed: "Allowed",
+  blocked: "Blocked",
+  observed_only: "Observed only",
+  modified: "Modified",
+  unknown: "Unknown",
+};
+
 const vendorScope = createVendorScope({
   qs,
   getVendorTaxonomy,
@@ -167,6 +193,9 @@ const sidebarModules = createSidebarModules({
   buildVendorRollup,
   partyLabels: PARTY_LABELS,
   resourceLabels: RESOURCE_LABELS,
+  surfaceLabels: SURFACE_LABELS,
+  privacyStatusLabels: PRIVACY_STATUS_LABELS,
+  mitigationStatusLabels: MITIGATION_STATUS_LABELS,
   onResetFilters: () => {
     filterState = defaultFilterState();
     writeFilterStateToControls();
@@ -1606,6 +1635,9 @@ export function bootSiteInsights() {
   qs("kindOtherToggle")?.addEventListener("change", applyFilterChanges);
   qs("partyFilter")?.addEventListener("change", applyFilterChanges);
   qs("resourceFilter")?.addEventListener("change", applyFilterChanges);
+  qs("surfaceFilter")?.addEventListener("change", applyFilterChanges);
+  qs("privacyStatusFilter")?.addEventListener("change", applyFilterChanges);
+  qs("mitigationStatusFilter")?.addEventListener("change", applyFilterChanges);
   qs("vizMetricSelect")?.addEventListener("change", applyVizOptionChanges);
   qs("vizSeriesTypeSelect")?.addEventListener("change", applyVizOptionChanges);
   qs("vizTopNSelect")?.addEventListener("change", applyVizOptionChanges);
