@@ -5,9 +5,10 @@ export function createScopeInsights(deps) {
     getTimelineBinMs,
     formatPercent,
     onForceCompare,
+    onClearVendorFocus,
   } = deps;
 
-  function renderLensNotice({ active = false, vendorName = "" } = {}) {
+  function renderLensNotice({ active = false, vendorName = "", eventCount = 0 } = {}) {
     const box = qs("vizLensNotice");
     if (!box) return;
 
@@ -22,18 +23,34 @@ export function createScopeInsights(deps) {
 
     const msg = document.createElement("div");
     msg.className = "viz-lens-message";
-    msg.textContent = `Focused lens active${vendorName ? ` for ${vendorName}` : ""}: compare view had too few bars to be informative.`;
+    const scopeHint = Number(eventCount) > 0 ? ` (${Number(eventCount)} events in scope).` : ".";
+    msg.textContent = `Focused timeline is active${vendorName ? ` for ${vendorName}` : ""} because compare mode would have too little data${scopeHint} You can open compare anyway, clear vendor focus, or broaden range.`;
 
-    const btn = document.createElement("button");
-    btn.type = "button";
-    btn.className = "viz-lens-action";
-    btn.textContent = "Show compare anyway";
-    btn.addEventListener("click", () => {
+    const actions = document.createElement("div");
+    actions.className = "viz-lens-actions";
+
+    const compareBtn = document.createElement("button");
+    compareBtn.type = "button";
+    compareBtn.className = "viz-lens-action";
+    compareBtn.textContent = "Open compare anyway";
+    compareBtn.addEventListener("click", () => {
       if (typeof onForceCompare === "function") onForceCompare();
     });
 
+    actions.appendChild(compareBtn);
+    if (vendorName && typeof onClearVendorFocus === "function") {
+      const clearVendorBtn = document.createElement("button");
+      clearVendorBtn.type = "button";
+      clearVendorBtn.className = "viz-lens-action viz-lens-action-secondary";
+      clearVendorBtn.textContent = "Clear vendor focus";
+      clearVendorBtn.addEventListener("click", () => {
+        onClearVendorFocus();
+      });
+      actions.appendChild(clearVendorBtn);
+    }
+
     box.appendChild(msg);
-    box.appendChild(btn);
+    box.appendChild(actions);
   }
 
   function buildFallbackScopeKpis(events) {

@@ -62,6 +62,7 @@
 
           <div class="viz-controls">
             <button id="vizInfoBtn" class="viz-nav" type="button">Explain / Info</button>
+            <button id="vizOpenDrawerBtn" class="viz-nav" type="button" disabled>Technical details</button>
           </div>
         </div>
 
@@ -183,6 +184,7 @@
           </div>
           <div id="vendorChips" class="vendor-chips"></div>
         </div>
+        <div id="vendorScopeBanner" class="vendor-scope-banner hidden"></div>
         <div id="vendorSelectionCue" class="vendor-selection-cue hidden" aria-live="polite">
           <div id="vendorSelectionCueText" class="vendor-selection-cue-text"></div>
           <button id="vendorSelectionCueBtn" class="viz-nav" type="button">View details</button>
@@ -192,6 +194,7 @@
           Showing 0 of 0 events
         </div>
 
+        <div id="vizStateGuidance" class="viz-state-guidance hidden"></div>
         <div id="vizLensNotice" class="viz-lens-notice hidden"></div>
         <div id="vizKpiStrip" class="viz-kpi-strip"></div>
         <ul id="vizCallouts" class="viz-callouts"></ul>
@@ -224,6 +227,7 @@
           </div>
           <div id="vizPositionLabel" class="viz-position-label">1 / 1</div>
         </div>
+        <div id="vizModeHelp" class="viz-mode-help"></div>
 
         <section id="insightSheet" class="insight-sheet">
           <div class="insight-sheet-header">

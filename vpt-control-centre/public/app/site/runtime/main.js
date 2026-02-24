@@ -53,6 +53,7 @@ let viewMode = "easy"; // easy | power
 let selectedVendor = null; // { vendorId, vendorName, ... } | null
 let selectedInsightTarget = null;
 let forceVendorCompareOnce = false;
+let focusedLensPivotActive = false;
 const dataZoomStateByView = new Map(); // key: effective view id, value: { start, end }
 let selectedChartPoint = null; // { viewId, effectiveViewId, seriesIndex, dataIndex, semanticKey }
 let selectedRecentEventKey = "";
@@ -90,6 +91,8 @@ const VIEWS = [
 ];
 
 const EASY_VIEW_IDS = new Set(["vendorOverview", "kinds", "riskTrend", "baselineDetectedBlockedTrend", "partySplit"]);
+const POWER_ONLY_VIEW_LABEL_SUFFIX = " (Power only)";
+const LOW_INFORMATION_EVENT_THRESHOLD = 8;
 const PRIVACY_FILTER_ALL_ONLY_VIEW_IDS = new Set();
 
 const RANGE_MS = {
@@ -319,17 +322,56 @@ function updateVizPositionLabel() {
   el.textContent = `${idx + 1} / ${allowed.length}`;
 }
 
+function updateViewAvailabilityHint() {
+  const el = qs("vizModeHelp");
+  if (!el) return;
+
+  if (viewMode !== "easy") {
+    el.textContent = "Power mode: all chart views are available.";
+    return;
+  }
+
+  const powerOnlyCount = VIEWS.filter((view) => !EASY_VIEW_IDS.has(view.id)).length;
+  if (!powerOnlyCount) {
+    el.textContent = "";
+    return;
+  }
+
+  el.textContent = `Easy mode is guided. ${powerOnlyCount} additional views are listed as "${POWER_ONLY_VIEW_LABEL_SUFFIX.trim()}" and unlock in Power mode.`;
+}
+
+function updateDrawerButtonState() {
+  const btn = qs("vizOpenDrawerBtn");
+  if (!btn) return;
+
+  const hasSelection = !!vizSelection?.events?.length;
+  const canOpen = hasSelection && viewMode === "power";
+  btn.disabled = !canOpen;
+  btn.textContent = viewMode === "power" ? "Technical details" : "Technical details (Power only)";
+  btn.title = canOpen
+    ? "Open the technical evidence drawer for the current selection."
+    : viewMode === "easy"
+      ? "Switch to Power mode and select evidence to open technical details."
+      : "Select a chart datapoint to open technical details.";
+}
+
 function syncVizSelectByMode() {
   const select = qs("vizSelect");
   if (!select) {
     updateVizPositionLabel();
+    updateViewAvailabilityHint();
     return;
   }
 
   for (const opt of select.options) {
+    const baseLabel = String(opt.dataset.baseLabel || opt.textContent || "")
+      .replace(POWER_ONLY_VIEW_LABEL_SUFFIX, "");
+    if (!opt.dataset.baseLabel) opt.dataset.baseLabel = baseLabel;
     const allowed = isViewAllowed(opt.value, viewMode);
-    opt.hidden = !allowed;
+    opt.hidden = false;
     opt.disabled = !allowed;
+    opt.textContent = allowed ? baseLabel : `${baseLabel}${POWER_ONLY_VIEW_LABEL_SUFFIX}`;
+    opt.title = allowed ? "" : "Switch View controls to Power to use this chart mode.";
   }
 
   const currentId = VIEWS[vizIndex]?.id;
@@ -344,6 +386,7 @@ function syncVizSelectByMode() {
   }
 
   updateVizPositionLabel();
+  updateViewAvailabilityHint();
 }
 
 function syncAdvancedControlsByMode() {
@@ -366,6 +409,7 @@ function setViewMode(mode, { rerender = true } = {}) {
 
   syncAdvancedControlsByMode();
   syncVizSelectByMode();
+  updateDrawerButtonState();
   const policyChanged = applyViewFilterPolicy();
   if (policyChanged) {
     deriveFilteredEvents();
@@ -542,7 +586,79 @@ function updateFilterSummary() {
   }
 
   el.textContent = parts.join(" | ");
+  renderVendorScopeBanner();
   sidebarModules.renderSidebarModules();
+}
+
+function renderStateGuidance({ events = [], lensPivotActive = false, emptyMessage = "" } = {}) {
+  const box = qs("vizStateGuidance");
+  if (!box) return;
+
+  const list = Array.isArray(events) ? events : [];
+  const activeFilters = getActiveFilterLabels();
+  const hasVendorFocus = !!selectedVendor?.vendorId;
+  const rangeLabel = qs("rangeSelect")?.selectedOptions?.[0]?.textContent || getRangeKey();
+  const steps = [];
+  let title = String(emptyMessage || "").trim();
+
+  const addStep = (text) => {
+    const value = String(text || "").trim();
+    if (!value || steps.includes(value)) return;
+    steps.push(value);
+  };
+
+  if (!list.length) {
+    if (!title) {
+      title = hasVendorFocus
+        ? `No events are available for ${selectedVendor.vendorName || "the selected vendor"} in this scope.`
+        : "No events match the current scope.";
+    }
+
+    addStep(`Broaden range in View controls (current: ${rangeLabel}).`);
+    if (hasVendorFocus) addStep("Clear vendor focus to compare all vendors.");
+    if (activeFilters.length) addStep("Use Reset filters to remove strict filters.");
+    if (!hasVendorFocus && !activeFilters.length) addStep("Wait for more captured events, then refresh this view.");
+  } else if (!title && list.length < LOW_INFORMATION_EVENT_THRESHOLD) {
+    title = `Low-information view: only ${list.length} events in the current scope.`;
+    addStep(`Broaden range in View controls (current: ${rangeLabel}).`);
+    if (hasVendorFocus) addStep("Clear vendor focus to compare all vendors.");
+    if (activeFilters.length) addStep("Use Reset filters to remove strict filters.");
+    addStep("Try a broader chart mode if this one stays sparse.");
+  } else if (title) {
+    addStep("Try a broader chart mode if this one has no usable groups.");
+    addStep(`Broaden range in View controls (current: ${rangeLabel}).`);
+    if (hasVendorFocus) addStep("Clear vendor focus to compare all vendors.");
+    if (activeFilters.length) addStep("Use Reset filters to remove strict filters.");
+  }
+
+  if (lensPivotActive) {
+    addStep("Use Open compare anyway if you want the original side-by-side vendor bars.");
+  }
+
+  if (!title) {
+    box.classList.add("hidden");
+    box.innerHTML = "";
+    return;
+  }
+
+  box.classList.remove("hidden");
+  box.innerHTML = "";
+
+  const heading = document.createElement("div");
+  heading.className = "viz-state-guidance-title";
+  heading.textContent = title;
+  box.appendChild(heading);
+
+  if (steps.length) {
+    const listEl = document.createElement("ul");
+    listEl.className = "viz-state-guidance-list";
+    for (const step of steps) {
+      const li = document.createElement("li");
+      li.textContent = step;
+      listEl.appendChild(li);
+    }
+    box.appendChild(listEl);
+  }
 }
 
 function readFilterStateFromControls() {
@@ -886,6 +1002,7 @@ function clearVizSelection({ close = true, clearBrush = true, renderTable = true
   }
 
   syncInteractionOverlayOnCurrentChart();
+  updateDrawerButtonState();
   updateFilterSummary();
 }
 
@@ -931,9 +1048,8 @@ function setVizSelection({
     allowAutoScroll: scrollMode !== "never",
     scrollSource,
   });
-  if (viewMode === "power") {
-    openDrawer(title, summaryHtml, evidence);
-  }
+  closeDrawer();
+  updateDrawerButtonState();
   updateFilterSummary();
 }
 
@@ -1004,9 +1120,9 @@ const scopeInsights = createScopeInsights({
   getSiteLens,
   getTimelineBinMs,
   formatPercent,
-  onForceCompare: () => {
-    forceVendorCompareOnce = true;
-    renderECharts();
+  onForceCompare: () => forceVendorCompareView(),
+  onClearVendorFocus: () => {
+    clearVendorFocus();
   },
 });
 
@@ -1216,8 +1332,10 @@ function renderECharts() {
   if (!events.length) {
     const empty = buildEmptyChartOption("No events match current filters");
     forceVendorCompareOnce = false;
+    focusedLensPivotActive = false;
     scopeInsights.renderLensNotice({ active: false });
     scopeInsights.renderScopeInsights(events);
+    renderStateGuidance({ events, emptyMessage: "No events match current filters" });
     if (titleEl) {
       const vendorPart = selectedVendor?.vendorName ? ` | ${selectedVendor.vendorName}` : "";
       titleEl.textContent = `Visualisation - ${VIEWS[vizIndex].title}${vendorPart}`;
@@ -1266,24 +1384,25 @@ function renderECharts() {
   else if (requestedViewId === "hourHeatmap") built = buildHourHeatmapOption(events);
   else built = buildTopDomainsOption(events, vizOptions.metric);
   if (requestedViewId !== "vendorOverview") forceVendorCompareOnce = false;
+  focusedLensPivotActive = lensPivotActive;
   applyPersistedDataZoom(built?.option, effectiveViewId);
   applyHoverPointerConfigToOption(built?.option);
   decorateSeriesInteractionStyles(built?.option);
 
-  scopeInsights.renderLensNotice({
-    active: lensPivotActive,
-    vendorName: selectedVendor?.vendorName || "",
-  });
+  scopeInsights.renderLensNotice({ active: false });
   scopeInsights.renderScopeInsights(events);
+  renderStateGuidance({ events, lensPivotActive });
 
   if (titleEl) {
     const vendorPart = selectedVendor?.vendorName ? ` | ${selectedVendor.vendorName}` : "";
-    const lensPart = lensPivotActive ? " (focused lens)" : "";
-    titleEl.textContent = `Visualisation - ${VIEWS[vizIndex].title}${vendorPart}${lensPart}`;
+    titleEl.textContent = `Visualisation - ${VIEWS[vizIndex].title}${vendorPart}`;
   }
 
   if (!hasSeriesData(built?.option)) {
-    const empty = buildEmptyChartOption(getModeEmptyMessage(lensPivotActive ? "timeline" : requestedViewId));
+    const emptyMessage = getModeEmptyMessage(lensPivotActive ? "timeline" : requestedViewId);
+    const empty = buildEmptyChartOption(emptyMessage);
+    focusedLensPivotActive = false;
+    renderStateGuidance({ events, lensPivotActive, emptyMessage });
     c.__vptMeta = {
       viewId: requestedViewId,
       effectiveViewId,
@@ -1469,6 +1588,76 @@ function renderVendorChips() {
   vendorScope.renderVendorChips();
 }
 
+function renderVendorScopeBanner() {
+  const box = qs("vendorScopeBanner");
+  if (!box) return;
+
+  if (!selectedVendor?.vendorId) {
+    box.classList.add("hidden");
+    box.innerHTML = "";
+    return;
+  }
+
+  const scopedCount = getChartEvents().length;
+  box.classList.remove("hidden");
+  box.innerHTML = "";
+
+  const text = document.createElement("div");
+  text.className = "vendor-scope-banner-text";
+  text.textContent = focusedLensPivotActive
+    ? `Vendor focus: ${selectedVendor.vendorName || selectedVendor.vendorId} (${scopedCount} events). Showing timeline because compare has low data.`
+    : `Vendor focus: ${selectedVendor.vendorName || selectedVendor.vendorId} (${scopedCount} events in current scope).`;
+  box.appendChild(text);
+
+  const actions = document.createElement("div");
+  actions.className = "vendor-scope-banner-actions";
+  box.appendChild(actions);
+
+  if (focusedLensPivotActive) {
+    const compareBtn = document.createElement("button");
+    compareBtn.type = "button";
+    compareBtn.className = "viz-nav";
+    compareBtn.textContent = "Open compare anyway";
+    compareBtn.addEventListener("click", () => {
+      forceVendorCompareView();
+    });
+    actions.appendChild(compareBtn);
+  }
+
+  const clearBtn = document.createElement("button");
+  clearBtn.type = "button";
+  clearBtn.className = "viz-nav";
+  clearBtn.textContent = "Clear vendor focus";
+  clearBtn.addEventListener("click", () => {
+    clearVendorFocus();
+  });
+  actions.appendChild(clearBtn);
+}
+
+function forceVendorCompareView() {
+  forceVendorCompareOnce = true;
+  renderECharts();
+  renderRecentEventsFromEvents(getChartEvents(), "No events match current filters.");
+  updateFilterSummary();
+}
+
+function clearVendorFocus() {
+  selectedVendor = null;
+  selectedInsightTarget = null;
+  hideVendorSelectionCue();
+  clearVizSelection({ close: true, clearBrush: true, renderTable: false });
+  renderVendorChips();
+  renderECharts();
+  renderRecentEventsFromEvents(getChartEvents(), "No events match current filters.");
+  updateFilterSummary();
+}
+
+function openDrawerForCurrentSelection() {
+  if (viewMode !== "power") return;
+  if (!vizSelection?.events?.length) return;
+  openDrawer(vizSelection.title, vizSelection.summaryHtml, vizSelection.events);
+}
+
 function applyFilterChanges() {
   readFilterStateFromControls();
   const policyChanged = applyViewFilterPolicy();
@@ -1617,18 +1806,14 @@ export function bootSiteInsights() {
   });
 
   qs("clearVendorBtn")?.addEventListener("click", () => {
-    selectedVendor = null;
-    selectedInsightTarget = null;
-    hideVendorSelectionCue();
-    clearVizSelection({ close: true, clearBrush: true, renderTable: false });
-    renderVendorChips();
-    renderECharts();
-    renderRecentEventsFromEvents(getChartEvents(), "No events match current filters.");
-    updateFilterSummary();
+    clearVendorFocus();
   });
 
   qs("vizInfoBtn")?.addEventListener("click", () => {
     explainCurrentScope({ forceScroll: true });
+  });
+  qs("vizOpenDrawerBtn")?.addEventListener("click", () => {
+    openDrawerForCurrentSelection();
   });
   qs("vendorSelectionCueBtn")?.addEventListener("click", () => {
     ensureInsightVisible({ force: true, source: "vendor" });
@@ -1725,6 +1910,7 @@ export function bootSiteInsights() {
   deriveFilteredEvents();
   renderVendorChips();
   syncVizSelectByMode();
+  updateDrawerButtonState();
   const policyChanged = applyViewFilterPolicy();
   if (policyChanged) {
     deriveFilteredEvents();

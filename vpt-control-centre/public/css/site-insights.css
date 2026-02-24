@@ -278,6 +278,12 @@
   background: rgba(15, 23, 42, 0.35);
 }
 
+.viz-mode-help {
+  padding: 0.25rem 0.2rem 0;
+  font-size: 0.75rem;
+  color: var(--color-text-muted);
+}
+
 
 /* responsive */
 @media (max-width: 1024px) {
@@ -442,6 +448,30 @@
   color: var(--color-text-main);
   font-size: 0.79rem;
   line-height: 1.35;
+}
+
+.vendor-scope-banner {
+  margin: 0 0.9rem 0.55rem;
+  border: 1px solid rgba(96, 165, 250, 0.42);
+  background: rgba(30, 64, 175, 0.22);
+  border-radius: 0.6rem;
+  padding: 0.48rem 0.56rem;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.6rem;
+}
+
+.vendor-scope-banner-text {
+  color: var(--color-text-main);
+  font-size: 0.78rem;
+}
+
+.vendor-scope-banner-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  flex-wrap: wrap;
 }
 
 .insight-sheet {
@@ -628,6 +658,30 @@
   padding: 0 0.9rem 0.5rem;
 }
 
+.viz-state-guidance {
+  margin: 0 0.9rem 0.55rem;
+  border: 1px solid rgba(245, 158, 11, 0.35);
+  background: rgba(120, 53, 15, 0.2);
+  border-radius: 0.6rem;
+  padding: 0.5rem 0.6rem;
+  display: grid;
+  gap: 0.35rem;
+}
+
+.viz-state-guidance-title {
+  font-size: 0.8rem;
+  color: #fde68a;
+}
+
+.viz-state-guidance-list {
+  margin: 0;
+  padding-left: 1.1rem;
+  color: var(--color-text-main);
+  font-size: 0.77rem;
+  display: grid;
+  gap: 0.2rem;
+}
+
 .viz-lens-notice {
   margin: 0 0.9rem 0.55rem;
   border: 1px solid rgba(59, 130, 246, 0.35);
@@ -645,6 +699,13 @@
   font-size: 0.78rem;
 }
 
+.viz-lens-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  flex-wrap: wrap;
+}
+
 .viz-lens-action {
   border: 1px solid rgba(148, 163, 184, 0.35);
   background: rgba(2, 6, 23, 0.5);
@@ -658,6 +719,11 @@
 
 .viz-lens-action:hover {
   border-color: rgba(59, 130, 246, 0.85);
+}
+
+.viz-lens-action-secondary {
+  border-color: rgba(148, 163, 184, 0.25);
+  background: rgba(2, 6, 23, 0.3);
 }
 
 .viz-kpi-strip {
@@ -724,9 +790,19 @@
     align-items: flex-start;
   }
 
+  .vendor-scope-banner {
+    margin: 0 0.6rem 0.5rem;
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
   .viz-domain-input {
     min-width: 150px;
     width: 100%;
+  }
+
+  .viz-state-guidance {
+    margin: 0 0.6rem 0.5rem;
   }
 
   .viz-lens-notice {
@@ -763,6 +839,11 @@
 
 .viz-nav:hover {
   border-color: rgba(59, 130, 246, 0.8);
+}
+
+.viz-nav:disabled {
+  opacity: 0.45;
+  cursor: default;
 }
 .btn-export {
   padding: 0.35rem 0.7rem;
