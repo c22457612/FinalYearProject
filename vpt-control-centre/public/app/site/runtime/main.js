@@ -10,6 +10,8 @@ import {
   getKindBucket,
   getPartyBucket,
   getResourceBucket,
+  getPrivacyStatusBucket,
+  getMitigationStatusBucket,
   matchesFilters,
   getActiveFilterLabels as computeActiveFilterLabels,
   getActiveVizOptionLabels as computeActiveVizOptionLabels,
@@ -74,6 +76,7 @@ let vizOptions = defaultVizOptions();
 const VIEWS = [
   { id: "vendorOverview", title: "Vendor activity overview" },
   { id: "riskTrend", title: "Risk trend timeline" },
+  { id: "baselineDetectedBlockedTrend", title: "Baseline vs detected vs blocked trend" },
   { id: "timeline", title: "Activity timeline (last 24h)" },
   { id: "topSeen", title: "Top third-party domains (seen)" },
   { id: "kinds", title: "Event breakdown (kind)" },
@@ -86,7 +89,8 @@ const VIEWS = [
   { id: "hourHeatmap", title: "Activity heatmap (hour x day)" },
 ];
 
-const EASY_VIEW_IDS = new Set(["vendorOverview", "kinds", "riskTrend", "partySplit"]);
+const EASY_VIEW_IDS = new Set(["vendorOverview", "kinds", "riskTrend", "baselineDetectedBlockedTrend", "partySplit"]);
+const PRIVACY_FILTER_ALL_ONLY_VIEW_IDS = new Set();
 
 const RANGE_MS = {
   "1h": 60 * 60 * 1000,
@@ -172,6 +176,8 @@ const chartBuilders = createChartBuilders({
   getVendorMetricValue,
   getResourceBucket,
   getPartyBucket,
+  getPrivacyStatusBucket,
+  getMitigationStatusBucket,
   resourceLabels: RESOURCE_LABELS,
   partyLabels: PARTY_LABELS,
 });
@@ -270,6 +276,33 @@ function getAllowedViews(mode = viewMode) {
   return VIEWS.filter((v) => isViewAllowed(v.id, mode));
 }
 
+function getCurrentViewId() {
+  return VIEWS[vizIndex]?.id || VIEWS[0]?.id || "";
+}
+
+function applyViewFilterPolicy() {
+  const viewId = getCurrentViewId();
+  const privacyAllOnly = PRIVACY_FILTER_ALL_ONLY_VIEW_IDS.has(viewId);
+  let changed = false;
+
+  if (privacyAllOnly && filterState.privacyStatus !== "all") {
+    filterState.privacyStatus = "all";
+    changed = true;
+  }
+
+  writeFilterStateToControls();
+
+  const privacyEl = qs("privacyStatusFilter");
+  if (privacyEl) {
+    privacyEl.disabled = privacyAllOnly;
+    privacyEl.title = privacyAllOnly
+      ? "Privacy filter is fixed to All for this view to avoid collapsed single-group charts."
+      : "";
+  }
+
+  return changed;
+}
+
 function updateVizPositionLabel() {
   const el = qs("vizPositionLabel");
   if (!el) return;
@@ -324,6 +357,10 @@ function setViewMode(mode, { rerender = true } = {}) {
   }
 
   syncVizSelectByMode();
+  const policyChanged = applyViewFilterPolicy();
+  if (policyChanged) {
+    deriveFilteredEvents();
+  }
   renderVendorChips();
 
   if (rerender) {
@@ -571,7 +608,7 @@ function buildChartPointState(viewId, params) {
   const effectiveViewId = chart?.__vptMeta?.effectiveViewId || viewId;
   let semanticKey = "";
 
-  if (viewId === "timeline" || viewId === "riskTrend") {
+  if (viewId === "timeline" || viewId === "riskTrend" || viewId === "baselineDetectedBlockedTrend") {
     semanticKey = `bin:${typeof dataIndex === "number" ? dataIndex : ""}`;
   } else if (viewId === "hourHeatmap" || viewId === "vendorKindMatrix") {
     const value = Array.isArray(params?.value) ? params.value : [];
@@ -946,6 +983,7 @@ const {
   buildHourHeatmapOption,
   buildVendorOverviewOption,
   buildRiskTrendOption,
+  buildBaselineDetectedBlockedTrendOption,
   buildVendorKindMatrixOption,
   buildRuleIdFrequencyOption,
   hasSeriesData,
@@ -1100,7 +1138,7 @@ function ensureChart() {
 
     chart.on("brushSelected", (params) => {
       const viewId = chart?.__vptMeta?.effectiveViewId || VIEWS[vizIndex].id;
-      if (viewId !== "timeline" && viewId !== "riskTrend") return;
+      if (viewId !== "timeline" && viewId !== "riskTrend" && viewId !== "baselineDetectedBlockedTrend") return;
 
       const meta = chart?.__vptMeta?.built?.meta;
       if (!meta) return;
@@ -1206,6 +1244,7 @@ function renderECharts() {
     }
     forceVendorCompareOnce = false;
   } else if (requestedViewId === "riskTrend") built = buildRiskTrendOption(events);
+  else if (requestedViewId === "baselineDetectedBlockedTrend") built = buildBaselineDetectedBlockedTrendOption(events);
   else if (requestedViewId === "timeline") built = buildTimelineOption(events);
   else if (requestedViewId === "topSeen") built = buildTopDomainsOption(events, vizOptions.metric);
   else if (requestedViewId === "kinds") built = buildKindsOption(events);
@@ -1268,7 +1307,7 @@ function handleChartClick(viewId, params) {
   if (!meta) return;
   const chartPoint = buildChartPointState(viewId, params);
 
-  if (viewId === "timeline" || viewId === "riskTrend") {
+  if (viewId === "timeline" || viewId === "riskTrend" || viewId === "baselineDetectedBlockedTrend") {
     const idx = params?.dataIndex;
     if (typeof idx !== "number") return;
 
@@ -1423,6 +1462,10 @@ function renderVendorChips() {
 
 function applyFilterChanges() {
   readFilterStateFromControls();
+  const policyChanged = applyViewFilterPolicy();
+  if (policyChanged) {
+    readFilterStateFromControls();
+  }
   deriveFilteredEvents();
   renderVendorChips();
   clearVizSelection({ close: true, clearBrush: true, renderTable: false });
@@ -1598,6 +1641,11 @@ export function bootSiteInsights() {
     vizIndex = absoluteIdx >= 0 ? absoluteIdx : 0;
     if (qs("vizSelect")) qs("vizSelect").value = VIEWS[vizIndex].id;
     updateVizPositionLabel();
+    const policyChanged = applyViewFilterPolicy();
+    if (policyChanged) {
+      deriveFilteredEvents();
+      renderVendorChips();
+    }
 
     clearVizSelection({ close: true, clearBrush: true, renderTable: false });
     renderECharts();
@@ -1668,6 +1716,11 @@ export function bootSiteInsights() {
   deriveFilteredEvents();
   renderVendorChips();
   syncVizSelectByMode();
+  const policyChanged = applyViewFilterPolicy();
+  if (policyChanged) {
+    deriveFilteredEvents();
+    renderVendorChips();
+  }
   updateFilterSummary();
   resetInsightSection();
 

@@ -9,6 +9,8 @@ export function createChartBuilders(deps) {
     getVendorMetricValue,
     getResourceBucket,
     getPartyBucket,
+    getPrivacyStatusBucket,
+    getMitigationStatusBucket,
     resourceLabels,
     partyLabels,
   } = deps;
@@ -131,6 +133,39 @@ function buildBarLikeOption(rows, { seriesName = "count", defaultType = "bar", m
   };
 }
 
+function buildTrendTooltipFormatter(params) {
+  const rows = Array.isArray(params) ? params : [];
+  if (!rows.length) return "";
+
+  const label = String(rows[0]?.axisValueLabel || rows[0]?.axisValue || "Time bucket");
+  const lines = [`<strong>${label}</strong>`];
+  for (const row of rows) {
+    const value = Number(row?.value);
+    const count = Number.isFinite(value) ? value : 0;
+    lines.push(`${row?.marker || ""}${row?.seriesName || "Series"}: ${count} events`);
+  }
+  return lines.join("<br/>");
+}
+
+function buildTrendAxes(labels) {
+  return {
+    xAxis: {
+      type: "category",
+      data: labels,
+      name: "Time",
+      nameLocation: "middle",
+      nameGap: 34,
+    },
+    yAxis: {
+      type: "value",
+      name: "Events",
+      nameLocation: "middle",
+      nameGap: 52,
+      minInterval: 1,
+    },
+  };
+}
+
 function buildTimelineOption(events) {
   const { from, to } = getRangeWindow();
   const start = from ?? (events[0]?.ts ?? Date.now());
@@ -163,7 +198,7 @@ function buildTimelineOption(events) {
 
   return {
     option: {
-      tooltip: { trigger: "axis" },
+      tooltip: { trigger: "axis", formatter: buildTrendTooltipFormatter },
       legend: { top: 0 },
       toolbox: {
         right: 10,
@@ -177,8 +212,7 @@ function buildTimelineOption(events) {
         brushMode: "single",
       },
       grid: { left: 40, right: 18, top: 36, bottom: 60 },
-      xAxis: { type: "category", data: labels },
-      yAxis: { type: "value" },
+      ...buildTrendAxes(labels),
       dataZoom: [
         { type: "inside" },
         { type: "slider", height: 18, bottom: 18 },
@@ -536,15 +570,71 @@ function buildRiskTrendOption(events) {
 
   return {
     option: {
-      tooltip: { trigger: "axis" },
+      tooltip: { trigger: "axis", formatter: buildTrendTooltipFormatter },
       grid: { left: 40, right: 18, top: 18, bottom: 75 },
-      xAxis: { type: "category", data: labels },
-      yAxis: { type: "value" },
+      ...buildTrendAxes(labels),
       dataZoom: [{ type: "inside" }, { type: "slider", height: 18, bottom: 18 }],
       series: [
         buildSeries("High", high, { defaultType: "bar", stackKey: "risk" }),
         buildSeries("Caution", caution, { defaultType: "bar", stackKey: "risk" }),
         buildSeries("Info", info, { defaultType: "bar", stackKey: "risk" }),
+      ],
+    },
+    meta: { start, binMs, binEvents, labels },
+  };
+}
+
+function getPrivacyTrendBucket(ev) {
+  const privacy = String(getPrivacyStatusBucket(ev) || "").toLowerCase();
+  const mitigation = String(getMitigationStatusBucket(ev) || "").toLowerCase();
+
+  if (privacy === "baseline") return "baseline";
+  if (privacy === "policy_blocked" || mitigation === "blocked") return "blocked";
+  if (privacy === "signal_detected" || privacy === "high_risk" || privacy === "policy_allowed") {
+    return "detected";
+  }
+  return "unknown";
+}
+
+function buildBaselineDetectedBlockedTrendOption(events) {
+  const { from, to } = getRangeWindow();
+  const start = from ?? (events[0]?.ts ?? Date.now());
+  const end = to ?? (events[events.length - 1]?.ts ?? Date.now());
+  const binMs = getTimelineBinMs();
+  const bins = Math.max(1, Math.ceil(Math.max(1, end - start) / binMs));
+
+  const labels = [];
+  const baseline = new Array(bins).fill(0);
+  const detected = new Array(bins).fill(0);
+  const blocked = new Array(bins).fill(0);
+  const binEvents = new Array(bins).fill(0).map(() => []);
+
+  for (const ev of events) {
+    if (!ev?.ts) continue;
+    const idx = Math.min(bins - 1, Math.max(0, Math.floor((ev.ts - start) / binMs)));
+    binEvents[idx].push(ev);
+
+    const bucket = getPrivacyTrendBucket(ev);
+    if (bucket === "baseline") baseline[idx] += 1;
+    else if (bucket === "blocked") blocked[idx] += 1;
+    else if (bucket === "detected") detected[idx] += 1;
+  }
+
+  for (let i = 0; i < bins; i++) {
+    labels.push(new Date(start + i * binMs).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }));
+  }
+
+  return {
+    option: {
+      tooltip: { trigger: "axis", formatter: buildTrendTooltipFormatter },
+      legend: { top: 0 },
+      grid: { left: 40, right: 18, top: 36, bottom: 75 },
+      ...buildTrendAxes(labels),
+      dataZoom: [{ type: "inside" }, { type: "slider", height: 18, bottom: 18 }],
+      series: [
+        buildSeries("Baseline (no signal)", baseline, { defaultType: "bar", stackKey: "privacy-story" }),
+        buildSeries("Detected", detected, { defaultType: "bar", stackKey: "privacy-story" }),
+        buildSeries("Blocked", blocked, { defaultType: "bar", stackKey: "privacy-story" }),
       ],
     },
     meta: { start, binMs, binEvents, labels },
@@ -638,6 +728,7 @@ function hasSeriesData(option) {
 function getModeEmptyMessage(viewId) {
   if (viewId === "vendorOverview") return "No vendor activity matches current filters";
   if (viewId === "riskTrend") return "No risk trend data matches current filters";
+  if (viewId === "baselineDetectedBlockedTrend") return "No baseline/detected/blocked trend data matches current filters";
   if (viewId === "topSeen") return "No third-party network events match current filters";
   if (viewId === "apiGating") return "No third-party API-like calls match current filters";
   if (viewId === "vendorKindMatrix") return "No vendor-kind matrix data matches current filters";
@@ -662,6 +753,7 @@ function getModeEmptyMessage(viewId) {
     buildHourHeatmapOption,
     buildVendorOverviewOption,
     buildRiskTrendOption,
+    buildBaselineDetectedBlockedTrendOption,
     buildVendorKindMatrixOption,
     buildRuleIdFrequencyOption,
     hasSeriesData,

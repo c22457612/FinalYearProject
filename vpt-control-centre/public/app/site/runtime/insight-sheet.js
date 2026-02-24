@@ -321,6 +321,9 @@ export function createInsightSheet(deps) {
       ...baseLimits,
       "Evidence is constrained by current range/filters and captured events only.",
     ];
+    if (context.viewId === "baselineDetectedBlockedTrend") {
+      limits.push("'No signal detected' indicates no classified signal in captured events, not a guarantee of safety.");
+    }
     if (evs.length < 8) {
       limits.push("Low confidence due to small sample size; gather more events before acting.");
     }
