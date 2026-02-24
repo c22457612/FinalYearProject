@@ -63,7 +63,8 @@ const SCHEMA_SQL = `
     value TEXT NOT NULL
   );
 
-  INSERT OR IGNORE INTO meta(key, value) VALUES ('schema_version', '1');
+  INSERT OR IGNORE INTO meta(key, value) VALUES ('schema_version', '2');
+  UPDATE meta SET value = '2' WHERE key = 'schema_version';
 
   -- Event-sourcing: immutable privacy events
   CREATE TABLE IF NOT EXISTS events (
@@ -94,6 +95,135 @@ const SCHEMA_SQL = `
 
   CREATE INDEX IF NOT EXISTS idx_policies_ts ON policies(ts);
   CREATE INDEX IF NOT EXISTS idx_policies_op_ts ON policies(op, ts);
+
+  -- Semantic enrichment layer (separate from immutable raw events).
+  -- This is future-proofed for browser API/event surfaces.
+  CREATE TABLE IF NOT EXISTS event_enrichment (
+    pk                 INTEGER PRIMARY KEY AUTOINCREMENT,
+    event_pk           INTEGER NOT NULL UNIQUE,
+    event_id           TEXT NOT NULL UNIQUE,
+    enriched_ts        INTEGER NOT NULL,
+    enrichment_version TEXT NOT NULL DEFAULT 'v1',
+    surface            TEXT NOT NULL CHECK (surface IN ('network', 'cookies', 'storage', 'browser_api', 'script', 'unknown')),
+    surface_detail     TEXT NOT NULL CHECK (
+      surface_detail IN (
+        'network_request',
+        'cookie_snapshot',
+        'cookie_operation',
+        'local_storage',
+        'session_storage',
+        'indexeddb',
+        'cache_api',
+        'canvas',
+        'webgl',
+        'webrtc',
+        'audiocontext',
+        'script_execution',
+        'unknown'
+      )
+    ),
+    privacy_status     TEXT NOT NULL CHECK (
+      privacy_status IN (
+        'baseline',
+        'signal_detected',
+        'high_risk',
+        'policy_blocked',
+        'policy_allowed',
+        'unknown'
+      )
+    ),
+    mitigation_status  TEXT NOT NULL CHECK (
+      mitigation_status IN (
+        'allowed',
+        'blocked',
+        'observed_only',
+        'modified',
+        'unknown'
+      )
+    ),
+    signal_type        TEXT NOT NULL CHECK (
+      signal_type IN (
+        'fingerprinting_signal',
+        'tracking_signal',
+        'device_probe',
+        'capability_probe',
+        'state_change',
+        'unknown'
+      )
+    ),
+    pattern_id         TEXT,
+    confidence         REAL CHECK (confidence IS NULL OR (confidence >= 0 AND confidence <= 1)),
+    vendor_id          TEXT,
+    vendor_name        TEXT,
+    vendor_family      TEXT,
+    request_domain     TEXT,
+    request_url        TEXT,
+    first_party_site   TEXT,
+    is_third_party     INTEGER CHECK (is_third_party IS NULL OR is_third_party IN (0, 1)),
+    rule_id            TEXT,
+    raw_context        TEXT,
+    FOREIGN KEY(event_pk) REFERENCES events(pk) ON DELETE CASCADE
+  );
+
+  CREATE INDEX IF NOT EXISTS idx_event_enrichment_site_ts ON event_enrichment(first_party_site, enriched_ts);
+  CREATE INDEX IF NOT EXISTS idx_event_enrichment_surface_ts ON event_enrichment(surface, enriched_ts);
+  CREATE INDEX IF NOT EXISTS idx_event_enrichment_privacy_ts ON event_enrichment(privacy_status, enriched_ts);
+  CREATE INDEX IF NOT EXISTS idx_event_enrichment_signal_ts ON event_enrichment(signal_type, enriched_ts);
+  CREATE INDEX IF NOT EXISTS idx_event_enrichment_vendor_ts ON event_enrichment(vendor_id, enriched_ts);
+
+  -- Canonical taxonomy dictionary for semantic dimensions.
+  CREATE TABLE IF NOT EXISTS enrichment_taxonomy (
+    dimension   TEXT NOT NULL,
+    value       TEXT NOT NULL,
+    description TEXT NOT NULL,
+    PRIMARY KEY (dimension, value)
+  );
+
+  INSERT OR IGNORE INTO enrichment_taxonomy(dimension, value, description) VALUES
+    ('surface', 'network', 'Network request/response surface'),
+    ('surface', 'cookies', 'Cookie collection and mutation surface'),
+    ('surface', 'storage', 'Storage APIs (local/session/indexedDB/cache)'),
+    ('surface', 'browser_api', 'High-signal browser API surfaces'),
+    ('surface', 'script', 'Script execution and capability checks'),
+    ('surface', 'unknown', 'Not yet mapped to a semantic surface');
+
+  INSERT OR IGNORE INTO enrichment_taxonomy(dimension, value, description) VALUES
+    ('surface_detail', 'network_request', 'Observed network request event'),
+    ('surface_detail', 'cookie_snapshot', 'Cookie inventory snapshot event'),
+    ('surface_detail', 'cookie_operation', 'Cookie mutation/cleanup operation'),
+    ('surface_detail', 'local_storage', 'localStorage surface'),
+    ('surface_detail', 'session_storage', 'sessionStorage surface'),
+    ('surface_detail', 'indexeddb', 'IndexedDB surface'),
+    ('surface_detail', 'cache_api', 'Cache API surface'),
+    ('surface_detail', 'canvas', 'Canvas API signal'),
+    ('surface_detail', 'webgl', 'WebGL API signal'),
+    ('surface_detail', 'webrtc', 'WebRTC API signal'),
+    ('surface_detail', 'audiocontext', 'AudioContext API signal'),
+    ('surface_detail', 'script_execution', 'Script-level execution signal'),
+    ('surface_detail', 'unknown', 'Not yet mapped to a semantic detail');
+
+  INSERT OR IGNORE INTO enrichment_taxonomy(dimension, value, description) VALUES
+    ('privacy_status', 'baseline', 'No suspicious signal classified in this event'),
+    ('privacy_status', 'signal_detected', 'Potential tracking/fingerprinting signal detected'),
+    ('privacy_status', 'high_risk', 'High-risk signal by rule/pattern classification'),
+    ('privacy_status', 'policy_blocked', 'Signal mitigated by blocking policy'),
+    ('privacy_status', 'policy_allowed', 'Signal explicitly allowed by policy'),
+    ('privacy_status', 'unknown', 'Classification pending or unavailable');
+
+  INSERT OR IGNORE INTO enrichment_taxonomy(dimension, value, description) VALUES
+    ('mitigation_status', 'allowed', 'Allowed to proceed'),
+    ('mitigation_status', 'blocked', 'Blocked by policy/rule'),
+    ('mitigation_status', 'observed_only', 'Observed only, no active mitigation'),
+    ('mitigation_status', 'modified', 'Mutated/sanitized by mitigation'),
+    ('mitigation_status', 'unknown', 'Mitigation outcome not known');
+
+  INSERT OR IGNORE INTO enrichment_taxonomy(dimension, value, description) VALUES
+    ('signal_type', 'fingerprinting_signal', 'Likely fingerprinting behavior'),
+    ('signal_type', 'tracking_signal', 'Likely tracking/cross-site measurement signal'),
+    ('signal_type', 'device_probe', 'Device/environment probing signal'),
+    ('signal_type', 'capability_probe', 'Feature/capability probing signal'),
+    ('signal_type', 'state_change', 'State mutation without direct tracking conclusion'),
+    ('signal_type', 'unknown', 'Signal type not yet classified');
 `;
 
 /**
