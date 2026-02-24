@@ -45,6 +45,8 @@ let latestSiteData = null;
 let chart = null;
 let windowEvents = [];
 let filteredEvents = [];
+let filteredEventsSourceRef = null;
+let filteredEventsFilterSignature = "";
 let vizIndex = 0;
 let vizSelection = null; // { type, value, events, fromTs, toTs, title, summaryHtml }
 let drawerMode = "normal";
@@ -59,6 +61,14 @@ let focusedLensPivotActive = false;
 const dataZoomStateByView = new Map(); // key: effective view id, value: { start, end }
 let selectedChartPoint = null; // { viewId, effectiveViewId, seriesIndex, dataIndex, semanticKey }
 let selectedRecentEventKey = "";
+const chartRenderPerfState = {
+  chartRef: null,
+  eventsRef: null,
+  requestedViewId: "",
+  selectedVendorId: "",
+  viewMode: "",
+  vizSignature: "",
+};
 const CHART_SELECTED_ACCENT = "#A78BFA";
 const CHART_HOVER_ACCENT = "#38BDF8";
 const CHART_SELECTED_BAND_FILL = "rgba(167,139,250,0.14)";
@@ -546,7 +556,26 @@ function renderRecentEventsFromEvents(events, emptyMessage = "No events match cu
 
 function deriveFilteredEvents() {
   const base = Array.isArray(windowEvents) ? windowEvents : [];
+  const nextFilterSignature = [
+    filterState.kind?.blocked ? "1" : "0",
+    filterState.kind?.observed ? "1" : "0",
+    filterState.kind?.other ? "1" : "0",
+    String(filterState.party || "all"),
+    String(filterState.resource || "all"),
+    String(filterState.surface || "all"),
+    String(filterState.privacyStatus || "all"),
+    String(filterState.mitigationStatus || "all"),
+    String(filterState.domainText || "").trim().toLowerCase(),
+  ].join("|");
+
+  if (filteredEventsSourceRef === base && filteredEventsFilterSignature === nextFilterSignature) {
+    updateFilterSummary();
+    return filteredEvents;
+  }
+
   filteredEvents = base.filter((ev) => matchesFilters(ev, filterState));
+  filteredEventsSourceRef = base;
+  filteredEventsFilterSignature = nextFilterSignature;
   updateFilterSummary();
   return filteredEvents;
 }
@@ -1246,11 +1275,41 @@ function renderECharts() {
   rememberCurrentDataZoomState();
 
   const requestedViewId = VIEWS[vizIndex].id;
+  const selectedVendorId = String(selectedVendor?.vendorId || "");
+  const vizSignature = [
+    String(vizOptions.metric || ""),
+    String(vizOptions.seriesType || ""),
+    String(vizOptions.topN || ""),
+    String(vizOptions.sort || ""),
+    String(vizOptions.binSize || ""),
+    vizOptions.normalize ? "1" : "0",
+    vizOptions.stack ? "1" : "0",
+  ].join("|");
   let effectiveViewId = requestedViewId;
   let lensPivotActive = false;
   const titleEl = qs("vizTitle");
   const events = getChartEvents();
   const lensApi = getSiteLens();
+
+  if (
+    chartRenderPerfState.chartRef === c
+    && chartRenderPerfState.eventsRef === events
+    && chartRenderPerfState.requestedViewId === requestedViewId
+    && chartRenderPerfState.selectedVendorId === selectedVendorId
+    && chartRenderPerfState.viewMode === viewMode
+    && chartRenderPerfState.vizSignature === vizSignature
+  ) {
+    return;
+  }
+
+  const rememberRenderPerfState = () => {
+    chartRenderPerfState.chartRef = c;
+    chartRenderPerfState.eventsRef = events;
+    chartRenderPerfState.requestedViewId = requestedViewId;
+    chartRenderPerfState.selectedVendorId = selectedVendorId;
+    chartRenderPerfState.viewMode = viewMode;
+    chartRenderPerfState.vizSignature = vizSignature;
+  };
 
   if (!events.length) {
     const empty = buildEmptyChartOption("No events match current filters");
@@ -1268,7 +1327,8 @@ function renderECharts() {
       lensPivotActive,
       built: { option: empty, meta: null },
     };
-    c.setOption(empty, true);
+    c.setOption(empty, { notMerge: true, lazyUpdate: true });
+    rememberRenderPerfState();
     clearChartSelectionHighlight();
     return;
   }
@@ -1329,7 +1389,8 @@ function renderECharts() {
       lensPivotActive,
       built: { option: empty, meta: null },
     };
-    c.setOption(empty, true);
+    c.setOption(empty, { notMerge: true, lazyUpdate: true });
+    rememberRenderPerfState();
     clearChartSelectionHighlight();
     return;
   }
@@ -1345,7 +1406,8 @@ function renderECharts() {
   }
 
   c.__vptMeta = { viewId: requestedViewId, effectiveViewId, lensPivotActive, built };
-  c.setOption(built.option, true);
+  c.setOption(built.option, { notMerge: true, lazyUpdate: true });
+  rememberRenderPerfState();
   reapplyChartSelectionHighlight();
   syncInteractionOverlayOnCurrentChart();
 }
