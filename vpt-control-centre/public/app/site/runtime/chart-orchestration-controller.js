@@ -6,6 +6,7 @@ export function createChartOrchestrationController(deps) {
     getVizMetric,
     buildVendorRollup,
     buildTimelineOption,
+    buildVendorAllowedBlockedTimelineOption,
     buildTopDomainsOption,
     buildKindsOption,
     buildApiGatingOption,
@@ -32,7 +33,12 @@ export function createChartOrchestrationController(deps) {
     const dataIndex = typeof params.dataIndex === "number" ? params.dataIndex : null;
     let semanticKey = "";
 
-    if (viewId === "timeline" || viewId === "riskTrend" || viewId === "baselineDetectedBlockedTrend") {
+    if (
+      viewId === "timeline"
+      || viewId === "vendorAllowedBlockedTimeline"
+      || viewId === "riskTrend"
+      || viewId === "baselineDetectedBlockedTrend"
+    ) {
       semanticKey = `bin:${typeof dataIndex === "number" ? dataIndex : ""}`;
     } else if (viewId === "hourHeatmap" || viewId === "vendorKindMatrix") {
       const value = Array.isArray(params?.value) ? params.value : [];
@@ -74,7 +80,8 @@ export function createChartOrchestrationController(deps) {
       } else {
         built = buildVendorOverviewOption(events);
       }
-    } else if (requestedViewId === "riskTrend") built = buildRiskTrendOption(events);
+    } else if (requestedViewId === "vendorAllowedBlockedTimeline") built = buildVendorAllowedBlockedTimelineOption(events);
+    else if (requestedViewId === "riskTrend") built = buildRiskTrendOption(events);
     else if (requestedViewId === "baselineDetectedBlockedTrend") built = buildBaselineDetectedBlockedTrendOption(events);
     else if (requestedViewId === "timeline") built = buildTimelineOption(events);
     else if (requestedViewId === "topSeen") built = buildTopDomainsOption(events, getVizMetric());
@@ -95,7 +102,12 @@ export function createChartOrchestrationController(deps) {
     if (!meta) return;
     const chartPoint = buildChartPointState(viewId, params, effectiveViewId);
 
-    if (viewId === "timeline" || viewId === "riskTrend" || viewId === "baselineDetectedBlockedTrend") {
+    if (
+      viewId === "timeline"
+      || viewId === "vendorAllowedBlockedTimeline"
+      || viewId === "riskTrend"
+      || viewId === "baselineDetectedBlockedTrend"
+    ) {
       const idx = params?.dataIndex;
       if (typeof idx !== "number") return;
 

@@ -88,6 +88,7 @@ let vizOptions = defaultVizOptions();
 
 const VIEWS = [
   { id: "vendorOverview", title: "Vendor activity overview" },
+  { id: "vendorAllowedBlockedTimeline", title: "Vendor allowed vs blocked timeline" },
   { id: "riskTrend", title: "Risk trend timeline" },
   { id: "baselineDetectedBlockedTrend", title: "Baseline vs detected vs blocked trend" },
   { id: "timeline", title: "Activity timeline (last 24h)" },
@@ -102,7 +103,7 @@ const VIEWS = [
   { id: "hourHeatmap", title: "Activity heatmap (hour x day)" },
 ];
 
-const EASY_VIEW_IDS = new Set(["vendorOverview", "kinds", "riskTrend", "baselineDetectedBlockedTrend", "partySplit"]);
+const EASY_VIEW_IDS = new Set(["vendorOverview", "vendorAllowedBlockedTimeline", "kinds", "riskTrend", "baselineDetectedBlockedTrend", "partySplit"]);
 const POWER_ONLY_VIEW_LABEL_SUFFIX = " (Power only)";
 const LOW_INFORMATION_EVENT_THRESHOLD = 8;
 const PRIVACY_FILTER_ALL_ONLY_VIEW_IDS = new Set();
@@ -206,6 +207,7 @@ const chartOrchestrationController = createChartOrchestrationController({
   getVizMetric: () => vizOptions.metric,
   buildVendorRollup,
   buildTimelineOption: chartBuilders.buildTimelineOption,
+  buildVendorAllowedBlockedTimelineOption: chartBuilders.buildVendorAllowedBlockedTimelineOption,
   buildTopDomainsOption: chartBuilders.buildTopDomainsOption,
   buildKindsOption: chartBuilders.buildKindsOption,
   buildApiGatingOption: chartBuilders.buildApiGatingOption,
@@ -1190,7 +1192,12 @@ function ensureChart() {
 
     chart.on("brushSelected", (params) => {
       const viewId = chart?.__vptMeta?.effectiveViewId || VIEWS[vizIndex].id;
-      if (viewId !== "timeline" && viewId !== "riskTrend" && viewId !== "baselineDetectedBlockedTrend") return;
+      if (
+        viewId !== "timeline"
+        && viewId !== "vendorAllowedBlockedTimeline"
+        && viewId !== "riskTrend"
+        && viewId !== "baselineDetectedBlockedTrend"
+      ) return;
 
       const meta = chart?.__vptMeta?.built?.meta;
       if (!meta) return;
@@ -1233,6 +1240,7 @@ function ensureChart() {
         title: `Selected window ${new Date(startTs).toLocaleTimeString()}-${new Date(endTs).toLocaleTimeString()}`,
         summaryHtml: `<div class="muted">${selected.length} events - blocked ${blocked} - observed ${observed}</div>`,
         events: selected,
+        scrollMode: "never",
       });
     });
 

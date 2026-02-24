@@ -166,6 +166,66 @@ function buildTrendAxes(labels) {
   };
 }
 
+const TREND_LEGEND_TEXT_STYLE = Object.freeze({
+  color: "#ffffff",
+  fontSize: 14,
+  fontWeight: 700,
+});
+
+function buildTrendToolbox() {
+  return {
+    right: 12,
+    top: -2,
+    itemSize: 21,
+    itemGap: 12,
+    showTitle: true,
+    iconStyle: {
+      borderColor: "#ffffff",
+      borderWidth: 2.2,
+      color: "rgba(148,163,184,0.22)",
+    },
+    textStyle: {
+      color: "#ffffff",
+      fontSize: 14,
+      fontWeight: 700,
+      padding: [9, 0, 0, 0],
+      textBorderColor: "rgba(2,6,23,0.95)",
+      textBorderWidth: 6,
+      textShadowColor: "rgba(2,6,23,0.98)",
+      textShadowBlur: 6,
+    },
+    emphasis: {
+      iconStyle: {
+        borderColor: "#ffffff",
+        color: "rgba(56,189,248,0.42)",
+        borderWidth: 2.4,
+      },
+      textStyle: {
+        color: "#ffffff",
+        fontSize: 14,
+        fontWeight: 700,
+        padding: [10, 0, 0, 0],
+        textBorderColor: "rgba(2,6,23,0.98)",
+        textBorderWidth: 6,
+        textShadowColor: "rgba(2,6,23,0.98)",
+        textShadowBlur: 7,
+      },
+    },
+    feature: {
+      brush: {
+        type: ["lineX", "clear"],
+        title: {
+          lineX: "Select time window",
+          clear: "Clear window selection",
+        },
+      },
+      restore: {
+        title: "Reset chart view",
+      },
+    },
+  };
+}
+
 function buildTimelineOption(events) {
   const { from, to } = getRangeWindow();
   const start = from ?? (events[0]?.ts ?? Date.now());
@@ -199,19 +259,13 @@ function buildTimelineOption(events) {
   return {
     option: {
       tooltip: { trigger: "axis", formatter: buildTrendTooltipFormatter },
-      legend: { top: 0 },
-      toolbox: {
-        right: 10,
-        feature: {
-          brush: { type: ["lineX", "clear"] },
-          restore: {},
-        },
-      },
+      legend: { top: 0, textStyle: TREND_LEGEND_TEXT_STYLE, itemWidth: 22, itemHeight: 12, itemGap: 14 },
+      toolbox: buildTrendToolbox(),
       brush: {
         xAxisIndex: 0,
         brushMode: "single",
       },
-      grid: { left: 40, right: 18, top: 36, bottom: 60 },
+      grid: { left: 40, right: 18, top: 64, bottom: 60 },
       ...buildTrendAxes(labels),
       dataZoom: [
         { type: "inside" },
@@ -221,6 +275,62 @@ function buildTimelineOption(events) {
         buildSeries("Blocked", blocked, { defaultType: "bar", stackKey: "total" }),
         buildSeries("Observed", observed, { defaultType: "bar", stackKey: "total" }),
         buildSeries("Other", other, { defaultType: "bar", stackKey: "total" }),
+      ],
+    },
+    meta: { start, binMs, binEvents, labels },
+  };
+}
+
+function buildVendorAllowedBlockedTimelineOption(events) {
+  const networkEvents = (Array.isArray(events) ? events : []).filter((ev) => ev?.kind === "network.blocked" || ev?.kind === "network.observed");
+  if (!networkEvents.length) {
+    return {
+      option: { xAxis: { type: "category", data: [] }, yAxis: { type: "value" }, series: [] },
+      meta: { start: Date.now(), binMs: getTimelineBinMs(), binEvents: [], labels: [] },
+    };
+  }
+
+  const { from, to } = getRangeWindow();
+  const start = from ?? (networkEvents[0]?.ts ?? Date.now());
+  const end = to ?? (networkEvents[networkEvents.length - 1]?.ts ?? Date.now());
+  const binMs = getTimelineBinMs();
+  const bins = Math.max(1, Math.ceil(Math.max(1, end - start) / binMs));
+
+  const labels = [];
+  const blocked = new Array(bins).fill(0);
+  const allowed = new Array(bins).fill(0);
+  const binEvents = new Array(bins).fill(0).map(() => []);
+
+  for (const ev of networkEvents) {
+    if (!ev?.ts) continue;
+    const idx = Math.min(bins - 1, Math.max(0, Math.floor((ev.ts - start) / binMs)));
+    binEvents[idx].push(ev);
+    if (ev.kind === "network.blocked") blocked[idx] += 1;
+    else allowed[idx] += 1;
+  }
+
+  for (let i = 0; i < bins; i++) {
+    labels.push(new Date(start + i * binMs).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }));
+  }
+
+  return {
+    option: {
+      tooltip: { trigger: "axis", formatter: buildTrendTooltipFormatter },
+      legend: { top: 0, textStyle: TREND_LEGEND_TEXT_STYLE, itemWidth: 22, itemHeight: 12, itemGap: 14 },
+      toolbox: buildTrendToolbox(),
+      brush: {
+        xAxisIndex: 0,
+        brushMode: "single",
+      },
+      grid: { left: 40, right: 18, top: 64, bottom: 60 },
+      ...buildTrendAxes(labels),
+      dataZoom: [
+        { type: "inside" },
+        { type: "slider", height: 18, bottom: 18 },
+      ],
+      series: [
+        buildSeries("Blocked", blocked, { defaultType: "bar", stackKey: "vendor-allowed-blocked" }),
+        buildSeries("Allowed", allowed, { defaultType: "bar", stackKey: "vendor-allowed-blocked" }),
       ],
     },
     meta: { start, binMs, binEvents, labels },
@@ -571,6 +681,7 @@ function buildRiskTrendOption(events) {
   return {
     option: {
       tooltip: { trigger: "axis", formatter: buildTrendTooltipFormatter },
+      legend: { top: 0, textStyle: TREND_LEGEND_TEXT_STYLE, itemWidth: 22, itemHeight: 12, itemGap: 14 },
       grid: { left: 40, right: 18, top: 18, bottom: 75 },
       ...buildTrendAxes(labels),
       dataZoom: [{ type: "inside" }, { type: "slider", height: 18, bottom: 18 }],
@@ -627,7 +738,7 @@ function buildBaselineDetectedBlockedTrendOption(events) {
   return {
     option: {
       tooltip: { trigger: "axis", formatter: buildTrendTooltipFormatter },
-      legend: { top: 0 },
+      legend: { top: 0, textStyle: TREND_LEGEND_TEXT_STYLE, itemWidth: 22, itemHeight: 12, itemGap: 14 },
       grid: { left: 40, right: 18, top: 36, bottom: 75 },
       ...buildTrendAxes(labels),
       dataZoom: [{ type: "inside" }, { type: "slider", height: 18, bottom: 18 }],
@@ -727,6 +838,7 @@ function hasSeriesData(option) {
 
 function getModeEmptyMessage(viewId) {
   if (viewId === "vendorOverview") return "No vendor activity matches current filters";
+  if (viewId === "vendorAllowedBlockedTimeline") return "No blocked/allowed network events match current filters";
   if (viewId === "riskTrend") return "No risk trend data matches current filters";
   if (viewId === "baselineDetectedBlockedTrend") return "No baseline/detected/blocked trend data matches current filters";
   if (viewId === "topSeen") return "No third-party network events match current filters";
@@ -744,6 +856,7 @@ function getModeEmptyMessage(viewId) {
     buildEmptyChartOption,
     getTimelineBinMs,
     buildTimelineOption,
+    buildVendorAllowedBlockedTimelineOption,
     buildTopDomainsOption,
     buildKindsOption,
     buildApiGatingOption,
