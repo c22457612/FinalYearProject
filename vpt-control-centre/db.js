@@ -63,8 +63,8 @@ const SCHEMA_SQL = `
     value TEXT NOT NULL
   );
 
-  INSERT OR IGNORE INTO meta(key, value) VALUES ('schema_version', '2');
-  UPDATE meta SET value = '2' WHERE key = 'schema_version';
+  INSERT OR IGNORE INTO meta(key, value) VALUES ('schema_version', '3');
+  UPDATE meta SET value = '3' WHERE key = 'schema_version';
 
   -- Event-sourcing: immutable privacy events
   CREATE TABLE IF NOT EXISTS events (
@@ -83,6 +83,7 @@ const SCHEMA_SQL = `
   CREATE INDEX IF NOT EXISTS idx_events_ts ON events(ts);
   CREATE INDEX IF NOT EXISTS idx_events_site_ts ON events(site, ts);
   CREATE INDEX IF NOT EXISTS idx_events_kind_ts ON events(kind, ts);
+  CREATE INDEX IF NOT EXISTS idx_events_site_tab_ts ON events(site, tab_id, ts);
 
   -- Hybrid: store policies separately for quick retrieval / persistence
   CREATE TABLE IF NOT EXISTS policies (
@@ -170,6 +171,9 @@ const SCHEMA_SQL = `
   CREATE INDEX IF NOT EXISTS idx_event_enrichment_privacy_ts ON event_enrichment(privacy_status, enriched_ts);
   CREATE INDEX IF NOT EXISTS idx_event_enrichment_signal_ts ON event_enrichment(signal_type, enriched_ts);
   CREATE INDEX IF NOT EXISTS idx_event_enrichment_vendor_ts ON event_enrichment(vendor_id, enriched_ts);
+  CREATE INDEX IF NOT EXISTS idx_event_enrichment_mitigation_ts ON event_enrichment(mitigation_status, enriched_ts);
+  CREATE INDEX IF NOT EXISTS idx_event_enrichment_party_ts ON event_enrichment(is_third_party, enriched_ts);
+  CREATE INDEX IF NOT EXISTS idx_event_enrichment_site_vendor ON event_enrichment(first_party_site, vendor_id);
 
   -- Canonical taxonomy dictionary for semantic dimensions.
   CREATE TABLE IF NOT EXISTS enrichment_taxonomy (

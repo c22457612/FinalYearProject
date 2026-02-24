@@ -6,6 +6,7 @@ const path = require("path");
 // SQLite initialisation
 const { initDb } = require("./db");
 const { buildEnrichmentRecord } = require("./enrichment");
+const { getAnalyticsSnapshot } = require("./analytics");
 
 const app = express();
 const PORT = process.env.PORT || 4141;
@@ -727,6 +728,48 @@ app.get("/api/sites/:site", async (req, res) => {
   } catch (err) {
     console.error("Failed to build /api/sites/:site from DB:", err);
     res.status(500).json({ ok: false, error: "site_query_failed" });
+  }
+});
+
+app.get("/api/analytics", async (req, res) => {
+  try {
+    const dbCtx = app.locals.db;
+    if (!dbCtx) return res.status(500).json({ ok: false, error: "db_not_ready" });
+
+    const snapshot = await getAnalyticsSnapshot(dbCtx, {
+      site: req.query.site || null,
+      from: req.query.from,
+      to: req.query.to,
+      topVendors: req.query.topVendors,
+      topSites: req.query.topSites,
+      sessionLimit: req.query.sessionLimit,
+    });
+
+    res.json(snapshot);
+  } catch (err) {
+    console.error("Failed to build /api/analytics snapshot:", err);
+    res.status(500).json({ ok: false, error: "analytics_query_failed" });
+  }
+});
+
+app.get("/api/sites/:site/analytics", async (req, res) => {
+  try {
+    const dbCtx = app.locals.db;
+    if (!dbCtx) return res.status(500).json({ ok: false, error: "db_not_ready" });
+
+    const snapshot = await getAnalyticsSnapshot(dbCtx, {
+      site: req.params.site || null,
+      from: req.query.from,
+      to: req.query.to,
+      topVendors: req.query.topVendors,
+      topSites: req.query.topSites,
+      sessionLimit: req.query.sessionLimit,
+    });
+
+    res.json(snapshot);
+  } catch (err) {
+    console.error("Failed to build /api/sites/:site/analytics snapshot:", err);
+    res.status(500).json({ ok: false, error: "analytics_query_failed" });
   }
 });
 
