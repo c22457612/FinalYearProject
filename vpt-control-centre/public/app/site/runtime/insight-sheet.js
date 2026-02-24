@@ -13,41 +13,19 @@ export function createInsightSheet(deps) {
     getSelectedVendor,
     getViews,
     getVizIndex,
-    getDrawerMode,
-    setDrawerModeState,
   } = deps;
 
   let activeEvidence = [];
   let pendingConfirmAction = null;
+  let activeDrawerEvent = null;
 
   function closeDrawer() {
-    qs("vizDrawer")?.classList.add("hidden");
-    qs("vizDrawerBackdrop")?.classList.add("hidden");
-  }
-
-  function setDrawerMode(mode) {
-    setDrawerModeState(mode);
-    qs("drawerNormalBtn")?.classList.toggle("active", mode === "normal");
-    qs("drawerAdvancedBtn")?.classList.toggle("active", mode === "advanced");
-  }
-
-  function explainEventNormal(ev) {
-    if (!ev) return "No event selected.";
-
-    const d = ev.data || {};
-    if (ev.kind === "network.blocked") {
-      return `A request to ${d.domain || "a domain"} was blocked (mode: ${ev.mode || "-"}). This can prevent trackers/ads/scripts from loading.`;
-    }
-
-    if (ev.kind === "network.observed") {
-      return `A request to ${d.domain || "a domain"} was observed (allowed). This can indicate third-party activity on the page.`;
-    }
-
-    if (String(ev.kind || "").startsWith("cookies.")) {
-      return `A cookies event occurred (${ev.kind}). Cookie-related activity was recorded for analysis.`;
-    }
-
-    return `Event recorded: ${ev.kind || "unknown"}.`;
+    const panel = qs("insightTechnicalPanel");
+    panel?.classList.add("hidden");
+    if (panel) panel.open = false;
+    if (qs("drawerSummary")) qs("drawerSummary").innerHTML = "";
+    if (qs("drawerEvents")) qs("drawerEvents").innerHTML = "";
+    activeDrawerEvent = null;
   }
 
   function explainEventAdvanced(ev) {
@@ -331,6 +309,12 @@ export function createInsightSheet(deps) {
     renderListItems(qs("insightWhy"), whyItems, "No immediate risk narrative for this scope.");
     renderListItems(qs("insightLimits"), limits, "No additional caveats.");
 
+    if (getViewMode() === "power" && evs.length) {
+      openDrawer(selection?.title, evs);
+    } else {
+      closeDrawer();
+    }
+
     renderInsightActions(insight.actions || []);
     if (forceScroll || allowAutoScroll) {
       ensureInsightVisible({ force: !!forceScroll, source: scrollSource });
@@ -338,6 +322,7 @@ export function createInsightSheet(deps) {
   }
 
   function resetInsightSection() {
+    closeDrawer();
     if (qs("insightTitle")) qs("insightTitle").textContent = "Info";
     if (qs("insightMeta")) qs("insightMeta").textContent = "Select a chart point to explain current evidence.";
     if (qs("insightSelectedLead")) qs("insightSelectedLead").textContent = "You selected: no datapoint yet.";
@@ -356,13 +341,19 @@ export function createInsightSheet(deps) {
     activeEvidence = [];
   }
 
-  function openDrawer(title, summaryHtml, evidenceEvents) {
-    const drawer = qs("vizDrawer");
-    const backdrop = qs("vizDrawerBackdrop");
-    if (!drawer || !backdrop) return;
+  function openDrawer(title, evidenceEvents) {
+    if (getViewMode() !== "power") {
+      closeDrawer();
+      return;
+    }
+    const panel = qs("insightTechnicalPanel");
+    if (!panel) return;
+
+    panel.classList.remove("hidden");
+    panel.open = true;
 
     qs("drawerTitle").textContent = title || "Selection";
-    qs("drawerSummary").innerHTML = summaryHtml || "";
+    qs("drawerSummary").innerHTML = "";
 
     const box = qs("drawerEvents");
     box.innerHTML = "";
@@ -370,42 +361,36 @@ export function createInsightSheet(deps) {
     const list = (evidenceEvents || []).slice(-20).reverse();
     if (!list.length) {
       box.innerHTML = '<div class="muted">No matching events.</div>';
+      qs("drawerSummary").innerHTML = '<div class="muted">No advanced details available.</div>';
+      activeDrawerEvent = null;
     } else {
+      let firstEvent = null;
       for (const ev of list) {
         const btn = document.createElement("button");
         btn.className = "event-row";
         btn.type = "button";
-        btn.style.display = "block";
-        btn.style.width = "100%";
-        btn.style.textAlign = "left";
-        btn.style.padding = "8px 10px";
-        btn.style.border = "1px solid rgba(148,163,184,0.18)";
-        btn.style.background = "rgba(15,23,42,0.3)";
-        btn.style.color = "#e5e7eb";
-        btn.style.marginBottom = "8px";
         btn.innerHTML = `<div style="font-size:12px;opacity:.8">${friendlyTime(ev.ts)} | ${ev.kind || "-"} | ${ev.mode || "-"}</div>
                        <div style="font-size:13px">${ev.data?.domain || "-"}</div>`;
+        if (!firstEvent) firstEvent = { ev, btn };
 
         btn.addEventListener("click", () => {
-          const normal = explainEventNormal(ev);
-          const adv = explainEventAdvanced(ev).replaceAll("\n", "<br/>");
-          const content = getDrawerMode() === "advanced"
-            ? `<pre style="white-space:pre-wrap">${adv}</pre>`
-            : `<div>${normal}</div>`;
-          qs("drawerSummary").innerHTML = content;
+          activeDrawerEvent = ev;
+          const adv = explainEventAdvanced(activeDrawerEvent).replaceAll("\n", "<br/>");
+          for (const node of box.querySelectorAll(".event-row")) {
+            node.classList.remove("active");
+          }
+          btn.classList.add("active");
+          qs("drawerSummary").innerHTML = `<pre style="white-space:pre-wrap">${adv}</pre>`;
         });
 
         box.appendChild(btn);
       }
+      if (firstEvent) firstEvent.btn.click();
     }
-
-    drawer.classList.remove("hidden");
-    backdrop.classList.remove("hidden");
   }
 
   return {
     closeDrawer,
-    setDrawerMode,
     resetInsightSection,
     closeInsightSheet,
     showToast,

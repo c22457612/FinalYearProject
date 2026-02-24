@@ -23,8 +23,6 @@ export function createSelectionController(deps) {
     getVizIndex,
     resetInsightSection,
     ensureInsightVisible,
-    getViewMode,
-    openDrawer,
   } = deps;
 
   function clearVizSelection({
@@ -98,7 +96,6 @@ export function createSelectionController(deps) {
       allowAutoScroll: scrollMode !== "never",
       scrollSource,
     });
-    closeDrawer();
     updateDrawerButtonState();
     updateFilterSummary();
   }
@@ -146,18 +143,10 @@ export function createSelectionController(deps) {
     return true;
   }
 
-  function openDrawerForCurrentSelection() {
-    if (getViewMode() !== "power") return;
-    const selection = getVizSelection();
-    if (!selection?.events?.length) return;
-    openDrawer(selection.title, selection.summaryHtml, selection.events);
-  }
-
   return {
     clearVizSelection,
     setVizSelection,
     explainCurrentScope,
     selectionStillValid,
-    openDrawerForCurrentSelection,
   };
 }

@@ -62,7 +62,6 @@
 
           <div class="viz-controls">
             <button id="vizInfoBtn" class="viz-nav" type="button">Explain / Info</button>
-            <button id="vizOpenDrawerBtn" class="viz-nav" type="button" disabled>Technical details</button>
           </div>
         </div>
 
@@ -251,6 +250,15 @@
               <div class="insight-label">Limits</div>
               <ul id="insightLimits" class="insight-list"></ul>
             </div>
+            <details id="insightTechnicalPanel" class="insight-technical hidden">
+              <summary>Technical evidence (Power)</summary>
+              <div class="insight-technical-body">
+                <div id="drawerTitle" class="insight-technical-title">Selection</div>
+                <div class="insight-technical-label">Advanced details</div>
+                <div id="drawerSummary" class="insight-technical-summary"></div>
+                <div id="drawerEvents" class="insight-technical-events"></div>
+              </div>
+            </details>
             <div id="insightActions" class="insight-actions"></div>
           </div>
         </section>
@@ -379,25 +387,6 @@
       </div>
     </section>
   </div>
-
-  <div id="vizDrawerBackdrop" class="drawer-backdrop hidden"></div>
-
-  <aside id="vizDrawer" class="drawer hidden">
-    <div class="drawer-header">
-      <div id="drawerTitle" class="drawer-title">Selection</div>
-      <button id="drawerCloseBtn" class="drawer-close">&times;</button>
-    </div>
-
-    <div class="drawer-body">
-      <div class="drawer-toggle">
-        <button id="drawerNormalBtn" class="drawer-tab active">Normal</button>
-        <button id="drawerAdvancedBtn" class="drawer-tab">Advanced</button>
-      </div>
-
-      <div id="drawerSummary" class="drawer-summary"></div>
-      <div id="drawerEvents" class="drawer-events"></div>
-    </div>
-  </aside>
 
   <div id="confirmModalBackdrop" class="modal-backdrop hidden"></div>
   <div id="confirmModal" class="confirm-modal hidden">

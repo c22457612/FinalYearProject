@@ -7,6 +7,7 @@ import { createVendorScope } from "./vendor-scope.js";
 import { createViewNavigationController } from "./view-navigation-controller.js";
 import { createPollingController } from "./polling-controller.js";
 import { createSelectionController } from "./selection-controller.js";
+import { createChartOrchestrationController } from "./chart-orchestration-controller.js";
 import {
   defaultFilterState,
   defaultVizOptions,
@@ -49,7 +50,6 @@ let filteredEventsSourceRef = null;
 let filteredEventsFilterSignature = "";
 let vizIndex = 0;
 let vizSelection = null; // { type, value, events, fromTs, toTs, title, summaryHtml }
-let drawerMode = "normal";
 
 let lastWindowFetchKey = null;
 let lastWindowFetchAt = 0;
@@ -197,6 +197,34 @@ const chartBuilders = createChartBuilders({
   partyLabels: PARTY_LABELS,
 });
 
+const chartOrchestrationController = createChartOrchestrationController({
+  getSiteLens,
+  getSelectedVendor: () => selectedVendor,
+  setSelectedVendor: (next) => {
+    selectedVendor = next;
+  },
+  getVizMetric: () => vizOptions.metric,
+  buildVendorRollup,
+  buildTimelineOption: chartBuilders.buildTimelineOption,
+  buildTopDomainsOption: chartBuilders.buildTopDomainsOption,
+  buildKindsOption: chartBuilders.buildKindsOption,
+  buildApiGatingOption: chartBuilders.buildApiGatingOption,
+  buildResourceTypesOption: chartBuilders.buildResourceTypesOption,
+  buildModeBreakdownOption: chartBuilders.buildModeBreakdownOption,
+  buildPartySplitOption: chartBuilders.buildPartySplitOption,
+  buildHourHeatmapOption: chartBuilders.buildHourHeatmapOption,
+  buildVendorOverviewOption: chartBuilders.buildVendorOverviewOption,
+  buildRiskTrendOption: chartBuilders.buildRiskTrendOption,
+  buildBaselineDetectedBlockedTrendOption: chartBuilders.buildBaselineDetectedBlockedTrendOption,
+  buildVendorKindMatrixOption: chartBuilders.buildVendorKindMatrixOption,
+  buildRuleIdFrequencyOption: chartBuilders.buildRuleIdFrequencyOption,
+  setVizSelection,
+  renderVendorChips,
+  renderECharts,
+  focusVendorDetailsUx,
+  hideVendorSelectionCue,
+});
+
 const sidebarModules = createSidebarModules({
   qs,
   friendlyTime,
@@ -245,10 +273,6 @@ const insightSheet = createInsightSheet({
   getSelectedVendor: () => selectedVendor,
   getViews: () => VIEWS,
   getVizIndex: () => vizIndex,
-  getDrawerMode: () => drawerMode,
-  setDrawerModeState: (mode) => {
-    drawerMode = mode;
-  },
 });
 
 function setStatus(ok, text) {
@@ -344,8 +368,6 @@ const selectionController = createSelectionController({
   getVizIndex: () => vizIndex,
   resetInsightSection,
   ensureInsightVisible,
-  getViewMode: () => viewMode,
-  openDrawer,
 });
 
 const pollingController = createPollingController({
@@ -707,10 +729,6 @@ function closeDrawer() {
   insightSheet.closeDrawer();
 }
 
-function setDrawerMode(mode) {
-  insightSheet.setDrawerMode(mode);
-}
-
 function ensureInsightVisible({ force = false, source = "selection" } = {}) {
   insightVisibility.ensureInsightVisible({ force, source });
 }
@@ -739,42 +757,12 @@ function openInsightSheet(selection, evidence, opts) {
   insightSheet.openInsightSheet(selection, evidence, opts);
 }
 
-function openDrawer(title, summaryHtml, evidenceEvents) {
-  insightSheet.openDrawer(title, summaryHtml, evidenceEvents);
-}
-
 function clearBrushSelection() {
   try {
     chart?.dispatchAction?.({ type: "brush", areas: [] });
   } catch {
     // ignore ECharts brush clear errors
   }
-}
-
-function buildChartPointState(viewId, params) {
-  if (!params) return null;
-
-  const seriesIndex = typeof params.seriesIndex === "number" ? params.seriesIndex : 0;
-  const dataIndex = typeof params.dataIndex === "number" ? params.dataIndex : null;
-  const effectiveViewId = chart?.__vptMeta?.effectiveViewId || viewId;
-  let semanticKey = "";
-
-  if (viewId === "timeline" || viewId === "riskTrend" || viewId === "baselineDetectedBlockedTrend") {
-    semanticKey = `bin:${typeof dataIndex === "number" ? dataIndex : ""}`;
-  } else if (viewId === "hourHeatmap" || viewId === "vendorKindMatrix") {
-    const value = Array.isArray(params?.value) ? params.value : [];
-    semanticKey = `cell:${Number(value[0] || 0)}:${Number(value[1] || 0)}`;
-  } else {
-    semanticKey = `label:${String(params?.name ?? params?.axisValue ?? "")}`;
-  }
-
-  return {
-    viewId,
-    effectiveViewId,
-    seriesIndex,
-    dataIndex,
-    semanticKey,
-  };
 }
 
 function resolveChartPointForOption(point, option, effectiveViewId) {
@@ -1054,19 +1042,6 @@ function selectionStillValid() {
 const {
   buildEmptyChartOption,
   getTimelineBinMs,
-  buildTimelineOption,
-  buildTopDomainsOption,
-  buildKindsOption,
-  buildApiGatingOption,
-  buildResourceTypesOption,
-  buildModeBreakdownOption,
-  buildPartySplitOption,
-  buildHourHeatmapOption,
-  buildVendorOverviewOption,
-  buildRiskTrendOption,
-  buildBaselineDetectedBlockedTrendOption,
-  buildVendorKindMatrixOption,
-  buildRuleIdFrequencyOption,
   hasSeriesData,
   getModeEmptyMessage,
 } = chartBuilders;
@@ -1289,7 +1264,6 @@ function renderECharts() {
   let lensPivotActive = false;
   const titleEl = qs("vizTitle");
   const events = getChartEvents();
-  const lensApi = getSiteLens();
 
   if (
     chartRenderPerfState.chartRef === c
@@ -1333,37 +1307,10 @@ function renderECharts() {
     return;
   }
 
-  let built;
-  if (requestedViewId === "vendorOverview") {
-    const vendorCardinality = buildVendorRollup(events).length;
-    const shouldPivot = !!(lensApi?.shouldAutoPivotVendorOverview
-      && lensApi.shouldAutoPivotVendorOverview({
-        viewId: requestedViewId,
-        selectedVendor,
-        events,
-        vendorCardinality,
-      }));
-
-    if (shouldPivot) {
-      built = buildTimelineOption(events);
-      effectiveViewId = "timeline";
-      lensPivotActive = true;
-    } else {
-      built = buildVendorOverviewOption(events);
-    }
-  } else if (requestedViewId === "riskTrend") built = buildRiskTrendOption(events);
-  else if (requestedViewId === "baselineDetectedBlockedTrend") built = buildBaselineDetectedBlockedTrendOption(events);
-  else if (requestedViewId === "timeline") built = buildTimelineOption(events);
-  else if (requestedViewId === "topSeen") built = buildTopDomainsOption(events, vizOptions.metric);
-  else if (requestedViewId === "kinds") built = buildKindsOption(events);
-  else if (requestedViewId === "apiGating") built = buildApiGatingOption(events);
-  else if (requestedViewId === "vendorKindMatrix") built = buildVendorKindMatrixOption(events);
-  else if (requestedViewId === "ruleIdFrequency") built = buildRuleIdFrequencyOption(events);
-  else if (requestedViewId === "resourceTypes") built = buildResourceTypesOption(events);
-  else if (requestedViewId === "modeBreakdown") built = buildModeBreakdownOption(events);
-  else if (requestedViewId === "partySplit") built = buildPartySplitOption(events);
-  else if (requestedViewId === "hourHeatmap") built = buildHourHeatmapOption(events);
-  else built = buildTopDomainsOption(events, vizOptions.metric);
+  const viewBuild = chartOrchestrationController.buildViewOption(requestedViewId, events);
+  const built = viewBuild.built;
+  effectiveViewId = viewBuild.effectiveViewId;
+  lensPivotActive = viewBuild.lensPivotActive;
   focusedLensPivotActive = lensPivotActive;
   applyPersistedDataZoom(built?.option, effectiveViewId);
   applyHoverPointerConfigToOption(built?.option);
@@ -1413,149 +1360,12 @@ function renderECharts() {
 }
 
 function handleChartClick(viewId, params) {
-  const meta = chart?.__vptMeta?.built?.meta;
-  if (!meta) return;
-  const chartPoint = buildChartPointState(viewId, params);
-
-  if (viewId === "timeline" || viewId === "riskTrend" || viewId === "baselineDetectedBlockedTrend") {
-    const idx = params?.dataIndex;
-    if (typeof idx !== "number") return;
-
-    const binEvents = meta.binEvents?.[idx] || [];
-    const start = meta.start + idx * meta.binMs;
-    const end = start + meta.binMs;
-
-    setVizSelection({
-      type: "bin",
-      value: String(idx),
-      fromTs: start,
-      toTs: end,
-      title: `Time bin ${new Date(start).toLocaleTimeString()}-${new Date(end).toLocaleTimeString()}`,
-      summaryHtml: `<div class="muted">${binEvents.length} events in this interval.</div>`,
-      events: binEvents,
-      chartPoint,
-      scrollMode: "force",
-    });
-    return;
-  }
-
-  if (viewId === "vendorOverview") {
-    const wasAllVendors = !selectedVendor?.vendorId;
-    const label = params?.name;
-    const evs = meta.evidenceByLabel?.get(label) || [];
-    const vendor = meta.vendorByLabel?.get(label) || null;
-    if (vendor) {
-      selectedVendor = vendor;
-      renderVendorChips();
-      renderECharts();
-      focusVendorDetailsUx(vendor.vendorName || label || "Vendor", evs.length);
-    } else {
-      renderVendorChips();
-      hideVendorSelectionCue();
-    }
-
-    setVizSelection({
-      type: "vendor",
-      value: label || "",
-      title: label || "Vendor",
-      summaryHtml: `<div class="muted">${evs.length} vendor-scoped events (current filters/range).</div>`,
-      events: evs,
-      chartPoint,
-      scrollMode: wasAllVendors ? "never" : "force",
-    });
-    return;
-  }
-
-  if (viewId === "topSeen" || viewId === "apiGating") {
-    const domain = params?.name;
-    const evs = meta.evidenceByDomain?.get(domain) || [];
-
-    setVizSelection({
-      type: "domain",
-      value: domain || "",
-      title: domain || "Selection",
-      summaryHtml: `<div class="muted">${evs.length} matching events (current filters/range).</div>`,
-      events: evs,
-      chartPoint,
-      scrollMode: "force",
-    });
-    return;
-  }
-
-  if (viewId === "kinds" || viewId === "ruleIdFrequency") {
-    const kind = params?.name;
-    const evs = meta.evidenceByLabel?.get(kind) || [];
-
-    setVizSelection({
-      type: viewId === "kinds" ? "kind" : "rule",
-      value: kind || "",
-      title: viewId === "kinds" ? `Kind: ${kind}` : `Rule ID: ${kind}`,
-      summaryHtml: `<div class="muted">${evs.length} events in this group (current filters/range).</div>`,
-      events: evs,
-      chartPoint,
-      scrollMode: "force",
-    });
-    return;
-  }
-
-  if (viewId === "resourceTypes" || viewId === "modeBreakdown" || viewId === "partySplit") {
-    const label = params?.name;
-    const evs = meta.evidenceByLabel?.get(label) || [];
-
-    setVizSelection({
-      type: viewId,
-      value: label || "",
-      title: label || "Selection",
-      summaryHtml: `<div class="muted">${evs.length} events in this group (current filters/range).</div>`,
-      events: evs,
-      chartPoint,
-      scrollMode: "force",
-    });
-    return;
-  }
-
-  if (viewId === "hourHeatmap") {
-    const value = Array.isArray(params?.value) ? params.value : null;
-    if (!value) return;
-
-    const hour = Number(value[0] || 0);
-    const day = Number(value[1] || 0);
-    const key = `${day}:${hour}`;
-    const evs = meta.evidenceByCell?.get(key) || [];
-    const dayName = meta.dayNames?.[day] || `day ${day}`;
-    const hourLabel = meta.hourLabels?.[hour] || `${hour}:00`;
-
-    setVizSelection({
-      type: "heatCell",
-      value: key,
-      title: `Heat cell: ${dayName} ${hourLabel}`,
-      summaryHtml: `<div class="muted">${evs.length} events in this hour/day bucket.</div>`,
-      events: evs,
-      chartPoint,
-      scrollMode: "force",
-    });
-    return;
-  }
-
-  if (viewId === "vendorKindMatrix") {
-    const value = Array.isArray(params?.value) ? params.value : null;
-    if (!value) return;
-    const x = Number(value[0] || 0);
-    const y = Number(value[1] || 0);
-    const key = `${x}:${y}`;
-    const evs = meta.evidenceByCell?.get(key) || [];
-    const vendor = meta.vendors?.[y] || "Vendor";
-    const kind = meta.kinds?.[x] || "Kind";
-    setVizSelection({
-      type: "vendorKindCell",
-      value: key,
-      title: `${vendor} / ${kind}`,
-      summaryHtml: `<div class="muted">${evs.length} events in this vendor-kind cell.</div>`,
-      events: evs,
-      chartPoint,
-      scrollMode: "force",
-    });
-  }
+  chartOrchestrationController.handleChartClick({
+    viewId,
+    params,
+    meta: chart?.__vptMeta?.built?.meta,
+    effectiveViewId: chart?.__vptMeta?.effectiveViewId || viewId,
+  });
 }
 
 function getVendorMetricValue(row) {
@@ -1601,10 +1411,6 @@ function clearVendorFocus() {
   renderECharts();
   renderRecentEventsFromEvents(getChartEvents(), "No events match current filters.");
   updateFilterSummary();
-}
-
-function openDrawerForCurrentSelection() {
-  selectionController.openDrawerForCurrentSelection();
 }
 
 function applyFilterChanges() {
@@ -1668,12 +1474,6 @@ export function bootSiteInsights() {
     });
   }
 
-  qs("drawerCloseBtn")?.addEventListener("click", () => closeDrawer());
-  qs("vizDrawerBackdrop")?.addEventListener("click", () => closeDrawer());
-
-  qs("drawerNormalBtn")?.addEventListener("click", () => setDrawerMode("normal"));
-  qs("drawerAdvancedBtn")?.addEventListener("click", () => setDrawerMode("advanced"));
-  setDrawerMode("normal");
   setViewMode(qs("viewModeSelect")?.value || "easy", { rerender: false });
   sidebarModules.initControls();
 
@@ -1687,9 +1487,6 @@ export function bootSiteInsights() {
 
   qs("vizInfoBtn")?.addEventListener("click", () => {
     explainCurrentScope({ forceScroll: true });
-  });
-  qs("vizOpenDrawerBtn")?.addEventListener("click", () => {
-    openDrawerForCurrentSelection();
   });
   qs("confirmModalBackdrop")?.addEventListener("click", () => closeConfirmModal());
   qs("confirmCancelBtn")?.addEventListener("click", () => closeConfirmModal());
