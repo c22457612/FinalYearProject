@@ -29,6 +29,25 @@ export function createPollingController(deps) {
     renderRecentEvents,
   } = deps;
 
+  function buildEventsFingerprint(list) {
+    const items = Array.isArray(list) ? list : [];
+    const len = items.length;
+    if (!len) return "0";
+
+    const sampleIndexes = [0, Math.floor(len / 3), Math.floor((2 * len) / 3), len - 1];
+    const sample = sampleIndexes.map((idx) => {
+      const ev = items[idx] || {};
+      return [
+        String(ev.id || ""),
+        String(ev.ts || ""),
+        String(ev.kind || ""),
+        String(ev.site || ""),
+      ].join("#");
+    }).join("|");
+
+    return `${len}|${sample}`;
+  }
+
   async function fetchWindowEvents(force = false) {
     const { key, from, to } = getRangeWindow();
     const fetchKey = `${key}:${from ?? "null"}:${to ?? "null"}`;
@@ -50,7 +69,17 @@ export function createPollingController(deps) {
     const res = await fetch(`/api/events?${q.toString()}`);
     if (!res.ok) throw new Error(`events window HTTP ${res.status}`);
 
-    setWindowEvents(await res.json());
+    const nextWindowEvents = await res.json();
+    const currentWindowEvents = getWindowEvents();
+    if (
+      Array.isArray(currentWindowEvents)
+      && Array.isArray(nextWindowEvents)
+      && buildEventsFingerprint(currentWindowEvents) === buildEventsFingerprint(nextWindowEvents)
+    ) {
+      return;
+    }
+
+    setWindowEvents(nextWindowEvents);
   }
 
   async function applyRangeChanges() {

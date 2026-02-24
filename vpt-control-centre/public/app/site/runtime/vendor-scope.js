@@ -25,6 +25,10 @@ export function createVendorScope(deps) {
   let sortedVendorRowsCacheBaseRows = null;
   let sortedVendorRowsCacheMetric = "";
   let sortedVendorRowsCacheRows = [];
+  let vendorChipsCacheContainer = null;
+  let vendorChipsCacheSignature = "";
+  let vendorChipsAllButton = null;
+  const vendorChipButtonsById = new Map();
 
   function classifyVendorForEvent(ev) {
     if (ev && typeof ev === "object" && classifiedEventCache.has(ev)) {
@@ -122,10 +126,98 @@ export function createVendorScope(deps) {
     return rows;
   }
 
+  function buildVendorChipSignature(rows, viewMode, metric) {
+    const list = Array.isArray(rows) ? rows : [];
+    const parts = [
+      String(viewMode || ""),
+      String(metric || ""),
+      String(list.length),
+    ];
+    for (const row of list) {
+      parts.push([
+        String(row?.vendorId || ""),
+        String(row?.vendorName || ""),
+        String(row?.seen || 0),
+        String(row?.blocked || 0),
+        String(row?.observed || 0),
+        String(row?.other || 0),
+        String(Array.isArray(row?.domains) ? row.domains.length : 0),
+      ].join(":"));
+    }
+    return parts.join("|");
+  }
+
+  function updateVendorChipActiveState() {
+    const selectedVendorId = String(getSelectedVendor()?.vendorId || "");
+    if (vendorChipsAllButton) {
+      vendorChipsAllButton.classList.toggle("active", !selectedVendorId);
+    }
+    for (const [vendorId, btn] of vendorChipButtonsById.entries()) {
+      btn.classList.toggle("active", vendorId === selectedVendorId);
+    }
+  }
+
+  function selectAllVendors() {
+    if (!getSelectedVendor()?.vendorId) return;
+    setSelectedVendor(null);
+    setSelectedInsightTarget(null);
+    hideVendorSelectionCue();
+    clearVizSelection({ close: true, clearBrush: true, renderTable: false, updateSummary: false });
+    renderVendorChips();
+    renderECharts();
+    renderRecentEventsFromEvents(getChartEvents(), "No events match current filters.");
+    updateFilterSummary();
+  }
+
+  function selectVendorRow(row) {
+    if (!row?.vendorId) return;
+    if (getSelectedVendor()?.vendorId === row.vendorId) return;
+    setSelectedVendor({
+      vendorId: row.vendorId,
+      vendorName: row.vendorName,
+      category: row.category,
+      domains: row.domains || [],
+      riskHints: row.riskHints || [],
+    });
+    setSelectedInsightTarget({ type: "vendor", value: row.vendorName });
+    clearVizSelection({ close: true, clearBrush: true, renderTable: false, updateSummary: false });
+    renderVendorChips();
+    renderECharts();
+    focusVendorDetailsUx(row.vendorName, row.seen || 0);
+    renderRecentEventsFromEvents(getChartEvents(), "No events match current filters.");
+    updateFilterSummary();
+  }
+
+  function rebuildVendorChipsDom(box, rows) {
+    box.innerHTML = "";
+    vendorChipButtonsById.clear();
+    vendorChipsAllButton = null;
+
+    const allBtn = document.createElement("button");
+    allBtn.type = "button";
+    allBtn.className = "vendor-chip";
+    allBtn.textContent = "All vendors";
+    allBtn.addEventListener("click", () => {
+      selectAllVendors();
+    });
+    box.appendChild(allBtn);
+    vendorChipsAllButton = allBtn;
+
+    for (const row of rows) {
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = "vendor-chip";
+      btn.addEventListener("click", () => {
+        selectVendorRow(row);
+      });
+      box.appendChild(btn);
+      vendorChipButtonsById.set(String(row.vendorId || ""), btn);
+    }
+  }
+
   function renderVendorChips() {
     const box = qs("vendorChips");
     if (!box) return;
-    box.innerHTML = "";
 
     const baseRows = buildVendorRollup(getFilteredEvents());
     const metric = String(getVizMetric() || "");
@@ -149,47 +241,21 @@ export function createVendorScope(deps) {
 
     const rows = allRows
       .slice(0, getViewMode() === "easy" ? 8 : 14);
+    const chipSignature = buildVendorChipSignature(rows, getViewMode(), metric);
 
-    const allBtn = document.createElement("button");
-    allBtn.type = "button";
-    allBtn.className = `vendor-chip ${!getSelectedVendor() ? "active" : ""}`.trim();
-    allBtn.textContent = "All vendors";
-    allBtn.addEventListener("click", () => {
-      setSelectedVendor(null);
-      setSelectedInsightTarget(null);
-      hideVendorSelectionCue();
-      clearVizSelection({ close: true, clearBrush: true, renderTable: false, updateSummary: false });
-      renderVendorChips();
-      renderECharts();
-      renderRecentEventsFromEvents(getChartEvents(), "No events match current filters.");
-      updateFilterSummary();
-    });
-    box.appendChild(allBtn);
+    if (box !== vendorChipsCacheContainer || chipSignature !== vendorChipsCacheSignature) {
+      rebuildVendorChipsDom(box, rows);
+      vendorChipsCacheContainer = box;
+      vendorChipsCacheSignature = chipSignature;
+    }
 
     for (const row of rows) {
-      const btn = document.createElement("button");
-      btn.type = "button";
-      btn.className = `vendor-chip ${getSelectedVendor()?.vendorId === row.vendorId ? "active" : ""}`.trim();
       const metricValue = getVendorMetricValue(row);
-      btn.textContent = `${row.vendorName} (${metricValue})`;
-      btn.addEventListener("click", () => {
-        setSelectedVendor({
-          vendorId: row.vendorId,
-          vendorName: row.vendorName,
-          category: row.category,
-          domains: row.domains || [],
-          riskHints: row.riskHints || [],
-        });
-        setSelectedInsightTarget({ type: "vendor", value: row.vendorName });
-        clearVizSelection({ close: true, clearBrush: true, renderTable: false, updateSummary: false });
-        renderVendorChips();
-        renderECharts();
-        focusVendorDetailsUx(row.vendorName, row.seen || 0);
-        renderRecentEventsFromEvents(getChartEvents(), "No events match current filters.");
-        updateFilterSummary();
-      });
-      box.appendChild(btn);
+      const btn = vendorChipButtonsById.get(String(row.vendorId || ""));
+      if (btn) btn.textContent = `${row.vendorName} (${metricValue})`;
     }
+
+    updateVendorChipActiveState();
   }
 
   return {
