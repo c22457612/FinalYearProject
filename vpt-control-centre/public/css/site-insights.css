@@ -536,6 +536,9 @@
 }
 
 .insight-technical > summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
   cursor: pointer;
   list-style: none;
   font-size: 0.75rem;
@@ -548,6 +551,22 @@
 
 .insight-technical > summary::-webkit-details-marker {
   display: none;
+}
+
+.insight-technical > summary::after {
+  content: "Show details +";
+  color: var(--color-text-faint);
+  font-size: 0.68rem;
+  text-transform: none;
+  letter-spacing: 0;
+}
+
+.insight-technical[open] > summary::after {
+  content: "Hide details -";
+}
+
+.insight-technical > summary:hover {
+  color: var(--color-text-main);
 }
 
 .insight-technical-body {

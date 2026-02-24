@@ -350,7 +350,6 @@ export function createInsightSheet(deps) {
     if (!panel) return;
 
     panel.classList.remove("hidden");
-    panel.open = true;
 
     qs("drawerTitle").textContent = title || "Selection";
     qs("drawerSummary").innerHTML = "";
