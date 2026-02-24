@@ -4,6 +4,9 @@ import { createScopeInsights } from "./scope-insights.js";
 import { createInsightVisibility } from "./insight-visibility.js";
 import { createInsightSheet } from "./insight-sheet.js";
 import { createVendorScope } from "./vendor-scope.js";
+import { createViewNavigationController } from "./view-navigation-controller.js";
+import { createPollingController } from "./polling-controller.js";
+import { createSelectionController } from "./selection-controller.js";
 import {
   defaultFilterState,
   defaultVizOptions,
@@ -52,7 +55,6 @@ let isFetchSiteInFlight = false;
 let viewMode = "easy"; // easy | power
 let selectedVendor = null; // { vendorId, vendorName, ... } | null
 let selectedInsightTarget = null;
-let forceVendorCompareOnce = false;
 let focusedLensPivotActive = false;
 const dataZoomStateByView = new Map(); // key: effective view id, value: { start, end }
 let selectedChartPoint = null; // { viewId, effectiveViewId, seriesIndex, dataIndex, semanticKey }
@@ -270,158 +272,150 @@ function getSiteLens() {
   return window.VPT?.siteLens || null;
 }
 
+const viewNavigationController = createViewNavigationController({
+  qs,
+  getDocumentBody: () => document.body,
+  views: VIEWS,
+  easyViewIds: EASY_VIEW_IDS,
+  powerOnlyViewLabelSuffix: POWER_ONLY_VIEW_LABEL_SUFFIX,
+  privacyFilterAllOnlyViewIds: PRIVACY_FILTER_ALL_ONLY_VIEW_IDS,
+  getViewMode: () => viewMode,
+  setViewModeState: (next) => {
+    viewMode = next;
+  },
+  getVizIndex: () => vizIndex,
+  setVizIndex: (next) => {
+    vizIndex = next;
+  },
+  getVizSelection: () => vizSelection,
+  getFilterState: () => filterState,
+  closeDrawer,
+  writeFilterStateToControls,
+  deriveFilteredEvents,
+  renderVendorChips,
+  clearVizSelection,
+  renderECharts,
+  renderRecentEventsFromEvents,
+  getChartEvents,
+  updateFilterSummary,
+});
+
+const selectionController = createSelectionController({
+  pickPrimarySelectedEvent,
+  getEventKey,
+  getVizSelection: () => vizSelection,
+  setVizSelectionState: (next) => {
+    vizSelection = next;
+  },
+  setSelectedInsightTarget: (next) => {
+    selectedInsightTarget = next;
+  },
+  setSelectedRecentEventKey: (next) => {
+    selectedRecentEventKey = next;
+  },
+  clearActiveEvidence: () => {
+    insightSheet.clearActiveEvidence();
+  },
+  clearChartSelectionHighlight,
+  setSelectedChartPoint: (next) => {
+    selectedChartPoint = next;
+  },
+  applyChartSelectionHighlight,
+  clearBrushSelection,
+  closeDrawer,
+  closeInsightSheet,
+  renderRecentEventsFromEvents,
+  getChartEvents,
+  syncInteractionOverlayOnCurrentChart,
+  updateDrawerButtonState,
+  updateFilterSummary,
+  openInsightSheet,
+  getViews: () => VIEWS,
+  getVizIndex: () => vizIndex,
+  resetInsightSection,
+  ensureInsightVisible,
+  getViewMode: () => viewMode,
+  openDrawer,
+});
+
+const pollingController = createPollingController({
+  getSiteName: () => siteName,
+  getRangeWindow,
+  getWindowEvents: () => windowEvents,
+  setWindowEvents: (next) => {
+    windowEvents = next;
+  },
+  getLastWindowFetchKey: () => lastWindowFetchKey,
+  setLastWindowFetchKey: (next) => {
+    lastWindowFetchKey = next;
+  },
+  getLastWindowFetchAt: () => lastWindowFetchAt,
+  setLastWindowFetchAt: (next) => {
+    lastWindowFetchAt = next;
+  },
+  getIsFetchSiteInFlight: () => isFetchSiteInFlight,
+  setIsFetchSiteInFlight: (next) => {
+    isFetchSiteInFlight = next;
+  },
+  getLatestSiteData: () => latestSiteData,
+  setLatestSiteData: (next) => {
+    latestSiteData = next;
+  },
+  setStatus,
+  renderHeader,
+  renderStats,
+  renderTopThirdParties,
+  deriveFilteredEvents,
+  renderVendorChips,
+  getVizSelection: () => vizSelection,
+  selectionStillValid,
+  clearVizSelection,
+  renderECharts,
+  renderRecentEventsFromEvents,
+  getSelectedRecentEventKey: () => selectedRecentEventKey,
+  getChartEvents,
+  updateFilterSummary,
+  renderRecentEvents,
+});
+
 function isViewAllowed(viewId, mode = viewMode) {
-  if (mode === "easy") return EASY_VIEW_IDS.has(viewId);
-  return true;
+  return viewNavigationController.isViewAllowed(viewId, mode);
 }
 
 function getAllowedViews(mode = viewMode) {
-  return VIEWS.filter((v) => isViewAllowed(v.id, mode));
+  return viewNavigationController.getAllowedViews(mode);
 }
 
 function getCurrentViewId() {
-  return VIEWS[vizIndex]?.id || VIEWS[0]?.id || "";
+  return viewNavigationController.getCurrentViewId();
 }
 
 function applyViewFilterPolicy() {
-  const viewId = getCurrentViewId();
-  const privacyAllOnly = PRIVACY_FILTER_ALL_ONLY_VIEW_IDS.has(viewId);
-  let changed = false;
-
-  if (privacyAllOnly && filterState.privacyStatus !== "all") {
-    filterState.privacyStatus = "all";
-    changed = true;
-  }
-
-  writeFilterStateToControls();
-
-  const privacyEl = qs("privacyStatusFilter");
-  if (privacyEl) {
-    privacyEl.disabled = privacyAllOnly;
-    privacyEl.title = privacyAllOnly
-      ? "Privacy filter is fixed to All for this view to avoid collapsed single-group charts."
-      : "";
-  }
-
-  return changed;
+  return viewNavigationController.applyViewFilterPolicy();
 }
 
 function updateVizPositionLabel() {
-  const el = qs("vizPositionLabel");
-  if (!el) return;
-
-  const allowed = getAllowedViews(viewMode);
-  if (!allowed.length) {
-    el.textContent = "- / 0";
-    return;
-  }
-
-  const currentId = VIEWS[vizIndex]?.id;
-  let idx = allowed.findIndex((v) => v.id === currentId);
-  if (idx < 0) idx = 0;
-  el.textContent = `${idx + 1} / ${allowed.length}`;
+  viewNavigationController.updateVizPositionLabel();
 }
 
 function updateViewAvailabilityHint() {
-  const el = qs("vizModeHelp");
-  if (!el) return;
-
-  if (viewMode !== "easy") {
-    el.textContent = "Power mode: all chart views are available.";
-    return;
-  }
-
-  const powerOnlyCount = VIEWS.filter((view) => !EASY_VIEW_IDS.has(view.id)).length;
-  if (!powerOnlyCount) {
-    el.textContent = "";
-    return;
-  }
-
-  el.textContent = `Easy mode is guided. ${powerOnlyCount} additional views are listed as "${POWER_ONLY_VIEW_LABEL_SUFFIX.trim()}" and unlock in Power mode.`;
+  viewNavigationController.updateViewAvailabilityHint();
 }
 
 function updateDrawerButtonState() {
-  const btn = qs("vizOpenDrawerBtn");
-  if (!btn) return;
-
-  const hasSelection = !!vizSelection?.events?.length;
-  const canOpen = hasSelection && viewMode === "power";
-  btn.disabled = !canOpen;
-  btn.textContent = viewMode === "power" ? "Technical details" : "Technical details (Power only)";
-  btn.title = canOpen
-    ? "Open the technical evidence drawer for the current selection."
-    : viewMode === "easy"
-      ? "Switch to Power mode and select evidence to open technical details."
-      : "Select a chart datapoint to open technical details.";
+  viewNavigationController.updateDrawerButtonState();
 }
 
 function syncVizSelectByMode() {
-  const select = qs("vizSelect");
-  if (!select) {
-    updateVizPositionLabel();
-    updateViewAvailabilityHint();
-    return;
-  }
-
-  for (const opt of select.options) {
-    const baseLabel = String(opt.dataset.baseLabel || opt.textContent || "")
-      .replace(POWER_ONLY_VIEW_LABEL_SUFFIX, "");
-    if (!opt.dataset.baseLabel) opt.dataset.baseLabel = baseLabel;
-    const allowed = isViewAllowed(opt.value, viewMode);
-    opt.hidden = false;
-    opt.disabled = !allowed;
-    opt.textContent = allowed ? baseLabel : `${baseLabel}${POWER_ONLY_VIEW_LABEL_SUFFIX}`;
-    opt.title = allowed ? "" : "Switch View controls to Power to use this chart mode.";
-  }
-
-  const currentId = VIEWS[vizIndex]?.id;
-  if (!isViewAllowed(currentId, viewMode)) {
-    const allowed = getAllowedViews(viewMode);
-    const fallback = allowed[0]?.id || VIEWS[0].id;
-    const idx = VIEWS.findIndex((v) => v.id === fallback);
-    vizIndex = idx >= 0 ? idx : 0;
-    select.value = VIEWS[vizIndex].id;
-  } else {
-    select.value = currentId;
-  }
-
-  updateVizPositionLabel();
-  updateViewAvailabilityHint();
+  viewNavigationController.syncVizSelectByMode();
 }
 
-function syncAdvancedControlsByMode() {
-  const panel = qs("advancedControlsPanel");
-  if (!panel) return;
-  if (viewMode === "easy") {
-    panel.open = false;
-  }
+function setViewMode(mode, opts = {}) {
+  viewNavigationController.setViewMode(mode, opts);
 }
 
-function setViewMode(mode, { rerender = true } = {}) {
-  viewMode = mode === "power" ? "power" : "easy";
-  document.body.classList.toggle("mode-easy", viewMode === "easy");
-  document.body.classList.toggle("mode-power", viewMode === "power");
-  if (qs("viewModeSelect")) qs("viewModeSelect").value = viewMode;
-
-  if (viewMode === "easy") {
-    closeDrawer();
-  }
-
-  syncAdvancedControlsByMode();
-  syncVizSelectByMode();
-  updateDrawerButtonState();
-  const policyChanged = applyViewFilterPolicy();
-  if (policyChanged) {
-    deriveFilteredEvents();
-  }
-  renderVendorChips();
-
-  if (rerender) {
-    clearVizSelection({ close: true, clearBrush: true, renderTable: false });
-    renderECharts();
-    renderRecentEventsFromEvents(getChartEvents(), "No events match current filters.");
-    updateFilterSummary();
-  }
+function switchViz(newIndex) {
+  viewNavigationController.switchViz(newIndex);
 }
 
 function classifyVendorForEvent(ev) {
@@ -519,6 +513,7 @@ function renderRecentEventsFromEvents(events, emptyMessage = "No events match cu
     return;
   }
 
+  const frag = document.createDocumentFragment();
   for (const ev of list.slice(-100)) {
     const tr = document.createElement("tr");
     tr.classList.add("recent-event-row");
@@ -543,8 +538,10 @@ function renderRecentEventsFromEvents(events, emptyMessage = "No events match cu
     tdMode.textContent = ev.mode || "-";
     tr.appendChild(tdMode);
 
-    tbody.appendChild(tr);
+    frag.appendChild(tr);
   }
+
+  tbody.appendChild(frag);
 }
 
 function deriveFilteredEvents() {
@@ -632,7 +629,7 @@ function renderStateGuidance({ events = [], lensPivotActive = false, emptyMessag
   }
 
   if (lensPivotActive) {
-    addStep("Use Open compare anyway if you want the original side-by-side vendor bars.");
+    addStep("Clear vendor focus to compare all vendors side-by-side.");
   }
 
   if (!title) {
@@ -984,26 +981,13 @@ function reapplyChartSelectionHighlight() {
   applyChartSelectionHighlight();
 }
 
-function clearVizSelection({ close = true, clearBrush = true, renderTable = true } = {}) {
-  vizSelection = null;
-  selectedInsightTarget = null;
-  insightSheet.clearActiveEvidence();
-  selectedRecentEventKey = "";
-  clearChartSelectionHighlight();
-
-  if (clearBrush) clearBrushSelection();
-  if (close) {
-    closeDrawer();
-    closeInsightSheet();
-  }
-
-  if (renderTable) {
-    renderRecentEventsFromEvents(getChartEvents(), "No events match current filters.");
-  }
-
-  syncInteractionOverlayOnCurrentChart();
-  updateDrawerButtonState();
-  updateFilterSummary();
+function clearVizSelection({
+  close = true,
+  clearBrush = true,
+  renderTable = true,
+  updateSummary = true,
+} = {}) {
+  selectionController.clearVizSelection({ close, clearBrush, renderTable, updateSummary });
 }
 
 function setVizSelection({
@@ -1017,82 +1001,25 @@ function setVizSelection({
   chartPoint = null,
   scrollMode = "auto", // auto | force | never
 } = {}) {
-  const evidence = Array.isArray(events) ? events.filter(Boolean) : [];
-
-  vizSelection = {
+  selectionController.setVizSelection({
     type,
     value,
     fromTs,
     toTs,
     title,
     summaryHtml,
-    events: evidence,
-  };
-
-  const primaryEvent = pickPrimarySelectedEvent(evidence);
-  selectedRecentEventKey = getEventKey(primaryEvent);
-  renderRecentEventsFromEvents(evidence, "No events match selection.", { selectedEventKey: selectedRecentEventKey });
-
-  if (chartPoint) {
-    selectedChartPoint = chartPoint;
-    applyChartSelectionHighlight();
-  } else {
-    clearChartSelectionHighlight();
-  }
-  syncInteractionOverlayOnCurrentChart();
-
-  selectedInsightTarget = { type, value };
-  const scrollSource = type === "vendor" ? "vendor" : "selection";
-  openInsightSheet(vizSelection, evidence, {
-    forceScroll: scrollMode === "force",
-    allowAutoScroll: scrollMode !== "never",
-    scrollSource,
+    events,
+    chartPoint,
+    scrollMode,
   });
-  closeDrawer();
-  updateDrawerButtonState();
-  updateFilterSummary();
 }
 
 function explainCurrentScope({ forceScroll = true } = {}) {
-  const existing = vizSelection?.events?.length ? vizSelection : null;
-  const evidence = existing ? existing.events : getChartEvents();
-  const scopeTitle = existing?.title || `${VIEWS[vizIndex]?.title || "Current view"} scope`;
-  const scopeSelection = existing || {
-    type: "scope",
-    value: VIEWS[vizIndex]?.id || "scope",
-    title: scopeTitle,
-    summaryHtml: "",
-    events: evidence,
-  };
-
-  if (!evidence.length) {
-    resetInsightSection();
-    ensureInsightVisible({ force: forceScroll, source: "scope" });
-    return;
-  }
-
-  openInsightSheet(scopeSelection, evidence, { forceScroll, scrollSource: "scope" });
+  selectionController.explainCurrentScope({ forceScroll });
 }
 
 function selectionStillValid() {
-  if (!vizSelection?.events?.length) return false;
-
-  const ids = vizSelection.events.map((e) => e?.id).filter(Boolean);
-  if (!ids.length) return false;
-
-  const scoped = getChartEvents();
-  const byId = new Map(scoped.filter((e) => e?.id).map((e) => [e.id, e]));
-  const refreshed = [];
-
-  for (const id of ids) {
-    const ev = byId.get(id);
-    if (!ev) return false;
-    refreshed.push(ev);
-  }
-
-  vizSelection.events = refreshed;
-  selectedRecentEventKey = getEventKey(pickPrimarySelectedEvent(refreshed));
-  return true;
+  return selectionController.selectionStillValid();
 }
 
 const {
@@ -1120,10 +1047,6 @@ const scopeInsights = createScopeInsights({
   getSiteLens,
   getTimelineBinMs,
   formatPercent,
-  onForceCompare: () => forceVendorCompareView(),
-  onClearVendorFocus: () => {
-    clearVendorFocus();
-  },
 });
 
 function readPrimaryDataZoomState() {
@@ -1331,7 +1254,6 @@ function renderECharts() {
 
   if (!events.length) {
     const empty = buildEmptyChartOption("No events match current filters");
-    forceVendorCompareOnce = false;
     focusedLensPivotActive = false;
     scopeInsights.renderLensNotice({ active: false });
     scopeInsights.renderScopeInsights(events);
@@ -1362,14 +1284,13 @@ function renderECharts() {
         vendorCardinality,
       }));
 
-    if (shouldPivot && !forceVendorCompareOnce) {
+    if (shouldPivot) {
       built = buildTimelineOption(events);
       effectiveViewId = "timeline";
       lensPivotActive = true;
     } else {
       built = buildVendorOverviewOption(events);
     }
-    forceVendorCompareOnce = false;
   } else if (requestedViewId === "riskTrend") built = buildRiskTrendOption(events);
   else if (requestedViewId === "baselineDetectedBlockedTrend") built = buildBaselineDetectedBlockedTrendOption(events);
   else if (requestedViewId === "timeline") built = buildTimelineOption(events);
@@ -1383,7 +1304,6 @@ function renderECharts() {
   else if (requestedViewId === "partySplit") built = buildPartySplitOption(events);
   else if (requestedViewId === "hourHeatmap") built = buildHourHeatmapOption(events);
   else built = buildTopDomainsOption(events, vizOptions.metric);
-  if (requestedViewId !== "vendorOverview") forceVendorCompareOnce = false;
   focusedLensPivotActive = lensPivotActive;
   applyPersistedDataZoom(built?.option, effectiveViewId);
   applyHoverPointerConfigToOption(built?.option);
@@ -1605,47 +1525,16 @@ function renderVendorScopeBanner() {
   const text = document.createElement("div");
   text.className = "vendor-scope-banner-text";
   text.textContent = focusedLensPivotActive
-    ? `Vendor focus: ${selectedVendor.vendorName || selectedVendor.vendorId} (${scopedCount} events). Showing timeline because compare has low data.`
-    : `Vendor focus: ${selectedVendor.vendorName || selectedVendor.vendorId} (${scopedCount} events in current scope).`;
+    ? `Selected Vendor: ${selectedVendor.vendorName || selectedVendor.vendorId} (${scopedCount} events). Showing timeline because compare has low data.`
+    : `Selected Vendor: ${selectedVendor.vendorName || selectedVendor.vendorId} (${scopedCount} events in current scope).`;
   box.appendChild(text);
-
-  const actions = document.createElement("div");
-  actions.className = "vendor-scope-banner-actions";
-  box.appendChild(actions);
-
-  if (focusedLensPivotActive) {
-    const compareBtn = document.createElement("button");
-    compareBtn.type = "button";
-    compareBtn.className = "viz-nav";
-    compareBtn.textContent = "Open compare anyway";
-    compareBtn.addEventListener("click", () => {
-      forceVendorCompareView();
-    });
-    actions.appendChild(compareBtn);
-  }
-
-  const clearBtn = document.createElement("button");
-  clearBtn.type = "button";
-  clearBtn.className = "viz-nav";
-  clearBtn.textContent = "Clear vendor focus";
-  clearBtn.addEventListener("click", () => {
-    clearVendorFocus();
-  });
-  actions.appendChild(clearBtn);
-}
-
-function forceVendorCompareView() {
-  forceVendorCompareOnce = true;
-  renderECharts();
-  renderRecentEventsFromEvents(getChartEvents(), "No events match current filters.");
-  updateFilterSummary();
 }
 
 function clearVendorFocus() {
   selectedVendor = null;
   selectedInsightTarget = null;
   hideVendorSelectionCue();
-  clearVizSelection({ close: true, clearBrush: true, renderTable: false });
+  clearVizSelection({ close: true, clearBrush: true, renderTable: false, updateSummary: false });
   renderVendorChips();
   renderECharts();
   renderRecentEventsFromEvents(getChartEvents(), "No events match current filters.");
@@ -1653,9 +1542,7 @@ function clearVendorFocus() {
 }
 
 function openDrawerForCurrentSelection() {
-  if (viewMode !== "power") return;
-  if (!vizSelection?.events?.length) return;
-  openDrawer(vizSelection.title, vizSelection.summaryHtml, vizSelection.events);
+  selectionController.openDrawerForCurrentSelection();
 }
 
 function applyFilterChanges() {
@@ -1666,7 +1553,7 @@ function applyFilterChanges() {
   }
   deriveFilteredEvents();
   renderVendorChips();
-  clearVizSelection({ close: true, clearBrush: true, renderTable: false });
+  clearVizSelection({ close: true, clearBrush: true, renderTable: false, updateSummary: false });
   renderECharts();
   renderRecentEventsFromEvents(getChartEvents(), "No events match current filters.");
   updateFilterSummary();
@@ -1674,95 +1561,22 @@ function applyFilterChanges() {
 
 function applyVizOptionChanges() {
   readVizOptionsFromControls();
-  clearVizSelection({ close: true, clearBrush: true, renderTable: false });
+  clearVizSelection({ close: true, clearBrush: true, renderTable: false, updateSummary: false });
   renderECharts();
   renderRecentEventsFromEvents(getChartEvents(), "No events match current filters.");
   updateFilterSummary();
 }
 
 async function applyRangeChanges() {
-  clearVizSelection({ close: true, clearBrush: true, renderTable: false });
-  try {
-    await fetchWindowEvents(true);
-  } catch (err) {
-    console.error(err);
-  }
-
-  deriveFilteredEvents();
-  renderVendorChips();
-  renderECharts();
-  renderRecentEventsFromEvents(getChartEvents(), "No events match current filters.");
-  updateFilterSummary();
+  await pollingController.applyRangeChanges();
 }
 
 async function fetchSite() {
-  if (isFetchSiteInFlight) return;
-  isFetchSiteInFlight = true;
-
-  try {
-    const url = `/api/sites/${encodeURIComponent(siteName)}?top=20&recent=100`;
-    const res = await fetch(url);
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-
-    const data = await res.json();
-    latestSiteData = data;
-
-    setStatus(true, "Connected");
-    renderHeader(data);
-    renderStats(data);
-    renderTopThirdParties(data);
-
-    await fetchWindowEvents();
-    deriveFilteredEvents();
-    renderVendorChips();
-
-    if (vizSelection && !selectionStillValid()) {
-      clearVizSelection({ close: true, clearBrush: true, renderTable: false });
-    }
-
-    renderECharts();
-
-    if (vizSelection?.events?.length && selectionStillValid()) {
-      renderRecentEventsFromEvents(vizSelection.events, "No events match selection.", { selectedEventKey: selectedRecentEventKey });
-    } else {
-      renderRecentEventsFromEvents(getChartEvents(), "No events match current filters.");
-    }
-
-    updateFilterSummary();
-  } catch (err) {
-    console.error(err);
-    setStatus(false, "Backend unavailable");
-
-    if (!latestSiteData) {
-      renderRecentEvents({ recentEvents: [] });
-    }
-  } finally {
-    isFetchSiteInFlight = false;
-  }
+  await pollingController.fetchSite();
 }
 
 async function fetchWindowEvents(force = false) {
-  const { key, from, to } = getRangeWindow();
-  const fetchKey = `${key}:${from ?? "null"}:${to ?? "null"}`;
-
-  const now = Date.now();
-  const stale = (now - lastWindowFetchAt) > 5000;
-
-  if (!force && fetchKey === lastWindowFetchKey && windowEvents.length && !stale) return;
-
-  lastWindowFetchKey = fetchKey;
-  lastWindowFetchAt = now;
-
-  const q = new URLSearchParams();
-  q.set("site", siteName);
-  if (from) q.set("from", String(from));
-  if (to) q.set("to", String(to));
-  q.set("limit", "20000");
-
-  const res = await fetch(`/api/events?${q.toString()}`);
-  if (!res.ok) throw new Error(`events window HTTP ${res.status}`);
-
-  windowEvents = await res.json();
+  await pollingController.fetchWindowEvents(force);
 }
 
 export function bootSiteInsights() {
@@ -1815,37 +1629,11 @@ export function bootSiteInsights() {
   qs("vizOpenDrawerBtn")?.addEventListener("click", () => {
     openDrawerForCurrentSelection();
   });
-  qs("vendorSelectionCueBtn")?.addEventListener("click", () => {
-    ensureInsightVisible({ force: true, source: "vendor" });
-  });
   qs("confirmModalBackdrop")?.addEventListener("click", () => closeConfirmModal());
   qs("confirmCancelBtn")?.addEventListener("click", () => closeConfirmModal());
   qs("confirmOkBtn")?.addEventListener("click", async () => {
     await insightSheet.confirmPendingAction();
   });
-
-  const switchViz = (newIndex) => {
-    const allowed = getAllowedViews(viewMode);
-    if (!allowed.length) return;
-    const currentId = VIEWS[vizIndex]?.id;
-    const currentAllowedIdx = Math.max(0, allowed.findIndex((v) => v.id === currentId));
-    const nextAllowedIdx = (newIndex + allowed.length) % allowed.length;
-    const chosen = allowed[(nextAllowedIdx + allowed.length) % allowed.length] || allowed[currentAllowedIdx];
-    const absoluteIdx = VIEWS.findIndex((v) => v.id === chosen.id);
-    vizIndex = absoluteIdx >= 0 ? absoluteIdx : 0;
-    if (qs("vizSelect")) qs("vizSelect").value = VIEWS[vizIndex].id;
-    updateVizPositionLabel();
-    const policyChanged = applyViewFilterPolicy();
-    if (policyChanged) {
-      deriveFilteredEvents();
-      renderVendorChips();
-    }
-
-    clearVizSelection({ close: true, clearBrush: true, renderTable: false });
-    renderECharts();
-    renderRecentEventsFromEvents(getChartEvents(), "No events match current filters.");
-    updateFilterSummary();
-  };
 
   qs("vizPrevBtn")?.addEventListener("click", () => {
     const allowed = getAllowedViews(viewMode);

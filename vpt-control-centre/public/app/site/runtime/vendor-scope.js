@@ -15,13 +15,31 @@ export function createVendorScope(deps) {
     updateFilterSummary,
     focusVendorDetailsUx,
   } = deps;
+  const classifiedEventCache = new WeakMap();
+  let chartEventsCacheBase = null;
+  let chartEventsCacheVendorId = "";
+  let chartEventsCacheResult = [];
+  let vendorRollupCacheEvents = null;
+  let vendorRollupCacheTaxonomy = null;
+  let vendorRollupCacheRows = null;
+  let sortedVendorRowsCacheBaseRows = null;
+  let sortedVendorRowsCacheMetric = "";
+  let sortedVendorRowsCacheRows = [];
 
   function classifyVendorForEvent(ev) {
+    if (ev && typeof ev === "object" && classifiedEventCache.has(ev)) {
+      return classifiedEventCache.get(ev);
+    }
+
     const taxonomy = getVendorTaxonomy();
-    if (taxonomy?.classifyEvent) return taxonomy.classifyEvent(ev);
+    if (taxonomy?.classifyEvent) {
+      const classified = taxonomy.classifyEvent(ev);
+      if (ev && typeof ev === "object") classifiedEventCache.set(ev, classified);
+      return classified;
+    }
 
     const fallback = String(ev?.data?.domain || ev?.site || "unknown");
-    return {
+    const classified = {
       vendorId: fallback,
       vendorName: fallback,
       category: "unmapped",
@@ -30,6 +48,8 @@ export function createVendorScope(deps) {
       domain: fallback,
       known: false,
     };
+    if (ev && typeof ev === "object") classifiedEventCache.set(ev, classified);
+    return classified;
   }
 
   function eventMatchesSelectedVendor(ev) {
@@ -41,7 +61,17 @@ export function createVendorScope(deps) {
 
   function getChartEvents() {
     const base = Array.isArray(getFilteredEvents()) ? getFilteredEvents() : [];
-    return base.filter((ev) => eventMatchesSelectedVendor(ev));
+    const selectedVendor = getSelectedVendor();
+    const selectedVendorId = String(selectedVendor?.vendorId || "");
+    if (base === chartEventsCacheBase && selectedVendorId === chartEventsCacheVendorId) {
+      return chartEventsCacheResult;
+    }
+
+    const next = base.filter((ev) => eventMatchesSelectedVendor(ev));
+    chartEventsCacheBase = base;
+    chartEventsCacheVendorId = selectedVendorId;
+    chartEventsCacheResult = next;
+    return next;
   }
 
   function getVendorMetricValue(row) {
@@ -53,11 +83,15 @@ export function createVendorScope(deps) {
   }
 
   function buildVendorRollup(events) {
+    const list = Array.isArray(events) ? events : [];
     const taxonomy = getVendorTaxonomy();
+    if (list === vendorRollupCacheEvents && taxonomy === vendorRollupCacheTaxonomy && vendorRollupCacheRows) {
+      return vendorRollupCacheRows;
+    }
     if (taxonomy?.rollupVendors) return taxonomy.rollupVendors(events);
 
     const map = new Map();
-    for (const ev of events || []) {
+    for (const ev of list) {
       const vendor = classifyVendorForEvent(ev);
       if (!map.has(vendor.vendorId)) {
         map.set(vendor.vendorId, {
@@ -81,7 +115,11 @@ export function createVendorScope(deps) {
       if (vendor.domain && !row.domains.includes(vendor.domain)) row.domains.push(vendor.domain);
       row.evs.push(ev);
     }
-    return Array.from(map.values());
+    const rows = Array.from(map.values());
+    vendorRollupCacheEvents = list;
+    vendorRollupCacheTaxonomy = taxonomy;
+    vendorRollupCacheRows = rows;
+    return rows;
   }
 
   function renderVendorChips() {
@@ -89,8 +127,19 @@ export function createVendorScope(deps) {
     if (!box) return;
     box.innerHTML = "";
 
-    const allRows = buildVendorRollup(getFilteredEvents())
-      .sort((a, b) => getVendorMetricValue(b) - getVendorMetricValue(a));
+    const baseRows = buildVendorRollup(getFilteredEvents());
+    const metric = String(getVizMetric() || "");
+    let allRows = [];
+    if (baseRows === sortedVendorRowsCacheBaseRows && metric === sortedVendorRowsCacheMetric) {
+      allRows = sortedVendorRowsCacheRows;
+    } else {
+      allRows = baseRows
+        .slice()
+        .sort((a, b) => getVendorMetricValue(b) - getVendorMetricValue(a));
+      sortedVendorRowsCacheBaseRows = baseRows;
+      sortedVendorRowsCacheMetric = metric;
+      sortedVendorRowsCacheRows = allRows;
+    }
 
     const selectedVendor = getSelectedVendor();
     if (selectedVendor?.vendorId && !allRows.some((r) => r.vendorId === selectedVendor.vendorId)) {
@@ -109,7 +158,7 @@ export function createVendorScope(deps) {
       setSelectedVendor(null);
       setSelectedInsightTarget(null);
       hideVendorSelectionCue();
-      clearVizSelection({ close: true, clearBrush: true, renderTable: false });
+      clearVizSelection({ close: true, clearBrush: true, renderTable: false, updateSummary: false });
       renderVendorChips();
       renderECharts();
       renderRecentEventsFromEvents(getChartEvents(), "No events match current filters.");
@@ -132,7 +181,7 @@ export function createVendorScope(deps) {
           riskHints: row.riskHints || [],
         });
         setSelectedInsightTarget({ type: "vendor", value: row.vendorName });
-        clearVizSelection({ close: true, clearBrush: true, renderTable: false });
+        clearVizSelection({ close: true, clearBrush: true, renderTable: false, updateSummary: false });
         renderVendorChips();
         renderECharts();
         focusVendorDetailsUx(row.vendorName, row.seen || 0);

@@ -4,8 +4,6 @@ export function createScopeInsights(deps) {
     getSiteLens,
     getTimelineBinMs,
     formatPercent,
-    onForceCompare,
-    onClearVendorFocus,
   } = deps;
 
   function renderLensNotice({ active = false, vendorName = "", eventCount = 0 } = {}) {
@@ -24,33 +22,8 @@ export function createScopeInsights(deps) {
     const msg = document.createElement("div");
     msg.className = "viz-lens-message";
     const scopeHint = Number(eventCount) > 0 ? ` (${Number(eventCount)} events in scope).` : ".";
-    msg.textContent = `Focused timeline is active${vendorName ? ` for ${vendorName}` : ""} because compare mode would have too little data${scopeHint} You can open compare anyway, clear vendor focus, or broaden range.`;
-
-    const actions = document.createElement("div");
-    actions.className = "viz-lens-actions";
-
-    const compareBtn = document.createElement("button");
-    compareBtn.type = "button";
-    compareBtn.className = "viz-lens-action";
-    compareBtn.textContent = "Open compare anyway";
-    compareBtn.addEventListener("click", () => {
-      if (typeof onForceCompare === "function") onForceCompare();
-    });
-
-    actions.appendChild(compareBtn);
-    if (vendorName && typeof onClearVendorFocus === "function") {
-      const clearVendorBtn = document.createElement("button");
-      clearVendorBtn.type = "button";
-      clearVendorBtn.className = "viz-lens-action viz-lens-action-secondary";
-      clearVendorBtn.textContent = "Clear vendor focus";
-      clearVendorBtn.addEventListener("click", () => {
-        onClearVendorFocus();
-      });
-      actions.appendChild(clearVendorBtn);
-    }
-
+    msg.textContent = `Focused timeline is active${vendorName ? ` for ${vendorName}` : ""} because compare mode would have too little data${scopeHint} Use the clear-vendor control above or broaden range.`;
     box.appendChild(msg);
-    box.appendChild(actions);
   }
 
   function buildFallbackScopeKpis(events) {

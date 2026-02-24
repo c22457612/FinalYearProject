@@ -81,6 +81,7 @@ export function createSidebarModules(deps) {
     selectedSidebarModule = sanitizeSidebarModuleId(moduleId);
     persistSelectedSidebarModule();
     applySelectedSidebarModuleToDom();
+    renderSidebarModules();
   }
 
   function addSidebarMutedText(container, text) {
@@ -309,9 +310,17 @@ export function createSidebarModules(deps) {
   }
 
   function renderSidebarModules() {
-    renderSidebarFiltersModule();
-    renderSidebarSelectedEvidence();
-    renderSidebarVendorProfile();
+    if (selectedSidebarModule === "filters") {
+      renderSidebarFiltersModule();
+      return;
+    }
+    if (selectedSidebarModule === "selectedEvidence") {
+      renderSidebarSelectedEvidence();
+      return;
+    }
+    if (selectedSidebarModule === "vendorProfile") {
+      renderSidebarVendorProfile();
+    }
   }
 
   function initControls() {

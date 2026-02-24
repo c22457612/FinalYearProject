@@ -5,7 +5,6 @@ export function createInsightVisibility(deps) {
   } = deps;
 
   let insightScrollRaf = null;
-  let vendorSelectionCueTimer = null;
 
   function isOffScreen(el) {
     if (!el) return false;
@@ -76,29 +75,13 @@ export function createInsightVisibility(deps) {
   }
 
   function hideVendorSelectionCue() {
-    if (vendorSelectionCueTimer) {
-      clearTimeout(vendorSelectionCueTimer);
-      vendorSelectionCueTimer = null;
-    }
-    qs("vendorSelectionCue")?.classList.add("hidden");
+    // retained as a compatibility hook; cue surface is now a persistent action button
   }
 
   function showVendorSelectionCue(vendorName, count = 0) {
-    const box = qs("vendorSelectionCue");
-    const text = qs("vendorSelectionCueText");
-    if (!box || !text) return;
-
-    const countText = Number.isFinite(Number(count)) && Number(count) > 0
-      ? ` (${Number(count)} events in current scope)`
-      : "";
-    text.textContent = `Selected vendor: ${vendorName}${countText}. Info and Vendor profile were updated.`;
-    box.classList.remove("hidden");
-    pulseElement(box);
-
-    if (vendorSelectionCueTimer) clearTimeout(vendorSelectionCueTimer);
-    vendorSelectionCueTimer = setTimeout(() => {
-      box.classList.add("hidden");
-    }, 4200);
+    void vendorName;
+    void count;
+    // retained as a compatibility hook; cue surface is now a persistent action button
   }
 
   function focusVendorDetailsUx(vendorName, count = 0) {
