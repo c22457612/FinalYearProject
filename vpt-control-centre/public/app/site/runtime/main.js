@@ -798,6 +798,28 @@ function clearBrushSelection() {
   }
 }
 
+function isVendorEndpointBucketView(viewId) {
+  return String(viewId || "") === "vendorTopDomainsEndpoints";
+}
+
+function findCategoryDataIndex(option, label) {
+  const target = String(label || "");
+  if (!target) return -1;
+
+  const axisCollections = [];
+  if (Array.isArray(option?.xAxis)) axisCollections.push(...option.xAxis);
+  else if (option?.xAxis) axisCollections.push(option.xAxis);
+  if (Array.isArray(option?.yAxis)) axisCollections.push(...option.yAxis);
+  else if (option?.yAxis) axisCollections.push(option.yAxis);
+
+  for (const axis of axisCollections) {
+    if (String(axis?.type || "") !== "category" || !Array.isArray(axis?.data)) continue;
+    const idx = axis.data.findIndex((value) => String(value) === target);
+    if (idx >= 0) return idx;
+  }
+  return -1;
+}
+
 function resolveChartPointForOption(point, option, effectiveViewId) {
   if (!point || !option) return null;
   if (point.effectiveViewId && effectiveViewId && point.effectiveViewId !== effectiveViewId) return null;
@@ -824,12 +846,7 @@ function resolveChartPointForOption(point, option, effectiveViewId) {
 
   if (semanticKey.startsWith("label:")) {
     const label = semanticKey.slice(6);
-    const xAxisData = Array.isArray(option.xAxis?.[0]?.data)
-      ? option.xAxis[0].data
-      : Array.isArray(option.xAxis?.data)
-        ? option.xAxis.data
-        : [];
-    const idx = xAxisData.findIndex((v) => String(v) === label);
+    const idx = findCategoryDataIndex(option, label);
     if (idx >= 0 && idx < seriesData.length) {
       return { seriesIndex, dataIndex: idx };
     }
@@ -935,6 +952,7 @@ function createSelectedDataPoint(value) {
 
 function applyPersistentSelectionStyleToOption(option, effectiveViewId) {
   if (!option || !selectedChartPoint) return null;
+  if (selectedChartPoint.highlightMode === "stacked-row") return null;
   const resolved = resolveChartPointForOption(selectedChartPoint, option, effectiveViewId);
   if (!resolved) return null;
 
@@ -978,8 +996,10 @@ function buildInteractionOverlaySeries(marker) {
 
 function syncInteractionOverlayOnCurrentChart() {
   if (!chart) return;
-  const option = chart.getOption?.();
   const effectiveViewId = chart?.__vptMeta?.effectiveViewId || VIEWS[vizIndex]?.id;
+  if (isVendorEndpointBucketView(effectiveViewId)) return;
+
+  const option = chart.getOption?.();
   const marker = buildSelectionMarkerForOption(option, effectiveViewId);
   const overlay = buildInteractionOverlaySeries(marker);
 
@@ -990,8 +1010,49 @@ function syncInteractionOverlayOnCurrentChart() {
   }
 }
 
+function highlightStackedRowSelection(point) {
+  if (!chart || !point) return;
+  const resolved = resolveChartPointForCurrentChart(point);
+  const dataIndex = typeof resolved?.dataIndex === "number"
+    ? resolved.dataIndex
+    : (typeof point.dataIndex === "number" ? point.dataIndex : -1);
+  if (dataIndex < 0) return;
+
+  const option = chart.getOption?.();
+  const seriesList = Array.isArray(option?.series) ? option.series : [];
+
+  try {
+    chart.dispatchAction({ type: "downplay" });
+    for (let i = 0; i < seriesList.length; i++) {
+      const series = seriesList[i];
+      if (!series || series.id === INTERACTION_OVERLAY_SERIES_ID) continue;
+      const data = Array.isArray(series.data) ? series.data : [];
+      if (dataIndex < 0 || dataIndex >= data.length) continue;
+      chart.dispatchAction({ type: "highlight", seriesIndex: i, dataIndex });
+    }
+  } catch {
+    // ignore highlight errors when chart updates between renders
+  }
+
+  selectedChartPoint = {
+    ...point,
+    seriesIndex: 0,
+    dataIndex,
+  };
+}
+
 function clearChartSelectionHighlight() {
   if (selectedChartPoint && chart) {
+    if (selectedChartPoint.highlightMode === "stacked-row") {
+      try {
+        chart.dispatchAction({ type: "downplay" });
+      } catch {
+        // ignore downplay errors on chart reset
+      }
+      selectedChartPoint = null;
+      return;
+    }
+
     const resolved = resolveChartPointForCurrentChart(selectedChartPoint) || selectedChartPoint;
     try {
       if (typeof resolved?.seriesIndex === "number" && typeof resolved?.dataIndex === "number") {
@@ -1008,6 +1069,10 @@ function clearChartSelectionHighlight() {
 
 function applyChartSelectionHighlight() {
   if (!selectedChartPoint || !chart) return;
+  if (selectedChartPoint.highlightMode === "stacked-row") {
+    highlightStackedRowSelection(selectedChartPoint);
+    return;
+  }
 
   const resolved = resolveChartPointForCurrentChart(selectedChartPoint);
   if (!resolved) return;
@@ -1046,6 +1111,12 @@ function setVizSelection({
   fromTs = null,
   toTs = null,
   bucketKey = "",
+  bucketLabel = "",
+  seen = 0,
+  blocked = 0,
+  observed = 0,
+  other = 0,
+  bucketExample = "",
   title,
   summaryHtml,
   events,
@@ -1058,6 +1129,12 @@ function setVizSelection({
     fromTs,
     toTs,
     bucketKey,
+    bucketLabel,
+    seen,
+    blocked,
+    observed,
+    other,
+    bucketExample,
     title,
     summaryHtml,
     events,
@@ -1148,6 +1225,16 @@ function applyHoverPointerToXAxis(axis) {
 function disableAxisPointer(option) {
   if (!option) return;
 
+  option.axisPointer = {
+    ...(option.axisPointer || {}),
+    show: false,
+    type: "none",
+    label: {
+      ...((option.axisPointer && option.axisPointer.label) || {}),
+      show: false,
+    },
+  };
+
   const tooltip = option.tooltip || {};
   option.tooltip = {
     ...tooltip,
@@ -1177,6 +1264,22 @@ function disableAxisPointer(option) {
 
   if (Array.isArray(option.yAxis)) option.yAxis = option.yAxis.map((axis) => suppressAxisPointer(axis));
   else if (option.yAxis) option.yAxis = suppressAxisPointer(option.yAxis);
+}
+
+function sanitizeVendorEndpointBucketOption(option) {
+  if (!option) return;
+  delete option.brush;
+
+  if (Array.isArray(option.series)) {
+    option.series = option.series
+      .filter((series) => series && series.id !== INTERACTION_OVERLAY_SERIES_ID)
+      .map((series) => {
+        const next = { ...series };
+        delete next.markLine;
+        delete next.markArea;
+        return next;
+      });
+  }
 }
 
 function applyHoverPointerConfigToOption(option, { disablePointer = false } = {}) {
@@ -1343,6 +1446,7 @@ function renderECharts() {
   let lensPivotActive = false;
   const titleEl = qs("vizTitle");
   const events = getChartEvents();
+  const clearBeforeSetOption = requestedViewId === "vendorTopDomainsEndpoints";
 
   if (
     chartRenderPerfState.chartRef === c
@@ -1381,6 +1485,7 @@ function renderECharts() {
       lensPivotActive,
       built: { option: empty, meta: null },
     };
+    if (clearBeforeSetOption) c.clear();
     c.setOption(empty, { notMerge: true, lazyUpdate: true });
     rememberRenderPerfState();
     clearChartSelectionHighlight();
@@ -1393,7 +1498,10 @@ function renderECharts() {
   lensPivotActive = viewBuild.lensPivotActive;
   focusedLensPivotActive = lensPivotActive;
   applyPersistedDataZoom(built?.option, effectiveViewId);
-  const disablePointer = requestedViewId === "vendorTopDomainsEndpoints";
+  const disablePointer = isVendorEndpointBucketView(requestedViewId);
+  if (disablePointer) {
+    sanitizeVendorEndpointBucketOption(built?.option);
+  }
   applyHoverPointerConfigToOption(built?.option, { disablePointer });
   decorateSeriesInteractionStyles(built?.option);
 
@@ -1420,6 +1528,7 @@ function renderECharts() {
       lensPivotActive,
       built: { option: empty, meta: null },
     };
+    if (clearBeforeSetOption) c.clear();
     c.setOption(empty, { notMerge: true, lazyUpdate: true });
     rememberRenderPerfState();
     clearChartSelectionHighlight();
@@ -1437,6 +1546,7 @@ function renderECharts() {
   }
 
   c.__vptMeta = { viewId: requestedViewId, effectiveViewId, lensPivotActive, built };
+  if (clearBeforeSetOption) c.clear();
   c.setOption(built.option, { notMerge: true, lazyUpdate: true });
   rememberRenderPerfState();
   reapplyChartSelectionHighlight();

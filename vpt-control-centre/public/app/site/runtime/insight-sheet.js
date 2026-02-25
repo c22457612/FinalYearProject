@@ -64,6 +64,31 @@ export function createInsightSheet(deps) {
     }
   }
 
+  function getWhatThisAnswersLine(viewId) {
+    if (viewId === "vendorTopDomainsEndpoints") {
+      return "What this answers: Which domains/endpoints this selected vendor contacts most in this scope, and how much is blocked vs observed.";
+    }
+    return "";
+  }
+
+  function getBucketExample(selection, evidence) {
+    const fromSelection = String(selection?.bucketExample || "").trim();
+    if (fromSelection) return fromSelection;
+
+    const list = Array.isArray(evidence) ? evidence : [];
+    for (const ev of list) {
+      const rawUrl = String(ev?.data?.url || "").trim();
+      if (!rawUrl) continue;
+      try {
+        const parsed = new URL(rawUrl);
+        return `${parsed.hostname}${parsed.pathname || "/"}`;
+      } catch {
+        return rawUrl;
+      }
+    }
+    return "";
+  }
+
   function setInsightSeverity(severity, confidence) {
     const badge = qs("insightSeverity");
     if (!badge) return;
@@ -287,7 +312,24 @@ export function createInsightSheet(deps) {
 
     if (qs("insightHow")) {
       const label = selection?.title || "current scope";
-      qs("insightHow").textContent = `From ${label}: total ${summary.total || 0}, blocked ${summary.blocked || 0}, observed ${summary.observed || 0}, first ${firstText}, last ${lastText}, dominant ${dominant}.`;
+      const evidenceLine = `From ${label}: total ${summary.total || 0}, blocked ${summary.blocked || 0}, observed ${summary.observed || 0}, first ${firstText}, last ${lastText}, dominant ${dominant}.`;
+      const whatThisAnswers = getWhatThisAnswersLine(context.viewId);
+      if (context.viewId === "vendorTopDomainsEndpoints" && selection?.bucketKey) {
+        const bucketLabel = selection?.bucketLabel || label;
+        const seen = Number(selection?.seen || 0);
+        const blocked = Number(selection?.blocked || 0);
+        const observed = Number(selection?.observed || 0);
+        const other = Number(selection?.other || 0);
+        const bucketLine = `Selected bucket: ${bucketLabel} (${seen} total; ${blocked} blocked; ${observed} observed; ${other} other).`;
+        const example = getBucketExample(selection, evs);
+        const exampleLine = example ? ` Example URL/path: ${example}.` : "";
+        qs("insightHow").textContent = `${whatThisAnswers ? `${whatThisAnswers} ` : ""}${bucketLine}${exampleLine}`;
+      } else {
+        const bucketKeyLine = selection?.bucketKey
+          ? ` Bucket key: ${selection.bucketKey}.`
+          : "";
+        qs("insightHow").textContent = `${whatThisAnswers ? `${whatThisAnswers} ` : ""}${evidenceLine}${bucketKeyLine}`;
+      }
     }
 
     const whyItems = [

@@ -7,6 +7,7 @@ export function createChartOrchestrationController(deps) {
     buildVendorRollup,
     buildTimelineOption,
     buildVendorAllowedBlockedTimelineOption,
+    buildVendorTopDomainsEndpointsOption,
     buildTopDomainsOption,
     buildKindsOption,
     buildApiGatingOption,
@@ -56,6 +57,30 @@ export function createChartOrchestrationController(deps) {
     };
   }
 
+  function summarizeBucketEvidence(events) {
+    const list = Array.isArray(events) ? events.filter(Boolean) : [];
+    const seen = list.length;
+    const blocked = list.filter((ev) => ev?.kind === "network.blocked").length;
+    const observed = list.filter((ev) => ev?.kind === "network.observed").length;
+    const other = Math.max(0, seen - blocked - observed);
+    return { seen, blocked, observed, other };
+  }
+
+  function getRepresentativeBucketExample(events) {
+    const list = Array.isArray(events) ? events : [];
+    for (const ev of list) {
+      const rawUrl = String(ev?.data?.url || "").trim();
+      if (!rawUrl) continue;
+      try {
+        const parsed = new URL(rawUrl);
+        return `${parsed.hostname}${parsed.pathname || "/"}`;
+      } catch {
+        return rawUrl;
+      }
+    }
+    return "";
+  }
+
   function buildViewOption(requestedViewId, events) {
     let effectiveViewId = requestedViewId;
     let lensPivotActive = false;
@@ -81,6 +106,7 @@ export function createChartOrchestrationController(deps) {
         built = buildVendorOverviewOption(events);
       }
     } else if (requestedViewId === "vendorAllowedBlockedTimeline") built = buildVendorAllowedBlockedTimelineOption(events);
+    else if (requestedViewId === "vendorTopDomainsEndpoints") built = buildVendorTopDomainsEndpointsOption(events, getSelectedVendor(), getVizMetric());
     else if (requestedViewId === "riskTrend") built = buildRiskTrendOption(events);
     else if (requestedViewId === "baselineDetectedBlockedTrend") built = buildBaselineDetectedBlockedTrendOption(events);
     else if (requestedViewId === "timeline") built = buildTimelineOption(events);
@@ -166,6 +192,41 @@ export function createChartOrchestrationController(deps) {
         value: domain || "",
         title: domain || "Selection",
         summaryHtml: `<div class="muted">${evs.length} matching events (current filters/range).</div>`,
+        events: evs,
+        chartPoint,
+        scrollMode: "force",
+      });
+      return;
+    }
+
+    if (viewId === "vendorTopDomainsEndpoints") {
+      const label = String(params?.name ?? params?.axisValue ?? "");
+      const evs = meta.evidenceByBucket?.get(label) || [];
+      const bucketKey = meta.bucketKeyByLabel?.get(label) || label || "";
+      const title = meta.displayLabelByBucketKey?.get(label) || label || "Selection";
+      const counts = summarizeBucketEvidence(evs);
+      const bucketExample = getRepresentativeBucketExample(evs);
+      const chartPoint = {
+        viewId,
+        effectiveViewId,
+        seriesIndex: 0,
+        dataIndex: typeof params?.dataIndex === "number" ? params.dataIndex : -1,
+        semanticKey: `label:${label}`,
+        highlightMode: "stacked-row",
+      };
+
+      setVizSelection({
+        type: "vendorEndpointBucket",
+        value: bucketKey,
+        bucketKey,
+        bucketLabel: title,
+        seen: counts.seen,
+        blocked: counts.blocked,
+        observed: counts.observed,
+        other: counts.other,
+        bucketExample,
+        title,
+        summaryHtml: `<div class="muted">Selected bucket: ${title} (${counts.seen} total; ${counts.blocked} blocked; ${counts.observed} observed; ${counts.other} other).</div>`,
         events: evs,
         chartPoint,
         scrollMode: "force",
