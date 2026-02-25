@@ -337,6 +337,264 @@ function buildVendorAllowedBlockedTimelineOption(events) {
   };
 }
 
+const GENERIC_ENDPOINT_PREFIXES = new Set(["api", "v1", "v2", "v3"]);
+const VENDOR_BUCKET_LOW_SIGNAL_THRESHOLD = 2;
+
+function parseUrlObject(value) {
+  const raw = String(value || "").trim();
+  if (!raw) return null;
+  try {
+    return new URL(raw);
+  } catch {
+    return null;
+  }
+}
+
+function truncateBucketSegment(value, maxLength = 16) {
+  const text = String(value || "");
+  if (text.length <= maxLength) return text;
+  return `${text.slice(0, Math.max(1, maxLength - 1))}~`;
+}
+
+function deriveBucketDomain(ev) {
+  const direct = String(ev?.data?.domain || "").trim().toLowerCase();
+  if (direct) return direct;
+  const parsed = parseUrlObject(ev?.data?.url);
+  return String(parsed?.hostname || "").trim().toLowerCase();
+}
+
+function buildEndpointBucket(ev) {
+  const parsed = parseUrlObject(ev?.data?.url);
+  const pathname = String(parsed?.pathname || "");
+  const segments = pathname
+    .split("/")
+    .map((segment) => String(segment || "").trim().toLowerCase())
+    .filter(Boolean);
+
+  if (!segments.length) {
+    return { raw: "/", short: "/" };
+  }
+
+  const first = segments[0];
+  const second = segments[1] || "";
+  const includeSecond = !!second && (first.length <= 2 || GENERIC_ENDPOINT_PREFIXES.has(first));
+  const rawParts = includeSecond ? [first, second] : [first];
+  const shortParts = rawParts.map((segment) => truncateBucketSegment(segment));
+
+  return {
+    raw: `/${rawParts.join("/")}`,
+    short: `/${shortParts.join("/")}`,
+  };
+}
+
+function buildForcedStackedBarSeries(name, data, stackKey) {
+  const series = buildSeries(name, data, { defaultType: "bar" });
+  series.type = "bar";
+  delete series.smooth;
+  delete series.symbol;
+  delete series.areaStyle;
+  series.stack = stackKey;
+  return series;
+}
+
+function buildVendorTopDomainsEndpointsOption(events, selectedVendor, metric = "seen") {
+  const vendorId = String(selectedVendor?.vendorId || "");
+  const vendorName = selectedVendor?.vendorName || "the selected vendor";
+  if (!vendorId) {
+    return {
+      option: { xAxis: { type: "category", data: [] }, yAxis: { type: "value" }, series: [] },
+      meta: {
+        evidenceByBucket: new Map(),
+        bucketKeyByLabel: new Map(),
+        displayLabelByBucketKey: new Map(),
+        fullLabelByBucketKey: new Map(),
+        topBucketSummary: null,
+        stateGuidanceMessage: "Select a vendor to see where it connects (top domains/endpoints).",
+      },
+    };
+  }
+
+  const map = new Map(); // bucketKey -> aggregated row
+  for (const ev of Array.isArray(events) ? events : []) {
+    const domain = deriveBucketDomain(ev);
+    if (!domain) continue;
+
+    const bucket = buildEndpointBucket(ev);
+    const bucketKey = `${domain}${bucket.raw}`;
+    if (!map.has(bucketKey)) {
+      map.set(bucketKey, {
+        bucketKey,
+        domain,
+        bucketRaw: bucket.raw,
+        bucketShort: bucket.short,
+        seenCount: 0,
+        blockedCount: 0,
+        observedCount: 0,
+        otherCount: 0,
+        events: [],
+      });
+    }
+
+    const row = map.get(bucketKey);
+    row.seenCount += 1;
+    if (ev?.kind === "network.blocked") row.blockedCount += 1;
+    else if (ev?.kind === "network.observed") row.observedCount += 1;
+    else row.otherCount += 1;
+    row.events.push(ev);
+  }
+
+  const rows = Array.from(map.values()).map((row) => {
+    const metricValue = metric === "blocked"
+      ? row.blockedCount
+      : metric === "observed"
+        ? row.observedCount
+        : row.seenCount;
+
+    return {
+      ...row,
+      value: metricValue,
+      displayLabel: `${row.domain} \u2014 ${row.bucketShort}`,
+      fullLabel: `${row.domain} \u2014 ${row.bucketRaw}`,
+    };
+  });
+
+  if (!rows.length) {
+    return {
+      option: { xAxis: { type: "category", data: [] }, yAxis: { type: "value" }, series: [] },
+      meta: {
+        evidenceByBucket: new Map(),
+        bucketKeyByLabel: new Map(),
+        displayLabelByBucketKey: new Map(),
+        fullLabelByBucketKey: new Map(),
+        topBucketSummary: null,
+        stateGuidanceMessage: `No domain/endpoint activity is available for ${vendorName} in this scope.`,
+      },
+    };
+  }
+
+  const topLimit = Math.max(1, Number(vizOptions.topN) || 20);
+  const ranked = rows
+    .slice()
+    .sort((a, b) => {
+      const diff = Number(b.value || 0) - Number(a.value || 0);
+      if (diff !== 0) return diff;
+      return String(a.bucketKey || "").localeCompare(String(b.bucketKey || ""), undefined, { sensitivity: "base" });
+    })
+    .slice(0, topLimit);
+
+  const categoryKeys = ranked.map((row) => row.bucketKey);
+  const blocked = new Array(categoryKeys.length).fill(0);
+  const observed = new Array(categoryKeys.length).fill(0);
+  const other = new Array(categoryKeys.length).fill(0);
+  const evidenceByBucket = new Map();
+  const bucketKeyByLabel = new Map();
+  const displayLabelByBucketKey = new Map();
+  const fullLabelByBucketKey = new Map();
+  const statsByBucketKey = new Map();
+
+  for (let i = 0; i < ranked.length; i++) {
+    const row = ranked[i];
+    const total = Math.max(1, Number(row.seenCount || 0));
+
+    if (vizOptions.normalize) {
+      blocked[i] = Number((((row.blockedCount || 0) * 100) / total).toFixed(2));
+      observed[i] = Number((((row.observedCount || 0) * 100) / total).toFixed(2));
+      other[i] = Number((((row.otherCount || 0) * 100) / total).toFixed(2));
+    } else {
+      blocked[i] = row.blockedCount || 0;
+      observed[i] = row.observedCount || 0;
+      other[i] = row.otherCount || 0;
+    }
+
+    evidenceByBucket.set(row.bucketKey, row.events || []);
+    bucketKeyByLabel.set(row.bucketKey, row.bucketKey);
+    displayLabelByBucketKey.set(row.bucketKey, row.displayLabel);
+    fullLabelByBucketKey.set(row.bucketKey, row.fullLabel);
+    statsByBucketKey.set(row.bucketKey, {
+      seen: Number(row.seenCount || 0),
+      blocked: Number(row.blockedCount || 0),
+      observed: Number(row.observedCount || 0),
+      other: Number(row.otherCount || 0),
+    });
+  }
+
+  const stackKey = "total";
+  const blockedSeries = buildForcedStackedBarSeries("Blocked", blocked, stackKey);
+  const observedSeries = buildForcedStackedBarSeries("Observed", observed, stackKey);
+  const otherSeries = buildForcedStackedBarSeries("Other", other, stackKey);
+
+  const topBucket = ranked[0] || null;
+
+  return {
+    option: {
+      tooltip: {
+        trigger: "item",
+        axisPointer: {
+          type: "none",
+        },
+        formatter: (params) => {
+          const list = Array.isArray(params) ? params : [params];
+          const first = list[0] || {};
+          const key = String(first?.axisValue ?? first?.name ?? "");
+          if (!key) return "";
+          const fullLabel = fullLabelByBucketKey.get(key) || key;
+          const stats = statsByBucketKey.get(key) || { seen: 0, blocked: 0, observed: 0, other: 0 };
+          const lines = [`<strong>${fullLabel}</strong>`];
+
+          if (vizOptions.normalize) {
+            const bySeries = new Map(list.map((row) => [String(row?.seriesName || ""), Number(row?.value || 0)]));
+            lines.push(`Blocked: ${Number(bySeries.get("Blocked") || 0).toFixed(2)}% (${stats.blocked})`);
+            lines.push(`Observed: ${Number(bySeries.get("Observed") || 0).toFixed(2)}% (${stats.observed})`);
+            lines.push(`Other: ${Number(bySeries.get("Other") || 0).toFixed(2)}% (${stats.other})`);
+          } else {
+            lines.push(`Blocked: ${stats.blocked}`);
+            lines.push(`Observed: ${stats.observed}`);
+            lines.push(`Other: ${stats.other}`);
+          }
+
+          lines.push(`Total: ${stats.seen}`);
+          return lines.join("<br/>");
+        },
+      },
+      legend: { top: 0 },
+      grid: { left: 16, right: 16, top: 44, bottom: 20, containLabel: true },
+      xAxis: {
+        type: "value",
+        max: vizOptions.normalize ? 100 : null,
+        axisLabel: vizOptions.normalize ? { formatter: "{value}%" } : undefined,
+      },
+      yAxis: {
+        type: "category",
+        data: categoryKeys,
+        axisLabel: {
+          formatter: (value) => displayLabelByBucketKey.get(String(value || "")) || String(value || ""),
+        },
+      },
+      series: [blockedSeries, observedSeries, otherSeries],
+    },
+    meta: {
+      evidenceByBucket,
+      bucketKeyByLabel,
+      displayLabelByBucketKey,
+      fullLabelByBucketKey,
+      topBucketSummary: topBucket
+        ? {
+          bucketKey: topBucket.bucketKey,
+          displayLabel: topBucket.displayLabel,
+          fullLabel: topBucket.fullLabel,
+          seen: Number(topBucket.seenCount || 0),
+          blocked: Number(topBucket.blockedCount || 0),
+          observed: Number(topBucket.observedCount || 0),
+          other: Number(topBucket.otherCount || 0),
+        }
+        : null,
+      stateGuidanceMessage: ranked.length < VENDOR_BUCKET_LOW_SIGNAL_THRESHOLD
+        ? `Low-information view: only ${ranked.length} endpoint bucket${ranked.length === 1 ? "" : "s"} for ${vendorName} in this scope.`
+        : "",
+    },
+  };
+}
+
 function isThirdPartyNetwork(ev) {
   return (ev?.kind === "network.blocked" || ev?.kind === "network.observed")
     && ev?.data?.domain
@@ -839,6 +1097,7 @@ function hasSeriesData(option) {
 function getModeEmptyMessage(viewId) {
   if (viewId === "vendorOverview") return "No vendor activity matches current filters";
   if (viewId === "vendorAllowedBlockedTimeline") return "No blocked/allowed network events match current filters";
+  if (viewId === "vendorTopDomainsEndpoints") return "No domain/endpoint buckets match current vendor scope";
   if (viewId === "riskTrend") return "No risk trend data matches current filters";
   if (viewId === "baselineDetectedBlockedTrend") return "No baseline/detected/blocked trend data matches current filters";
   if (viewId === "topSeen") return "No third-party network events match current filters";
@@ -857,6 +1116,7 @@ function getModeEmptyMessage(viewId) {
     getTimelineBinMs,
     buildTimelineOption,
     buildVendorAllowedBlockedTimelineOption,
+    buildVendorTopDomainsEndpointsOption,
     buildTopDomainsOption,
     buildKindsOption,
     buildApiGatingOption,

@@ -49,7 +49,7 @@ let filteredEvents = [];
 let filteredEventsSourceRef = null;
 let filteredEventsFilterSignature = "";
 let vizIndex = 0;
-let vizSelection = null; // { type, value, events, fromTs, toTs, title, summaryHtml }
+let vizSelection = null; // { type, value, bucketKey?, events, fromTs, toTs, title, summaryHtml }
 
 let lastWindowFetchKey = null;
 let lastWindowFetchAt = 0;
@@ -89,6 +89,7 @@ let vizOptions = defaultVizOptions();
 const VIEWS = [
   { id: "vendorOverview", title: "Vendor activity overview" },
   { id: "vendorAllowedBlockedTimeline", title: "Vendor allowed vs blocked timeline" },
+  { id: "vendorTopDomainsEndpoints", title: "Where this vendor connects (top domains/endpoints)" },
   { id: "riskTrend", title: "Risk trend timeline" },
   { id: "baselineDetectedBlockedTrend", title: "Baseline vs detected vs blocked trend" },
   { id: "timeline", title: "Activity timeline (last 24h)" },
@@ -103,7 +104,15 @@ const VIEWS = [
   { id: "hourHeatmap", title: "Activity heatmap (hour x day)" },
 ];
 
-const EASY_VIEW_IDS = new Set(["vendorOverview", "vendorAllowedBlockedTimeline", "kinds", "riskTrend", "baselineDetectedBlockedTrend", "partySplit"]);
+const EASY_VIEW_IDS = new Set([
+  "vendorOverview",
+  "vendorAllowedBlockedTimeline",
+  "vendorTopDomainsEndpoints",
+  "kinds",
+  "riskTrend",
+  "baselineDetectedBlockedTrend",
+  "partySplit",
+]);
 const POWER_ONLY_VIEW_LABEL_SUFFIX = " (Power only)";
 const LOW_INFORMATION_EVENT_THRESHOLD = 8;
 const PRIVACY_FILTER_ALL_ONLY_VIEW_IDS = new Set();
@@ -208,6 +217,7 @@ const chartOrchestrationController = createChartOrchestrationController({
   buildVendorRollup,
   buildTimelineOption: chartBuilders.buildTimelineOption,
   buildVendorAllowedBlockedTimelineOption: chartBuilders.buildVendorAllowedBlockedTimelineOption,
+  buildVendorTopDomainsEndpointsOption: chartBuilders.buildVendorTopDomainsEndpointsOption,
   buildTopDomainsOption: chartBuilders.buildTopDomainsOption,
   buildKindsOption: chartBuilders.buildKindsOption,
   buildApiGatingOption: chartBuilders.buildApiGatingOption,
@@ -711,6 +721,27 @@ function renderStateGuidance({ events = [], lensPivotActive = false, emptyMessag
   }
 }
 
+function renderTopBucketSummary(viewId, meta = null) {
+  const box = qs("vizTopBucketSummary");
+  if (!box) return;
+
+  if (viewId !== "vendorTopDomainsEndpoints") {
+    box.classList.add("hidden");
+    box.textContent = "";
+    return;
+  }
+
+  const summary = meta?.topBucketSummary || null;
+  if (!summary) {
+    box.classList.add("hidden");
+    box.textContent = "";
+    return;
+  }
+
+  box.classList.remove("hidden");
+  box.textContent = `Top bucket: ${summary.displayLabel} (${summary.seen} total; ${summary.blocked} blocked, ${summary.observed} observed, ${summary.other} other)`;
+}
+
 function readFilterStateFromControls() {
   readFilterStateFromDom(qs, filterState);
 }
@@ -1014,6 +1045,7 @@ function setVizSelection({
   value,
   fromTs = null,
   toTs = null,
+  bucketKey = "",
   title,
   summaryHtml,
   events,
@@ -1025,6 +1057,7 @@ function setVizSelection({
     value,
     fromTs,
     toTs,
+    bucketKey,
     title,
     summaryHtml,
     events,
@@ -1112,8 +1145,46 @@ function applyHoverPointerToXAxis(axis) {
   };
 }
 
-function applyHoverPointerConfigToOption(option) {
+function disableAxisPointer(option) {
+  if (!option) return;
+
+  const tooltip = option.tooltip || {};
+  option.tooltip = {
+    ...tooltip,
+    trigger: "item",
+    axisPointer: {
+      ...(tooltip.axisPointer || {}),
+      type: "none",
+      show: false,
+    },
+  };
+
+  const suppressAxisPointer = (axis) => ({
+    ...(axis || {}),
+    axisPointer: {
+      ...((axis && axis.axisPointer) || {}),
+      show: false,
+      type: "none",
+      label: {
+        ...(((axis && axis.axisPointer && axis.axisPointer.label) || {})),
+        show: false,
+      },
+    },
+  });
+
+  if (Array.isArray(option.xAxis)) option.xAxis = option.xAxis.map((axis) => suppressAxisPointer(axis));
+  else if (option.xAxis) option.xAxis = suppressAxisPointer(option.xAxis);
+
+  if (Array.isArray(option.yAxis)) option.yAxis = option.yAxis.map((axis) => suppressAxisPointer(axis));
+  else if (option.yAxis) option.yAxis = suppressAxisPointer(option.yAxis);
+}
+
+function applyHoverPointerConfigToOption(option, { disablePointer = false } = {}) {
   if (!option || !option.xAxis) return;
+  if (disablePointer) {
+    disableAxisPointer(option);
+    return;
+  }
 
   const tooltip = option.tooltip || {};
   if (tooltip.trigger !== "item") {
@@ -1298,6 +1369,7 @@ function renderECharts() {
     focusedLensPivotActive = false;
     scopeInsights.renderLensNotice({ active: false });
     scopeInsights.renderScopeInsights(events);
+    renderTopBucketSummary(requestedViewId, null);
     renderStateGuidance({ events, emptyMessage: "No events match current filters" });
     if (titleEl) {
       const vendorPart = selectedVendor?.vendorName ? ` | ${selectedVendor.vendorName}` : "";
@@ -1321,12 +1393,15 @@ function renderECharts() {
   lensPivotActive = viewBuild.lensPivotActive;
   focusedLensPivotActive = lensPivotActive;
   applyPersistedDataZoom(built?.option, effectiveViewId);
-  applyHoverPointerConfigToOption(built?.option);
+  const disablePointer = requestedViewId === "vendorTopDomainsEndpoints";
+  applyHoverPointerConfigToOption(built?.option, { disablePointer });
   decorateSeriesInteractionStyles(built?.option);
 
   scopeInsights.renderLensNotice({ active: false });
   scopeInsights.renderScopeInsights(events);
-  renderStateGuidance({ events, lensPivotActive });
+  renderTopBucketSummary(requestedViewId, built?.meta);
+  const builderGuidanceMessage = String(built?.meta?.stateGuidanceMessage || "").trim();
+  renderStateGuidance({ events, lensPivotActive, emptyMessage: builderGuidanceMessage });
 
   if (titleEl) {
     const vendorPart = selectedVendor?.vendorName ? ` | ${selectedVendor.vendorName}` : "";
@@ -1334,9 +1409,10 @@ function renderECharts() {
   }
 
   if (!hasSeriesData(built?.option)) {
-    const emptyMessage = getModeEmptyMessage(lensPivotActive ? "timeline" : requestedViewId);
+    const emptyMessage = builderGuidanceMessage || getModeEmptyMessage(lensPivotActive ? "timeline" : requestedViewId);
     const empty = buildEmptyChartOption(emptyMessage);
     focusedLensPivotActive = false;
+    renderTopBucketSummary(requestedViewId, null);
     renderStateGuidance({ events, lensPivotActive, emptyMessage });
     c.__vptMeta = {
       viewId: requestedViewId,
