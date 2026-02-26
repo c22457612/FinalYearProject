@@ -277,11 +277,22 @@
           </div>
           <div class="sidebar-module-picker" role="tablist" aria-label="Sidebar module selector">
             <button id="sidebarModuleBtnFilters" class="sidebar-module-btn sidebar-module-btn-priority" type="button" role="tab">View</button>
+            <button id="sidebarModuleBtnChartGuide" class="sidebar-module-btn" type="button" role="tab">Chart guide</button>
             <button id="sidebarModuleBtnRecentEvents" class="sidebar-module-btn" type="button" role="tab">Recent events</button>
             <button id="sidebarModuleBtnSelectedEvidence" class="sidebar-module-btn" type="button" role="tab">Selected evidence</button>
             <button id="sidebarModuleBtnVendorProfile" class="sidebar-module-btn" type="button" role="tab">Vendor profile</button>
             <button id="sidebarModuleBtnTopThirdParties" class="sidebar-module-btn" type="button" role="tab">Top third-party domains</button>
           </div>
+        </div>
+
+        <div id="sidebarModuleChartGuide" class="panel sidebar-module hidden" data-sidebar-module="chartGuide">
+          <div class="panel-header">
+            <div>
+              <div class="panel-title">Chart guide</div>
+              <div id="sidebarChartGuideMeta" class="panel-subtitle">Current view guide</div>
+            </div>
+          </div>
+          <div id="sidebarChartGuideBody" class="sidebar-module-body"></div>
         </div>
 
         <div id="sidebarModuleTopThirdParties" class="panel sidebar-module" data-sidebar-module="topThirdParties">

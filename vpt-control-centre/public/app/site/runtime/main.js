@@ -244,6 +244,7 @@ const sidebarModules = createSidebarModules({
   formatSelectedLead,
   getRangeKey,
   getViewMode: () => viewMode,
+  getCurrentView: () => VIEWS[vizIndex] || VIEWS[0],
   getFilterState: () => filterState,
   getSelectedVendor: () => selectedVendor,
   getFilteredEvents: () => filteredEvents,

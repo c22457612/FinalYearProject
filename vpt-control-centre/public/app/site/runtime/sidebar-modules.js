@@ -1,3 +1,5 @@
+import { getChartGuideByViewId } from "./chart-guide.js";
+
 export function createSidebarModules(deps) {
   const {
     qs,
@@ -6,6 +8,7 @@ export function createSidebarModules(deps) {
     formatSelectedLead,
     getRangeKey,
     getViewMode,
+    getCurrentView,
     getFilterState,
     getSelectedVendor,
     getFilteredEvents,
@@ -23,9 +26,10 @@ export function createSidebarModules(deps) {
   } = deps;
 
   const SIDEBAR_SELECTED_KEY = "vpt.siteInsights.sidebarModule.selected.v2";
-  const SIDEBAR_MODULE_ORDER = ["filters", "recentEvents", "selectedEvidence", "vendorProfile", "topThirdParties"];
+  const SIDEBAR_MODULE_ORDER = ["filters", "chartGuide", "recentEvents", "selectedEvidence", "vendorProfile", "topThirdParties"];
   const SIDEBAR_DEFAULT_MODULE = "filters";
   const SIDEBAR_BUTTON_IDS = Object.freeze({
+    chartGuide: "sidebarModuleBtnChartGuide",
     recentEvents: "sidebarModuleBtnRecentEvents",
     selectedEvidence: "sidebarModuleBtnSelectedEvidence",
     filters: "sidebarModuleBtnFilters",
@@ -33,6 +37,7 @@ export function createSidebarModules(deps) {
     topThirdParties: "sidebarModuleBtnTopThirdParties",
   });
   const SIDEBAR_MODULE_CONTAINER_IDS = Object.freeze({
+    chartGuide: "sidebarModuleChartGuide",
     recentEvents: "sidebarModuleRecentEvents",
     selectedEvidence: "sidebarModuleSelectedEvidence",
     filters: "sidebarModuleFilters",
@@ -309,9 +314,78 @@ export function createSidebarModules(deps) {
     }
   }
 
+  function appendSectionLabel(container, text) {
+    if (!container || !text) return;
+    const label = document.createElement("div");
+    label.className = "panel-subtitle";
+    label.textContent = text;
+    container.appendChild(label);
+  }
+
+  function appendBulletList(container, items, limit) {
+    if (!container) return;
+    const list = Array.isArray(items) ? items.filter(Boolean).slice(0, limit) : [];
+    if (!list.length) return;
+
+    const ul = document.createElement("ul");
+    ul.className = "sidebar-mini-list";
+    for (const item of list) {
+      const li = document.createElement("li");
+      li.textContent = item;
+      ul.appendChild(li);
+    }
+    container.appendChild(ul);
+  }
+
+  function renderSidebarChartGuideModule() {
+    const metaEl = qs("sidebarChartGuideMeta");
+    const body = qs("sidebarChartGuideBody");
+    if (!metaEl || !body) return;
+    body.innerHTML = "";
+
+    const currentView = typeof getCurrentView === "function" ? getCurrentView() : null;
+    const viewId = String(currentView?.id || "");
+    const viewTitle = String(currentView?.title || "Current chart");
+    const viewMode = String(getViewMode() || "easy");
+    const guide = getChartGuideByViewId(viewId);
+
+    metaEl.textContent = `${viewTitle} | ${viewMode.toUpperCase()} mode`;
+    if (!guide) {
+      addSidebarMutedText(body, "No guide is available for this chart view.");
+      return;
+    }
+
+    appendSectionLabel(body, "What this answers");
+    const whatLine = document.createElement("div");
+    whatLine.textContent = guide.what || "This view summarizes the current chart scope.";
+    body.appendChild(whatLine);
+
+    appendSectionLabel(body, "How to read it");
+    appendBulletList(body, guide.how, 3);
+
+    appendSectionLabel(body, "Best for");
+    appendBulletList(body, guide.bestFor, 2);
+
+    if (guide.gotcha) {
+      appendSectionLabel(body, "Gotcha");
+      appendBulletList(body, [guide.gotcha], 1);
+    }
+
+    if (viewMode === "power" && guide.powerDetail) {
+      const detail = document.createElement("div");
+      detail.className = "muted";
+      detail.textContent = `Power detail: ${guide.powerDetail}`;
+      body.appendChild(detail);
+    }
+  }
+
   function renderSidebarModules() {
     if (selectedSidebarModule === "filters") {
       renderSidebarFiltersModule();
+      return;
+    }
+    if (selectedSidebarModule === "chartGuide") {
+      renderSidebarChartGuideModule();
       return;
     }
     if (selectedSidebarModule === "selectedEvidence") {
