@@ -650,7 +650,66 @@ function updateFilterSummary() {
   sidebarModules.renderSidebarModules();
 }
 
-function renderStateGuidance({ events = [], lensPivotActive = false, emptyMessage = "" } = {}) {
+function ensureDensityBadge() {
+  const chartEl = qs("vizChart");
+  const wrap = chartEl?.parentElement;
+  if (!wrap || !chartEl) return null;
+
+  const existing = qs("vizDensityBadge");
+  if (existing) {
+    if (existing.parentElement !== wrap || existing.nextElementSibling !== chartEl) {
+      wrap.insertBefore(existing, chartEl);
+    }
+    return existing;
+  }
+
+  const badge = document.createElement("div");
+  badge.id = "vizDensityBadge";
+  badge.className = "viz-density-badge hidden";
+  wrap.insertBefore(badge, chartEl);
+  return badge;
+}
+
+function renderDensityBadge(meta = null) {
+  const badge = ensureDensityBadge();
+  if (!badge) return;
+
+  const densityDefaults = meta?.densityDefaults || null;
+  const applied = !!densityDefaults?.applied;
+  if (viewMode !== "easy" || !applied) {
+    badge.classList.add("hidden");
+    badge.textContent = "";
+    return;
+  }
+
+  let text = "Easy mode compacted for low data";
+  if (densityDefaults?.compactSummary) {
+    text = "Easy mode compacted for low data: showing summary view";
+  } else if (
+    densityDefaults?.focusedWindow
+    && densityDefaults?.simplifiedSeries
+    && Number(densityDefaults?.appliedBinMs) > Number(densityDefaults?.originalBinMs)
+  ) {
+    text = "Easy mode compacted for low data: larger bins, focused window, and simpler series";
+  } else if (densityDefaults?.focusedWindow && Number(densityDefaults?.appliedBinMs) > Number(densityDefaults?.originalBinMs)) {
+    text = "Easy mode compacted for low data: larger bins and focused window";
+  } else if (densityDefaults?.focusedWindow && densityDefaults?.simplifiedSeries) {
+    text = "Easy mode compacted for low data: focused window and simpler series";
+  } else if (densityDefaults?.focusedWindow) {
+    text = "Easy mode compacted for low data: focused window";
+  } else if (densityDefaults?.simplifiedSeries && Number(densityDefaults?.appliedBinMs) > Number(densityDefaults?.originalBinMs)) {
+    text = "Easy mode compacted for low data: larger bins and simpler series";
+  } else if (densityDefaults?.simplifiedSeries) {
+    text = "Easy mode compacted for low data: simpler series";
+  } else if (Number(densityDefaults?.appliedBinMs) > Number(densityDefaults?.originalBinMs)) {
+    text = "Easy mode compacted for low data: larger time bins";
+  }
+
+  badge.textContent = text;
+  badge.classList.remove("hidden");
+}
+
+function renderStateGuidance({ events = [], lensPivotActive = false, emptyMessage = "", viewId = "" } = {}) {
   const box = qs("vizStateGuidance");
   if (!box) return;
 
@@ -667,6 +726,14 @@ function renderStateGuidance({ events = [], lensPivotActive = false, emptyMessag
     steps.push(value);
   };
 
+  const addSwitchViewStep = () => {
+    if (String(viewId || "") === "vendorTopDomainsEndpoints") {
+      addStep("Switch view to Vendor allowed vs blocked timeline for a clearer sparse-data trend.");
+      return;
+    }
+    addStep("Switch view using the Mode selector below the chart.");
+  };
+
   if (!list.length) {
     if (!title) {
       title = hasVendorFocus
@@ -677,18 +744,19 @@ function renderStateGuidance({ events = [], lensPivotActive = false, emptyMessag
     addStep(`Broaden range in View controls (current: ${rangeLabel}).`);
     if (hasVendorFocus) addStep("Clear vendor focus to compare all vendors.");
     if (activeFilters.length) addStep("Use Reset filters to remove strict filters.");
+    addSwitchViewStep();
     if (!hasVendorFocus && !activeFilters.length) addStep("Wait for more captured events, then refresh this view.");
   } else if (!title && list.length < LOW_INFORMATION_EVENT_THRESHOLD) {
     title = `Low-information view: only ${list.length} events in the current scope.`;
     addStep(`Broaden range in View controls (current: ${rangeLabel}).`);
     if (hasVendorFocus) addStep("Clear vendor focus to compare all vendors.");
     if (activeFilters.length) addStep("Use Reset filters to remove strict filters.");
-    addStep("Try a broader chart mode if this one stays sparse.");
+    addSwitchViewStep();
   } else if (title) {
-    addStep("Try a broader chart mode if this one has no usable groups.");
     addStep(`Broaden range in View controls (current: ${rangeLabel}).`);
     if (hasVendorFocus) addStep("Clear vendor focus to compare all vendors.");
     if (activeFilters.length) addStep("Use Reset filters to remove strict filters.");
+    addSwitchViewStep();
   }
 
   if (lensPivotActive) {
@@ -731,14 +799,26 @@ function renderTopBucketSummary(viewId, meta = null) {
     return;
   }
 
+  const compactSummary = meta?.compactSummary || null;
   const summary = meta?.topBucketSummary || null;
-  if (!summary) {
+  if (!summary && !compactSummary) {
     box.classList.add("hidden");
     box.textContent = "";
     return;
   }
 
   box.classList.remove("hidden");
+  if (compactSummary) {
+    const bucketCount = Number(compactSummary.bucketCount || 0);
+    const bucketLabel = `${bucketCount} endpoint bucket${bucketCount === 1 ? "" : "s"}`;
+    const compactText = `Compact summary: ${compactSummary.vendorName || "Selected vendor"} has ${compactSummary.totalEvents || 0} events across ${bucketLabel} (${compactSummary.blocked || 0} blocked, ${compactSummary.observed || 0} observed, ${compactSummary.other || 0} other).`;
+    if (summary) {
+      box.textContent = `${compactText} Top bucket: ${summary.displayLabel} (${summary.seen} total; ${summary.blocked} blocked, ${summary.observed} observed, ${summary.other} other).`;
+      return;
+    }
+    box.textContent = compactText;
+    return;
+  }
   box.textContent = `Top bucket: ${summary.displayLabel} (${summary.seen} total; ${summary.blocked} blocked, ${summary.observed} observed, ${summary.other} other)`;
 }
 
@@ -1185,10 +1265,16 @@ function rememberCurrentDataZoomState() {
   dataZoomStateByView.set(key, state);
 }
 
-function applyPersistedDataZoom(option, key) {
+function applyPersistedDataZoom(option, key, meta = null) {
   if (!option || !Array.isArray(option.dataZoom) || !option.dataZoom.length || !key) return;
   const state = dataZoomStateByView.get(key);
   if (!state) return;
+
+  const densityFocusedWindow = !!meta?.densityDefaults?.focusedWindow;
+  const isFullRangeState = Math.abs(Number(state.start || 0)) <= 0.5 && Math.abs(Number(state.end || 0) - 100) <= 0.5;
+  if (densityFocusedWindow && isFullRangeState) {
+    return;
+  }
 
   option.dataZoom = option.dataZoom.map((dz) => ({
     ...dz,
@@ -1471,10 +1557,11 @@ function renderECharts() {
   if (!events.length) {
     const empty = buildEmptyChartOption("No events match current filters");
     focusedLensPivotActive = false;
+    renderDensityBadge(null);
     scopeInsights.renderLensNotice({ active: false });
     scopeInsights.renderScopeInsights(events);
     renderTopBucketSummary(requestedViewId, null);
-    renderStateGuidance({ events, emptyMessage: "No events match current filters" });
+    renderStateGuidance({ events, emptyMessage: "No events match current filters", viewId: requestedViewId });
     if (titleEl) {
       const vendorPart = selectedVendor?.vendorName ? ` | ${selectedVendor.vendorName}` : "";
       titleEl.textContent = `Visualisation - ${VIEWS[vizIndex].title}${vendorPart}`;
@@ -1492,12 +1579,12 @@ function renderECharts() {
     return;
   }
 
-  const viewBuild = chartOrchestrationController.buildViewOption(requestedViewId, events);
+  const viewBuild = chartOrchestrationController.buildViewOption(requestedViewId, events, { viewMode });
   const built = viewBuild.built;
   effectiveViewId = viewBuild.effectiveViewId;
   lensPivotActive = viewBuild.lensPivotActive;
   focusedLensPivotActive = lensPivotActive;
-  applyPersistedDataZoom(built?.option, effectiveViewId);
+  applyPersistedDataZoom(built?.option, effectiveViewId, built?.meta);
   const disablePointer = isVendorEndpointBucketView(requestedViewId);
   if (disablePointer) {
     sanitizeVendorEndpointBucketOption(built?.option);
@@ -1507,9 +1594,10 @@ function renderECharts() {
 
   scopeInsights.renderLensNotice({ active: false });
   scopeInsights.renderScopeInsights(events);
+  renderDensityBadge(built?.meta);
   renderTopBucketSummary(requestedViewId, built?.meta);
   const builderGuidanceMessage = String(built?.meta?.stateGuidanceMessage || "").trim();
-  renderStateGuidance({ events, lensPivotActive, emptyMessage: builderGuidanceMessage });
+  renderStateGuidance({ events, lensPivotActive, emptyMessage: builderGuidanceMessage, viewId: requestedViewId });
 
   if (titleEl) {
     const vendorPart = selectedVendor?.vendorName ? ` | ${selectedVendor.vendorName}` : "";
@@ -1520,8 +1608,9 @@ function renderECharts() {
     const emptyMessage = builderGuidanceMessage || getModeEmptyMessage(lensPivotActive ? "timeline" : requestedViewId);
     const empty = buildEmptyChartOption(emptyMessage);
     focusedLensPivotActive = false;
-    renderTopBucketSummary(requestedViewId, null);
-    renderStateGuidance({ events, lensPivotActive, emptyMessage });
+    const fallbackSummaryMeta = built?.meta?.compactSummary ? built.meta : null;
+    renderTopBucketSummary(requestedViewId, fallbackSummaryMeta);
+    renderStateGuidance({ events, lensPivotActive, emptyMessage, viewId: requestedViewId });
     c.__vptMeta = {
       viewId: requestedViewId,
       effectiveViewId,

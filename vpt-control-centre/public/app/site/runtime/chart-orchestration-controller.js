@@ -81,7 +81,9 @@ export function createChartOrchestrationController(deps) {
     return "";
   }
 
-  function buildViewOption(requestedViewId, events) {
+  function buildViewOption(requestedViewId, events, context = {}) {
+    const viewMode = String(context?.viewMode || "easy");
+    const densityAware = viewMode === "easy";
     let effectiveViewId = requestedViewId;
     let lensPivotActive = false;
     let built;
@@ -99,17 +101,20 @@ export function createChartOrchestrationController(deps) {
         }));
 
       if (shouldPivot) {
-        built = buildTimelineOption(events);
+        built = buildTimelineOption(events, { densityAware, viewMode });
         effectiveViewId = "timeline";
         lensPivotActive = true;
       } else {
         built = buildVendorOverviewOption(events);
       }
-    } else if (requestedViewId === "vendorAllowedBlockedTimeline") built = buildVendorAllowedBlockedTimelineOption(events);
-    else if (requestedViewId === "vendorTopDomainsEndpoints") built = buildVendorTopDomainsEndpointsOption(events, getSelectedVendor(), getVizMetric());
+    } else if (requestedViewId === "vendorAllowedBlockedTimeline") {
+      built = buildVendorAllowedBlockedTimelineOption(events, { densityAware, viewMode });
+    } else if (requestedViewId === "vendorTopDomainsEndpoints") {
+      built = buildVendorTopDomainsEndpointsOption(events, getSelectedVendor(), getVizMetric(), { densityAware, viewMode });
+    }
     else if (requestedViewId === "riskTrend") built = buildRiskTrendOption(events);
     else if (requestedViewId === "baselineDetectedBlockedTrend") built = buildBaselineDetectedBlockedTrendOption(events);
-    else if (requestedViewId === "timeline") built = buildTimelineOption(events);
+    else if (requestedViewId === "timeline") built = buildTimelineOption(events, { densityAware, viewMode });
     else if (requestedViewId === "topSeen") built = buildTopDomainsOption(events, getVizMetric());
     else if (requestedViewId === "kinds") built = buildKindsOption(events);
     else if (requestedViewId === "apiGating") built = buildApiGatingOption(events);

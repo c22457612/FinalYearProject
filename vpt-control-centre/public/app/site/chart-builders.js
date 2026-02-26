@@ -226,35 +226,227 @@ function buildTrendToolbox() {
   };
 }
 
-function buildTimelineOption(events) {
+const TIMELINE_DENSITY_BIN_STEPS = Object.freeze([
+  60 * 1000,
+  5 * 60 * 1000,
+  15 * 60 * 1000,
+  60 * 60 * 1000,
+]);
+const TIMELINE_DENSITY_BIN_LABELS = Object.freeze({
+  [60 * 1000]: "1m",
+  [5 * 60 * 1000]: "5m",
+  [15 * 60 * 1000]: "15m",
+  [60 * 60 * 1000]: "60m",
+});
+const LOW_SIGNAL_EVENT_THRESHOLD = 8;
+const LOW_SIGNAL_NON_ZERO_BIN_THRESHOLD = 2;
+const LOW_SIGNAL_ACTIVE_BIN_RATIO_THRESHOLD = 0.12;
+const LOW_SIGNAL_FLAT_PEAK_THRESHOLD = 2;
+const LOW_SIGNAL_SIMPLE_SERIES_EVENT_THRESHOLD = 6;
+const LOW_SIGNAL_BUCKET_EVENT_THRESHOLD = 10;
+const LOW_SIGNAL_BUCKET_COUNT_THRESHOLD = 3;
+const LOW_SIGNAL_ZOOM_MIN_TOTAL_BINS = 36;
+const LOW_SIGNAL_ZOOM_MIN_WINDOW_BINS = 12;
+
+function formatBinLabel(binMs) {
+  const value = Number(binMs || 0);
+  if (TIMELINE_DENSITY_BIN_LABELS[value]) return TIMELINE_DENSITY_BIN_LABELS[value];
+  const mins = Math.max(1, Math.round(value / (60 * 1000)));
+  return `${mins}m`;
+}
+
+function assessTimelineSignal({ totalBins = 0, binEvents = [], totalEvents = 0 } = {}) {
+  const safeBins = Math.max(1, Number(totalBins || 0));
+  const activeBins = (Array.isArray(binEvents) ? binEvents : []).filter((list) => Array.isArray(list) && list.length > 0);
+  const nonZeroBins = activeBins.length;
+  const activeRatio = nonZeroBins / safeBins;
+  const peakBinEvents = activeBins.length ? Math.max(...activeBins.map((list) => list.length)) : 0;
+  const reasons = [];
+
+  if (totalEvents <= LOW_SIGNAL_EVENT_THRESHOLD) reasons.push("few-events");
+  if (nonZeroBins <= LOW_SIGNAL_NON_ZERO_BIN_THRESHOLD) reasons.push("few-active-bins");
+  if (activeRatio <= LOW_SIGNAL_ACTIVE_BIN_RATIO_THRESHOLD && safeBins >= 12) reasons.push("mostly-empty-timespan");
+  if (nonZeroBins <= 1 && peakBinEvents <= LOW_SIGNAL_FLAT_PEAK_THRESHOLD) reasons.push("single-thin-peak");
+
+  return {
+    totalEvents: Number(totalEvents || 0),
+    nonZeroBins,
+    totalBins: safeBins,
+    activeRatio,
+    peakBinEvents,
+    reasons,
+    isLowSignal: reasons.length > 0,
+  };
+}
+
+function chooseDensityAwareBinMs({ spanMs = 0, currentBinMs = 0, totalEvents = 0 } = {}) {
+  const span = Math.max(1, Number(spanMs || 0));
+  const current = Math.max(1, Number(currentBinMs || TIMELINE_DENSITY_BIN_STEPS[1]));
+  const targetBins = totalEvents <= 4 ? 8 : totalEvents <= 8 ? 12 : 18;
+
+  for (const candidate of TIMELINE_DENSITY_BIN_STEPS) {
+    if (candidate < current) continue;
+    const bins = Math.max(1, Math.ceil(span / candidate));
+    if (bins <= targetBins) return candidate;
+  }
+
+  const maxCandidate = TIMELINE_DENSITY_BIN_STEPS[TIMELINE_DENSITY_BIN_STEPS.length - 1];
+  return Math.max(current, maxCandidate);
+}
+
+function buildTimelineGuidanceMessage({
+  signal,
+  densityApplied = false,
+  originalBinMs = 0,
+  appliedBinMs = 0,
+  simplifiedSeries = false,
+  focusedWindow = false,
+  viewMode = "power",
+} = {}) {
+  if (!signal?.isLowSignal) return "";
+
+  const base = `Low-signal scope: ${signal.totalEvents} events across ${signal.nonZeroBins}/${signal.totalBins} active time buckets.`;
+  if (!densityApplied && !simplifiedSeries) return base;
+
+  const modePrefix = viewMode === "easy" ? "Easy mode density defaults applied: " : "";
+  const parts = [];
+  if (densityApplied && Number(appliedBinMs) > Number(originalBinMs)) {
+    parts.push(`using ${formatBinLabel(appliedBinMs)} bins`);
+  }
+  if (simplifiedSeries) {
+    parts.push("using a simpler Events series");
+  }
+  if (focusedWindow) {
+    parts.push("focusing the visible window on active time");
+  }
+
+  if (!parts.length) return base;
+  return `${modePrefix}${base} ${parts.join(" and ")}.`;
+}
+
+function buildLowSignalDataZoomWindow({ totalBins = 0, binEvents = [] } = {}) {
+  const bins = Math.max(1, Number(totalBins || 0));
+  if (bins < LOW_SIGNAL_ZOOM_MIN_TOTAL_BINS) return null;
+
+  const activeIndices = [];
+  const list = Array.isArray(binEvents) ? binEvents : [];
+  for (let i = 0; i < list.length; i++) {
+    if (Array.isArray(list[i]) && list[i].length > 0) activeIndices.push(i);
+  }
+  if (!activeIndices.length) return null;
+
+  const first = activeIndices[0];
+  const last = activeIndices[activeIndices.length - 1];
+  const activeSpan = Math.max(1, (last - first) + 1);
+  const padding = Math.max(1, Math.round(activeSpan * 0.2));
+  const minWindow = Math.min(bins, Math.max(LOW_SIGNAL_ZOOM_MIN_WINDOW_BINS, activeSpan + (padding * 2)));
+
+  let startIdx = Math.max(0, first - padding);
+  let endIdx = Math.min(bins - 1, last + padding);
+  let windowSpan = (endIdx - startIdx) + 1;
+
+  if (windowSpan < minWindow) {
+    const extra = minWindow - windowSpan;
+    const left = Math.floor(extra / 2);
+    const right = extra - left;
+    startIdx = Math.max(0, startIdx - left);
+    endIdx = Math.min(bins - 1, endIdx + right);
+    windowSpan = (endIdx - startIdx) + 1;
+
+    if (windowSpan < minWindow) {
+      if (startIdx === 0) endIdx = Math.min(bins - 1, startIdx + minWindow - 1);
+      else if (endIdx === bins - 1) startIdx = Math.max(0, endIdx - minWindow + 1);
+    }
+  }
+
+  const start = Number(((startIdx * 100) / Math.max(1, bins - 1)).toFixed(2));
+  const end = Number((((endIdx + 1) * 100) / Math.max(1, bins)).toFixed(2));
+  if (!(Number.isFinite(start) && Number.isFinite(end)) || end <= start) return null;
+  return { start, end };
+}
+
+function buildTimelineOption(events, options = {}) {
+  const viewMode = String(options?.viewMode || "easy");
+  const densityAware = options?.densityAware === true;
+  const list = Array.isArray(events) ? events : [];
   const { from, to } = getRangeWindow();
-  const start = from ?? (events[0]?.ts ?? Date.now());
-  const end = to ?? (events[events.length - 1]?.ts ?? Date.now());
-
-  const binMs = getTimelineBinMs();
+  const start = from ?? (list[0]?.ts ?? Date.now());
+  const end = to ?? (list[list.length - 1]?.ts ?? Date.now());
   const span = Math.max(1, end - start);
-  const bins = Math.max(1, Math.ceil(span / binMs));
+  const baseBinMs = getTimelineBinMs();
 
-  const labels = [];
-  const blocked = new Array(bins).fill(0);
-  const observed = new Array(bins).fill(0);
-  const other = new Array(bins).fill(0);
-  const binEvents = new Array(bins).fill(0).map(() => []);
+  const buildBuckets = (targetBinMs) => {
+    const bins = Math.max(1, Math.ceil(span / targetBinMs));
+    const labels = [];
+    const blocked = new Array(bins).fill(0);
+    const observed = new Array(bins).fill(0);
+    const other = new Array(bins).fill(0);
+    const total = new Array(bins).fill(0);
+    const binEvents = new Array(bins).fill(0).map(() => []);
 
-  for (const ev of events) {
-    if (!ev?.ts) continue;
-    const idx = Math.min(bins - 1, Math.max(0, Math.floor((ev.ts - start) / binMs)));
-    binEvents[idx].push(ev);
+    for (const ev of list) {
+      if (!ev?.ts) continue;
+      const idx = Math.min(bins - 1, Math.max(0, Math.floor((ev.ts - start) / targetBinMs)));
+      binEvents[idx].push(ev);
+      total[idx] += 1;
 
-    if (ev.kind === "network.blocked") blocked[idx]++;
-    else if (ev.kind === "network.observed") observed[idx]++;
-    else other[idx]++;
+      if (ev.kind === "network.blocked") blocked[idx] += 1;
+      else if (ev.kind === "network.observed") observed[idx] += 1;
+      else other[idx] += 1;
+    }
+
+    for (let i = 0; i < bins; i++) {
+      labels.push(new Date(start + i * targetBinMs).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }));
+    }
+
+    return { bins, labels, blocked, observed, other, total, binEvents };
+  };
+
+  let effectiveBinMs = baseBinMs;
+  let timeline = buildBuckets(effectiveBinMs);
+  const initialSignal = assessTimelineSignal({
+    totalBins: timeline.bins,
+    binEvents: timeline.binEvents,
+    totalEvents: list.length,
+  });
+  let densityBinApplied = false;
+
+  if (densityAware && initialSignal.isLowSignal) {
+    const suggestedBinMs = chooseDensityAwareBinMs({
+      spanMs: span,
+      currentBinMs: baseBinMs,
+      totalEvents: list.length,
+    });
+    if (suggestedBinMs > effectiveBinMs) {
+      effectiveBinMs = suggestedBinMs;
+      timeline = buildBuckets(effectiveBinMs);
+      densityBinApplied = true;
+    }
   }
 
-  for (let i = 0; i < bins; i++) {
-    const t = new Date(start + i * binMs);
-    labels.push(t.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }));
-  }
+  const finalSignal = assessTimelineSignal({
+    totalBins: timeline.bins,
+    binEvents: timeline.binEvents,
+    totalEvents: list.length,
+  });
+  const simplifiedSeries = densityAware
+    && finalSignal.isLowSignal
+    && finalSignal.totalEvents <= LOW_SIGNAL_SIMPLE_SERIES_EVENT_THRESHOLD;
+  const focusedWindow = densityAware
+    && finalSignal.isLowSignal
+    && !!finalSignal.reasons?.includes("mostly-empty-timespan");
+  const defaultZoomWindow = focusedWindow
+    ? buildLowSignalDataZoomWindow({ totalBins: timeline.bins, binEvents: timeline.binEvents })
+    : null;
+  const stateGuidanceMessage = buildTimelineGuidanceMessage({
+    signal: finalSignal,
+    densityApplied: densityBinApplied,
+    originalBinMs: baseBinMs,
+    appliedBinMs: effectiveBinMs,
+    simplifiedSeries,
+    focusedWindow: !!defaultZoomWindow,
+    viewMode,
+  });
 
   return {
     option: {
@@ -266,52 +458,138 @@ function buildTimelineOption(events) {
         brushMode: "single",
       },
       grid: { left: 40, right: 18, top: 64, bottom: 60 },
-      ...buildTrendAxes(labels),
+      ...buildTrendAxes(timeline.labels),
       dataZoom: [
-        { type: "inside" },
-        { type: "slider", height: 18, bottom: 18 },
+        {
+          type: "inside",
+          ...(defaultZoomWindow ? { start: defaultZoomWindow.start, end: defaultZoomWindow.end } : {}),
+        },
+        {
+          type: "slider",
+          height: 18,
+          bottom: 18,
+          ...(defaultZoomWindow ? { start: defaultZoomWindow.start, end: defaultZoomWindow.end } : {}),
+        },
       ],
-      series: [
-        buildSeries("Blocked", blocked, { defaultType: "bar", stackKey: "total" }),
-        buildSeries("Observed", observed, { defaultType: "bar", stackKey: "total" }),
-        buildSeries("Other", other, { defaultType: "bar", stackKey: "total" }),
-      ],
+      series: simplifiedSeries
+        ? [buildSeries("Events", timeline.total, { defaultType: "bar" })]
+        : [
+          buildSeries("Blocked", timeline.blocked, { defaultType: "bar", stackKey: "total" }),
+          buildSeries("Observed", timeline.observed, { defaultType: "bar", stackKey: "total" }),
+          buildSeries("Other", timeline.other, { defaultType: "bar", stackKey: "total" }),
+        ],
     },
-    meta: { start, binMs, binEvents, labels },
+    meta: {
+      start,
+      binMs: effectiveBinMs,
+      binEvents: timeline.binEvents,
+      labels: timeline.labels,
+      lowSignal: finalSignal,
+      densityDefaults: {
+        applied: densityBinApplied || simplifiedSeries || !!defaultZoomWindow,
+        originalBinMs: baseBinMs,
+        appliedBinMs: effectiveBinMs,
+        simplifiedSeries,
+        focusedWindow: !!defaultZoomWindow,
+      },
+      stateGuidanceMessage,
+    },
   };
 }
 
-function buildVendorAllowedBlockedTimelineOption(events) {
+function buildVendorAllowedBlockedTimelineOption(events, options = {}) {
+  const viewMode = String(options?.viewMode || "easy");
+  const densityAware = options?.densityAware === true;
   const networkEvents = (Array.isArray(events) ? events : []).filter((ev) => ev?.kind === "network.blocked" || ev?.kind === "network.observed");
   if (!networkEvents.length) {
     return {
       option: { xAxis: { type: "category", data: [] }, yAxis: { type: "value" }, series: [] },
-      meta: { start: Date.now(), binMs: getTimelineBinMs(), binEvents: [], labels: [] },
+      meta: {
+        start: Date.now(),
+        binMs: getTimelineBinMs(),
+        binEvents: [],
+        labels: [],
+        lowSignal: null,
+        densityDefaults: { applied: false, originalBinMs: getTimelineBinMs(), appliedBinMs: getTimelineBinMs(), simplifiedSeries: false },
+      },
     };
   }
 
   const { from, to } = getRangeWindow();
   const start = from ?? (networkEvents[0]?.ts ?? Date.now());
   const end = to ?? (networkEvents[networkEvents.length - 1]?.ts ?? Date.now());
-  const binMs = getTimelineBinMs();
-  const bins = Math.max(1, Math.ceil(Math.max(1, end - start) / binMs));
+  const span = Math.max(1, end - start);
+  const baseBinMs = getTimelineBinMs();
 
-  const labels = [];
-  const blocked = new Array(bins).fill(0);
-  const allowed = new Array(bins).fill(0);
-  const binEvents = new Array(bins).fill(0).map(() => []);
+  const buildBuckets = (targetBinMs) => {
+    const bins = Math.max(1, Math.ceil(span / targetBinMs));
+    const labels = [];
+    const blocked = new Array(bins).fill(0);
+    const allowed = new Array(bins).fill(0);
+    const total = new Array(bins).fill(0);
+    const binEvents = new Array(bins).fill(0).map(() => []);
 
-  for (const ev of networkEvents) {
-    if (!ev?.ts) continue;
-    const idx = Math.min(bins - 1, Math.max(0, Math.floor((ev.ts - start) / binMs)));
-    binEvents[idx].push(ev);
-    if (ev.kind === "network.blocked") blocked[idx] += 1;
-    else allowed[idx] += 1;
+    for (const ev of networkEvents) {
+      if (!ev?.ts) continue;
+      const idx = Math.min(bins - 1, Math.max(0, Math.floor((ev.ts - start) / targetBinMs)));
+      binEvents[idx].push(ev);
+      total[idx] += 1;
+      if (ev.kind === "network.blocked") blocked[idx] += 1;
+      else allowed[idx] += 1;
+    }
+
+    for (let i = 0; i < bins; i++) {
+      labels.push(new Date(start + i * targetBinMs).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }));
+    }
+
+    return { bins, labels, blocked, allowed, total, binEvents };
+  };
+
+  let effectiveBinMs = baseBinMs;
+  let timeline = buildBuckets(effectiveBinMs);
+  const initialSignal = assessTimelineSignal({
+    totalBins: timeline.bins,
+    binEvents: timeline.binEvents,
+    totalEvents: networkEvents.length,
+  });
+  let densityBinApplied = false;
+
+  if (densityAware && initialSignal.isLowSignal) {
+    const suggestedBinMs = chooseDensityAwareBinMs({
+      spanMs: span,
+      currentBinMs: baseBinMs,
+      totalEvents: networkEvents.length,
+    });
+    if (suggestedBinMs > effectiveBinMs) {
+      effectiveBinMs = suggestedBinMs;
+      timeline = buildBuckets(effectiveBinMs);
+      densityBinApplied = true;
+    }
   }
 
-  for (let i = 0; i < bins; i++) {
-    labels.push(new Date(start + i * binMs).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }));
-  }
+  const finalSignal = assessTimelineSignal({
+    totalBins: timeline.bins,
+    binEvents: timeline.binEvents,
+    totalEvents: networkEvents.length,
+  });
+  const simplifiedSeries = densityAware
+    && finalSignal.isLowSignal
+    && finalSignal.totalEvents <= LOW_SIGNAL_SIMPLE_SERIES_EVENT_THRESHOLD;
+  const focusedWindow = densityAware
+    && finalSignal.isLowSignal
+    && !!finalSignal.reasons?.includes("mostly-empty-timespan");
+  const defaultZoomWindow = focusedWindow
+    ? buildLowSignalDataZoomWindow({ totalBins: timeline.bins, binEvents: timeline.binEvents })
+    : null;
+  const stateGuidanceMessage = buildTimelineGuidanceMessage({
+    signal: finalSignal,
+    densityApplied: densityBinApplied,
+    originalBinMs: baseBinMs,
+    appliedBinMs: effectiveBinMs,
+    simplifiedSeries,
+    focusedWindow: !!defaultZoomWindow,
+    viewMode,
+  });
 
   return {
     option: {
@@ -323,22 +601,46 @@ function buildVendorAllowedBlockedTimelineOption(events) {
         brushMode: "single",
       },
       grid: { left: 40, right: 18, top: 64, bottom: 60 },
-      ...buildTrendAxes(labels),
+      ...buildTrendAxes(timeline.labels),
       dataZoom: [
-        { type: "inside" },
-        { type: "slider", height: 18, bottom: 18 },
+        {
+          type: "inside",
+          ...(defaultZoomWindow ? { start: defaultZoomWindow.start, end: defaultZoomWindow.end } : {}),
+        },
+        {
+          type: "slider",
+          height: 18,
+          bottom: 18,
+          ...(defaultZoomWindow ? { start: defaultZoomWindow.start, end: defaultZoomWindow.end } : {}),
+        },
       ],
-      series: [
-        buildSeries("Blocked", blocked, { defaultType: "bar", stackKey: "vendor-allowed-blocked" }),
-        buildSeries("Allowed", allowed, { defaultType: "bar", stackKey: "vendor-allowed-blocked" }),
-      ],
+      series: simplifiedSeries
+        ? [buildSeries("Network events", timeline.total, { defaultType: "bar" })]
+        : [
+          buildSeries("Blocked", timeline.blocked, { defaultType: "bar", stackKey: "vendor-allowed-blocked" }),
+          buildSeries("Allowed", timeline.allowed, { defaultType: "bar", stackKey: "vendor-allowed-blocked" }),
+        ],
     },
-    meta: { start, binMs, binEvents, labels },
+    meta: {
+      start,
+      binMs: effectiveBinMs,
+      binEvents: timeline.binEvents,
+      labels: timeline.labels,
+      lowSignal: finalSignal,
+      densityDefaults: {
+        applied: densityBinApplied || simplifiedSeries || !!defaultZoomWindow,
+        originalBinMs: baseBinMs,
+        appliedBinMs: effectiveBinMs,
+        simplifiedSeries,
+        focusedWindow: !!defaultZoomWindow,
+      },
+      stateGuidanceMessage,
+    },
   };
 }
 
 const GENERIC_ENDPOINT_PREFIXES = new Set(["api", "v1", "v2", "v3"]);
-const VENDOR_BUCKET_LOW_SIGNAL_THRESHOLD = 2;
+const VENDOR_ENDPOINT_COMPACT_SUMMARY_KEY = "__vendor-endpoint-compact-summary";
 
 function parseUrlObject(value) {
   const raw = String(value || "").trim();
@@ -397,7 +699,104 @@ function buildForcedStackedBarSeries(name, data, stackKey) {
   return series;
 }
 
-function buildVendorTopDomainsEndpointsOption(events, selectedVendor, metric = "seen") {
+function assessVendorBucketSignal(rows) {
+  const list = Array.isArray(rows) ? rows : [];
+  const bucketCount = list.length;
+  const nonZeroBuckets = list.filter((row) => Number(row?.value || 0) > 0).length;
+  const totalEvents = list.reduce((acc, row) => acc + Number(row?.seenCount || 0), 0);
+  const topSeen = list.length ? Math.max(...list.map((row) => Number(row?.seenCount || 0))) : 0;
+  const topShare = topSeen / Math.max(1, totalEvents);
+  const reasons = [];
+
+  if (totalEvents <= LOW_SIGNAL_BUCKET_EVENT_THRESHOLD) reasons.push("few-events");
+  if (bucketCount < LOW_SIGNAL_BUCKET_COUNT_THRESHOLD) reasons.push("few-buckets");
+  if (nonZeroBuckets < LOW_SIGNAL_BUCKET_COUNT_THRESHOLD) reasons.push("few-non-zero-buckets");
+  if (bucketCount <= 2 && topShare >= 0.75) reasons.push("single-dominant-bucket");
+
+  return {
+    totalEvents,
+    bucketCount,
+    nonZeroBuckets,
+    topShare,
+    reasons,
+    isLowSignal: reasons.length > 0,
+  };
+}
+
+function buildVendorEndpointCompactSummaryOption({
+  blockedTotal = 0,
+  observedTotal = 0,
+  otherTotal = 0,
+  blockedTotalRaw = 0,
+  observedTotalRaw = 0,
+  otherTotalRaw = 0,
+  bucketCount = 0,
+  displayLabelByBucketKey,
+  fullLabelByBucketKey,
+  statsByBucketKey,
+} = {}) {
+  const summaryLabel = `All ${bucketCount} endpoint bucket${bucketCount === 1 ? "" : "s"}`;
+  displayLabelByBucketKey.set(VENDOR_ENDPOINT_COMPACT_SUMMARY_KEY, summaryLabel);
+  fullLabelByBucketKey.set(VENDOR_ENDPOINT_COMPACT_SUMMARY_KEY, summaryLabel);
+  statsByBucketKey.set(VENDOR_ENDPOINT_COMPACT_SUMMARY_KEY, {
+    seen: Number(blockedTotalRaw + observedTotalRaw + otherTotalRaw),
+    blocked: Number(blockedTotalRaw),
+    observed: Number(observedTotalRaw),
+    other: Number(otherTotalRaw),
+  });
+
+  return {
+    option: {
+      tooltip: {
+        trigger: "item",
+        axisPointer: { type: "none" },
+        formatter: (params) => {
+          const first = Array.isArray(params) ? params[0] : params;
+          const key = String(first?.axisValue ?? first?.name ?? VENDOR_ENDPOINT_COMPACT_SUMMARY_KEY);
+          const stats = statsByBucketKey.get(key) || { seen: 0, blocked: 0, observed: 0, other: 0 };
+          const lines = [`<strong>${summaryLabel}</strong>`];
+          if (vizOptions.normalize) {
+            lines.push(`Blocked: ${Number(first?.seriesName === "Blocked" ? first?.value : (stats.blocked * 100) / Math.max(1, stats.seen)).toFixed(2)}% (${stats.blocked})`);
+            lines.push(`Observed: ${Number(first?.seriesName === "Observed" ? first?.value : (stats.observed * 100) / Math.max(1, stats.seen)).toFixed(2)}% (${stats.observed})`);
+            lines.push(`Other: ${Number(first?.seriesName === "Other" ? first?.value : (stats.other * 100) / Math.max(1, stats.seen)).toFixed(2)}% (${stats.other})`);
+          } else {
+            lines.push(`Blocked: ${stats.blocked}`);
+            lines.push(`Observed: ${stats.observed}`);
+            lines.push(`Other: ${stats.other}`);
+          }
+          lines.push(`Total: ${stats.seen}`);
+          return lines.join("<br/>");
+        },
+      },
+      legend: { top: 0 },
+      grid: { left: 110, right: 18, top: 44, bottom: 46, containLabel: true },
+      xAxis: {
+        type: "value",
+        name: "Events",
+        nameLocation: "middle",
+        nameGap: 34,
+        max: vizOptions.normalize ? 100 : null,
+        axisLabel: vizOptions.normalize ? { formatter: "{value}%" } : undefined,
+      },
+      yAxis: {
+        type: "category",
+        data: [VENDOR_ENDPOINT_COMPACT_SUMMARY_KEY],
+        axisLabel: {
+          formatter: (value) => displayLabelByBucketKey.get(String(value || "")) || String(value || ""),
+        },
+      },
+      series: [
+        buildForcedStackedBarSeries("Blocked", [blockedTotal], "vendor-endpoint-compact"),
+        buildForcedStackedBarSeries("Observed", [observedTotal], "vendor-endpoint-compact"),
+        buildForcedStackedBarSeries("Other", [otherTotal], "vendor-endpoint-compact"),
+      ],
+    },
+    categoryKeys: [VENDOR_ENDPOINT_COMPACT_SUMMARY_KEY],
+  };
+}
+
+function buildVendorTopDomainsEndpointsOption(events, selectedVendor, metric = "seen", options = {}) {
+  const densityAware = options?.densityAware === true;
   const vendorId = String(selectedVendor?.vendorId || "");
   const vendorName = selectedVendor?.vendorName || "the selected vendor";
   if (!vendorId) {
@@ -482,10 +881,12 @@ function buildVendorTopDomainsEndpointsOption(events, selectedVendor, metric = "
     })
     .slice(0, topLimit);
 
-  const categoryKeys = ranked.map((row) => row.bucketKey);
-  const blocked = new Array(categoryKeys.length).fill(0);
-  const observed = new Array(categoryKeys.length).fill(0);
-  const other = new Array(categoryKeys.length).fill(0);
+  const bucketSignal = assessVendorBucketSignal(ranked);
+  const compactSummaryActive = densityAware && bucketSignal.isLowSignal;
+  let categoryKeys = ranked.map((row) => row.bucketKey);
+  let blocked = new Array(categoryKeys.length).fill(0);
+  let observed = new Array(categoryKeys.length).fill(0);
+  let other = new Array(categoryKeys.length).fill(0);
   const evidenceByBucket = new Map();
   const bucketKeyByLabel = new Map();
   const displayLabelByBucketKey = new Map();
@@ -519,98 +920,152 @@ function buildVendorTopDomainsEndpointsOption(events, selectedVendor, metric = "
   }
 
   const stackKey = "total";
-  const blockedSeries = buildForcedStackedBarSeries("Blocked", blocked, stackKey);
-  const observedSeries = buildForcedStackedBarSeries("Observed", observed, stackKey);
-  const otherSeries = buildForcedStackedBarSeries("Other", other, stackKey);
+  let blockedSeries = buildForcedStackedBarSeries("Blocked", blocked, stackKey);
+  let observedSeries = buildForcedStackedBarSeries("Observed", observed, stackKey);
+  let otherSeries = buildForcedStackedBarSeries("Other", other, stackKey);
 
   const topBucket = ranked[0] || null;
+  let compactSummary = null;
+  let option = {
+    tooltip: {
+      trigger: "item",
+      axisPointer: {
+        type: "none",
+      },
+      formatter: (params) => {
+        const list = Array.isArray(params) ? params : [params];
+        const first = list[0] || {};
+        const key = String(first?.axisValue ?? first?.name ?? "");
+        if (!key) return "";
+        const fullLabel = fullLabelByBucketKey.get(key) || key;
+        const stats = statsByBucketKey.get(key) || { seen: 0, blocked: 0, observed: 0, other: 0 };
+        const lines = [`<strong>${fullLabel}</strong>`];
+
+        if (vizOptions.normalize) {
+          const bySeries = new Map(list.map((row) => [String(row?.seriesName || ""), Number(row?.value || 0)]));
+          lines.push(`Blocked: ${Number(bySeries.get("Blocked") || 0).toFixed(2)}% (${stats.blocked})`);
+          lines.push(`Observed: ${Number(bySeries.get("Observed") || 0).toFixed(2)}% (${stats.observed})`);
+          lines.push(`Other: ${Number(bySeries.get("Other") || 0).toFixed(2)}% (${stats.other})`);
+        } else {
+          lines.push(`Blocked: ${stats.blocked}`);
+          lines.push(`Observed: ${stats.observed}`);
+          lines.push(`Other: ${stats.other}`);
+        }
+
+        lines.push(`Total: ${stats.seen}`);
+        return lines.join("<br/>");
+      },
+    },
+    legend: { top: 0 },
+    grid: { left: 68, right: 16, top: 44, bottom: 46, containLabel: true },
+    xAxis: {
+      type: "value",
+      name: "Events",
+      nameLocation: "middle",
+      nameGap: 34,
+      nameTextStyle: {
+        color: "#e2e8f0",
+        fontWeight: 700,
+        fontSize: 12,
+      },
+      max: vizOptions.normalize ? 100 : null,
+      axisLine: {
+        show: true,
+        lineStyle: { color: "#94a3b8" },
+      },
+      axisTick: { show: true },
+      axisLabel: {
+        color: "#cbd5e1",
+        ...(vizOptions.normalize ? { formatter: "{value}%" } : {}),
+      },
+    },
+    yAxis: {
+      type: "category",
+      name: "Domains / endpoints",
+      nameLocation: "end",
+      nameRotate: 0,
+      nameGap: 92,
+      nameTextStyle: {
+        color: "#e2e8f0",
+        fontWeight: 700,
+        fontSize: 12,
+        align: "right",
+        verticalAlign: "top",
+        padding: [54, 0, 0, 0],
+      },
+      data: categoryKeys,
+      axisLine: {
+        show: true,
+        lineStyle: { color: "#94a3b8" },
+      },
+      axisTick: { show: true },
+      axisLabel: {
+        color: "#cbd5e1",
+        formatter: (value) => displayLabelByBucketKey.get(String(value || "")) || String(value || ""),
+      },
+    },
+    series: [blockedSeries, observedSeries, otherSeries],
+  };
+
+  if (compactSummaryActive) {
+    const blockedTotalRaw = ranked.reduce((acc, row) => acc + Number(row.blockedCount || 0), 0);
+    const observedTotalRaw = ranked.reduce((acc, row) => acc + Number(row.observedCount || 0), 0);
+    const otherTotalRaw = ranked.reduce((acc, row) => acc + Number(row.otherCount || 0), 0);
+    const totalRaw = Math.max(1, blockedTotalRaw + observedTotalRaw + otherTotalRaw);
+
+    const blockedTotal = vizOptions.normalize ? Number(((blockedTotalRaw * 100) / totalRaw).toFixed(2)) : blockedTotalRaw;
+    const observedTotal = vizOptions.normalize ? Number(((observedTotalRaw * 100) / totalRaw).toFixed(2)) : observedTotalRaw;
+    const otherTotal = vizOptions.normalize ? Number(((otherTotalRaw * 100) / totalRaw).toFixed(2)) : otherTotalRaw;
+
+    const compact = buildVendorEndpointCompactSummaryOption({
+      blockedTotal,
+      observedTotal,
+      otherTotal,
+      blockedTotalRaw,
+      observedTotalRaw,
+      otherTotalRaw,
+      bucketCount: bucketSignal.bucketCount,
+      displayLabelByBucketKey,
+      fullLabelByBucketKey,
+      statsByBucketKey,
+    });
+    option = compact.option;
+    categoryKeys = compact.categoryKeys;
+    blocked = [blockedTotal];
+    observed = [observedTotal];
+    other = [otherTotal];
+    blockedSeries = buildForcedStackedBarSeries("Blocked", blocked, stackKey);
+    observedSeries = buildForcedStackedBarSeries("Observed", observed, stackKey);
+    otherSeries = buildForcedStackedBarSeries("Other", other, stackKey);
+    option.series = [blockedSeries, observedSeries, otherSeries];
+
+    const allEvidence = ranked.flatMap((row) => (Array.isArray(row.events) ? row.events : []));
+    evidenceByBucket.set(VENDOR_ENDPOINT_COMPACT_SUMMARY_KEY, allEvidence);
+    bucketKeyByLabel.set(VENDOR_ENDPOINT_COMPACT_SUMMARY_KEY, VENDOR_ENDPOINT_COMPACT_SUMMARY_KEY);
+    compactSummary = {
+      vendorName,
+      totalEvents: bucketSignal.totalEvents,
+      bucketCount: bucketSignal.bucketCount,
+      blocked: blockedTotalRaw,
+      observed: observedTotalRaw,
+      other: otherTotalRaw,
+    };
+  }
+
+  const stateGuidanceMessage = bucketSignal.isLowSignal
+    ? compactSummaryActive
+      ? `Easy fallback: showing compact summary for ${vendorName} because only ${bucketSignal.totalEvents} events span ${bucketSignal.bucketCount} endpoint bucket${bucketSignal.bucketCount === 1 ? "" : "s"}.`
+      : `Low-information view: only ${bucketSignal.totalEvents} events span ${bucketSignal.bucketCount} endpoint bucket${bucketSignal.bucketCount === 1 ? "" : "s"} for ${vendorName} in this scope.`
+    : "";
 
   return {
-    option: {
-      tooltip: {
-        trigger: "item",
-        axisPointer: {
-          type: "none",
-        },
-        formatter: (params) => {
-          const list = Array.isArray(params) ? params : [params];
-          const first = list[0] || {};
-          const key = String(first?.axisValue ?? first?.name ?? "");
-          if (!key) return "";
-          const fullLabel = fullLabelByBucketKey.get(key) || key;
-          const stats = statsByBucketKey.get(key) || { seen: 0, blocked: 0, observed: 0, other: 0 };
-          const lines = [`<strong>${fullLabel}</strong>`];
-
-          if (vizOptions.normalize) {
-            const bySeries = new Map(list.map((row) => [String(row?.seriesName || ""), Number(row?.value || 0)]));
-            lines.push(`Blocked: ${Number(bySeries.get("Blocked") || 0).toFixed(2)}% (${stats.blocked})`);
-            lines.push(`Observed: ${Number(bySeries.get("Observed") || 0).toFixed(2)}% (${stats.observed})`);
-            lines.push(`Other: ${Number(bySeries.get("Other") || 0).toFixed(2)}% (${stats.other})`);
-          } else {
-            lines.push(`Blocked: ${stats.blocked}`);
-            lines.push(`Observed: ${stats.observed}`);
-            lines.push(`Other: ${stats.other}`);
-          }
-
-          lines.push(`Total: ${stats.seen}`);
-          return lines.join("<br/>");
-        },
-      },
-      legend: { top: 0 },
-      grid: { left: 68, right: 16, top: 44, bottom: 46, containLabel: true },
-      xAxis: {
-        type: "value",
-        name: "Events",
-        nameLocation: "middle",
-        nameGap: 34,
-        nameTextStyle: {
-          color: "#e2e8f0",
-          fontWeight: 700,
-          fontSize: 12,
-        },
-        max: vizOptions.normalize ? 100 : null,
-        axisLine: {
-          show: true,
-          lineStyle: { color: "#94a3b8" },
-        },
-        axisTick: { show: true },
-        axisLabel: {
-          color: "#cbd5e1",
-          ...(vizOptions.normalize ? { formatter: "{value}%" } : {}),
-        },
-      },
-      yAxis: {
-        type: "category",
-        name: "Domains / endpoints",
-        nameLocation: "end",
-        nameRotate: 0,
-        nameGap: 92,
-        nameTextStyle: {
-          color: "#e2e8f0",
-          fontWeight: 700,
-          fontSize: 12,
-          align: "right",
-          verticalAlign: "top",
-          padding: [54, 0, 0, 0],
-        },
-        data: categoryKeys,
-        axisLine: {
-          show: true,
-          lineStyle: { color: "#94a3b8" },
-        },
-        axisTick: { show: true },
-        axisLabel: {
-          color: "#cbd5e1",
-          formatter: (value) => displayLabelByBucketKey.get(String(value || "")) || String(value || ""),
-        },
-      },
-      series: [blockedSeries, observedSeries, otherSeries],
-    },
+    option,
     meta: {
       evidenceByBucket,
       bucketKeyByLabel,
       displayLabelByBucketKey,
       fullLabelByBucketKey,
+      compactSummary,
       topBucketSummary: topBucket
         ? {
           bucketKey: topBucket.bucketKey,
@@ -622,9 +1077,12 @@ function buildVendorTopDomainsEndpointsOption(events, selectedVendor, metric = "
           other: Number(topBucket.otherCount || 0),
         }
         : null,
-      stateGuidanceMessage: ranked.length < VENDOR_BUCKET_LOW_SIGNAL_THRESHOLD
-        ? `Low-information view: only ${ranked.length} endpoint bucket${ranked.length === 1 ? "" : "s"} for ${vendorName} in this scope.`
-        : "",
+      lowSignal: bucketSignal,
+      densityDefaults: {
+        applied: compactSummaryActive,
+        compactSummary: compactSummaryActive,
+      },
+      stateGuidanceMessage,
     },
   };
 }

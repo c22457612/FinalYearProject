@@ -246,6 +246,9 @@
   border: var(--border-subtle);
   background: rgba(15, 23, 42, 0.55);
   padding: 0.75rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
 }
 
 .viz-bottom-nav {
@@ -282,6 +285,23 @@
   padding: 0.25rem 0.2rem 0;
   font-size: 0.75rem;
   color: var(--color-text-muted);
+}
+
+.viz-density-badge {
+  margin-top: 0;
+  margin-bottom: 0.1rem;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  border: 1px solid rgba(245, 158, 11, 0.45);
+  background: rgba(120, 53, 15, 0.22);
+  color: #fcd34d;
+  border-radius: 999px;
+  font-size: 0.72rem;
+  font-weight: 600;
+  line-height: 1.2;
+  padding: 0.18rem 0.52rem;
+  width: fit-content;
 }
 
 
