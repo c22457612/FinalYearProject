@@ -247,6 +247,20 @@ const LOW_SIGNAL_BUCKET_EVENT_THRESHOLD = 10;
 const LOW_SIGNAL_BUCKET_COUNT_THRESHOLD = 3;
 const LOW_SIGNAL_ZOOM_MIN_TOTAL_BINS = 36;
 const LOW_SIGNAL_ZOOM_MIN_WINDOW_BINS = 12;
+const COMPARISON_TOP_VENDOR_CAP = 10;
+const LOW_CONFIDENCE_SAMPLE_THRESHOLD = 10;
+
+function buildComparisonVendorFocusGuidance(selectedVendor) {
+  const name = String(selectedVendor?.vendorName || selectedVendor?.vendorId || "selected vendor");
+  return `Comparison view is hidden while vendor focus is active (${name}). Clear vendor focus to compare multiple vendors.`;
+}
+
+function buildGuidanceOnlyChart(message) {
+  return {
+    option: buildEmptyChartOption(message),
+    meta: { stateGuidanceMessage: message },
+  };
+}
 
 function formatBinLabel(binMs) {
   const value = Number(binMs || 0);
@@ -1389,6 +1403,244 @@ function buildVendorOverviewOption(events) {
   };
 }
 
+function buildVendorBlockRateComparisonOption(events, options = {}) {
+  const selectedVendor = options?.selectedVendor || null;
+  if (selectedVendor?.vendorId) {
+    return buildGuidanceOnlyChart(buildComparisonVendorFocusGuidance(selectedVendor));
+  }
+
+  const viewMode = String(options?.viewMode || "easy");
+  const rows = buildVendorRollup(events)
+    .map((row) => {
+      const seen = Number(row?.seen || 0);
+      const blocked = Number(row?.blocked || 0);
+      const rate = seen > 0 ? Number(((blocked * 100) / seen).toFixed(1)) : 0;
+      return {
+        label: String(row?.vendorName || row?.vendorId || "Unknown vendor"),
+        value: rate,
+        seen,
+        blocked,
+        observed: Number(row?.observed || 0),
+        evs: Array.isArray(row?.evs) ? row.evs : [],
+        vendor: {
+          vendorId: row?.vendorId,
+          vendorName: row?.vendorName,
+          category: row?.category,
+          domains: Array.isArray(row?.domains) ? row.domains : [],
+          riskHints: Array.isArray(row?.riskHints) ? row.riskHints : [],
+        },
+      };
+    })
+    .filter((row) => row.seen > 0);
+
+  rows.sort((a, b) => {
+    if (b.value !== a.value) return b.value - a.value;
+    if (b.blocked !== a.blocked) return b.blocked - a.blocked;
+    return b.seen - a.seen;
+  });
+
+  const topRows = rows.slice(0, COMPARISON_TOP_VENDOR_CAP);
+  const overflowRows = rows.slice(COMPARISON_TOP_VENDOR_CAP);
+  let overflowLabel = "";
+  if (overflowRows.length) {
+    const otherSeen = overflowRows.reduce((sum, row) => sum + Number(row.seen || 0), 0);
+    const otherBlocked = overflowRows.reduce((sum, row) => sum + Number(row.blocked || 0), 0);
+    const otherObserved = overflowRows.reduce((sum, row) => sum + Number(row.observed || 0), 0);
+    const otherRate = otherSeen > 0 ? Number(((otherBlocked * 100) / otherSeen).toFixed(1)) : 0;
+    overflowLabel = `Other (+${overflowRows.length} vendors)`;
+    topRows.push({
+      label: overflowLabel,
+      value: otherRate,
+      seen: otherSeen,
+      blocked: otherBlocked,
+      observed: otherObserved,
+      evs: overflowRows.flatMap((row) => row.evs || []),
+      vendor: null,
+    });
+  }
+
+  const labels = topRows.map((row) => row.label);
+  const values = topRows.map((row) => row.value);
+  const evidenceByLabel = new Map(topRows.map((row) => [row.label, row.evs]));
+  const vendorByLabel = new Map(topRows.map((row) => [row.label, row.vendor]));
+  const countsByLabel = new Map(topRows.map((row) => [row.label, { seen: row.seen, blocked: row.blocked, observed: row.observed }]));
+
+  let stateGuidanceMessage = "";
+  if (topRows.length <= 1) {
+    stateGuidanceMessage = "Low-information comparison: only one vendor appears in this scope. Broaden range or clear vendor focus to compare multiple vendors.";
+  } else if (topRows.length <= 3 || topRows.reduce((sum, row) => sum + row.seen, 0) <= LOW_SIGNAL_EVENT_THRESHOLD) {
+    const modePrefix = viewMode === "easy" ? "Easy mode note: " : "";
+    stateGuidanceMessage = `${modePrefix}Low-signal comparison: ${topRows.length} vendors available in this scope. Compare cautiously and broaden range for stronger contrast.`;
+  }
+  if (overflowLabel) {
+    const overflowNote = `Top ${COMPARISON_TOP_VENDOR_CAP} vendors shown; remaining vendors are grouped into "${overflowLabel}".`;
+    stateGuidanceMessage = stateGuidanceMessage ? `${stateGuidanceMessage} ${overflowNote}` : overflowNote;
+  }
+
+  return {
+    option: {
+      tooltip: {
+        trigger: "item",
+        formatter: (params) => {
+          const rows = Array.isArray(params) ? params : [params];
+          const first = rows[0] || {};
+          const byIndexLabel = Number.isFinite(first?.dataIndex) ? labels[first.dataIndex] : "";
+          const label = String(first?.name || first?.axisValueLabel || first?.axisValue || byIndexLabel || "");
+          const counts = countsByLabel.get(label) || countsByLabel.get(byIndexLabel) || { seen: 0, blocked: 0, observed: 0 };
+          const value = Number(first?.value || 0);
+
+          const lines = [
+            `<strong>${label}</strong>`,
+            `Block rate: ${value.toFixed(1)}%`,
+            `Blocked: ${counts.blocked}`,
+            `Observed: ${counts.observed}`,
+            `Total n: ${counts.seen}`,
+          ];
+          if (counts.seen < LOW_CONFIDENCE_SAMPLE_THRESHOLD) {
+            lines.push("Low confidence: small sample (n < 10).");
+          }
+
+          return [
+            ...lines,
+          ].join("<br/>");
+        },
+      },
+      grid: { left: 170, right: 24, top: 18, bottom: 34 },
+      xAxis: {
+        type: "value",
+        min: 0,
+        max: 100,
+        axisLabel: { formatter: "{value}%" },
+      },
+      yAxis: {
+        type: "category",
+        data: labels,
+        inverse: true,
+        axisLabel: { width: 160, overflow: "truncate" },
+      },
+      series: [buildSeries("Block rate (%)", values, { defaultType: "bar" })],
+    },
+    meta: {
+      evidenceByLabel,
+      vendorByLabel,
+      countsByLabel,
+      stateGuidanceMessage,
+    },
+  };
+}
+
+function buildVendorShareOverTimeOption(events, options = {}) {
+  const selectedVendor = options?.selectedVendor || null;
+  if (selectedVendor?.vendorId) {
+    return buildGuidanceOnlyChart(buildComparisonVendorFocusGuidance(selectedVendor));
+  }
+
+  const viewMode = String(options?.viewMode || "easy");
+  const rows = buildVendorRollup(events)
+    .map((row) => ({
+      label: String(row?.vendorName || row?.vendorId || "Unknown vendor"),
+      seen: Number(row?.seen || 0),
+      evs: Array.isArray(row?.evs) ? row.evs : [],
+    }))
+    .filter((row) => row.seen > 0)
+    .sort((a, b) => b.seen - a.seen);
+
+  const topRows = rows.slice(0, COMPARISON_TOP_VENDOR_CAP);
+  const overflowRows = rows.slice(COMPARISON_TOP_VENDOR_CAP);
+  if (overflowRows.length) {
+    topRows.push({
+      label: `Other (+${overflowRows.length} vendors)`,
+      seen: overflowRows.reduce((sum, row) => sum + Number(row.seen || 0), 0),
+      evs: overflowRows.flatMap((row) => row.evs || []),
+    });
+  }
+
+  const { from, to } = getRangeWindow();
+  const list = Array.isArray(events) ? events : [];
+  const start = from ?? (list[0]?.ts ?? Date.now());
+  const end = to ?? (list[list.length - 1]?.ts ?? Date.now());
+  const binMs = getTimelineBinMs();
+  const bins = Math.max(1, Math.ceil(Math.max(1, end - start) / binMs));
+  const labels = [];
+  const binEvents = new Array(bins).fill(0).map(() => []);
+
+  for (let i = 0; i < bins; i++) {
+    labels.push(new Date(start + i * binMs).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }));
+  }
+
+  const series = [];
+  for (const row of topRows) {
+    const points = new Array(bins).fill(0);
+    for (const ev of row.evs) {
+      const ts = Number(ev?.ts);
+      if (!Number.isFinite(ts)) continue;
+      const idx = Math.min(bins - 1, Math.max(0, Math.floor((ts - start) / binMs)));
+      points[idx] += 1;
+      binEvents[idx].push(ev);
+    }
+
+    series.push({
+      name: row.label,
+      type: "line",
+      stack: "vendor-share",
+      data: points,
+      smooth: 0.2,
+      symbol: "none",
+      areaStyle: { opacity: 0.22 },
+      emphasis: {
+        focus: "none",
+        itemStyle: {
+          borderColor: hoverPointStyle.borderColor,
+          borderWidth: hoverPointStyle.borderWidth,
+        },
+        lineStyle: { width: 2 },
+      },
+      select: {
+        itemStyle: {
+          borderColor: selectedPointStyle.borderColor,
+          borderWidth: selectedPointStyle.borderWidth,
+        },
+      },
+    });
+  }
+
+  let stateGuidanceMessage = "";
+  if (topRows.length <= 1) {
+    stateGuidanceMessage = "Low-information comparison: only one vendor appears in this scope. Broaden range to compare share across vendors.";
+  } else if (topRows.length <= 3 || list.length <= LOW_SIGNAL_EVENT_THRESHOLD) {
+    const modePrefix = viewMode === "easy" ? "Easy mode note: " : "";
+    stateGuidanceMessage = `${modePrefix}Low-signal comparison: vendor-share trends may shift with small samples.`;
+  }
+
+  return {
+    option: {
+      tooltip: {
+        trigger: "axis",
+        formatter: (params) => {
+          const rowsForBin = Array.isArray(params) ? params : [];
+          if (!rowsForBin.length) return "";
+          const label = String(rowsForBin[0]?.axisValueLabel || rowsForBin[0]?.axisValue || "Time bucket");
+          const total = rowsForBin.reduce((sum, row) => sum + Number(row?.value || 0), 0);
+          const lines = [`<strong>${label}</strong>`, `Total n: ${total}`];
+          for (const row of rowsForBin) {
+            const value = Number(row?.value || 0);
+            const pct = total > 0 ? Number(((value * 100) / total).toFixed(1)) : 0;
+            lines.push(`${row?.marker || ""}${row?.seriesName || "Vendor"}: ${value} (${pct}%)`);
+          }
+          return lines.join("<br/>");
+        },
+      },
+      legend: { top: 0, textStyle: TREND_LEGEND_TEXT_STYLE, itemWidth: 22, itemHeight: 12, itemGap: 14 },
+      grid: { left: 40, right: 18, top: 36, bottom: 75 },
+      ...buildTrendAxes(labels),
+      toolbox: buildTrendToolbox(),
+      dataZoom: [{ type: "inside" }, { type: "slider", height: 18, bottom: 18 }],
+      series,
+    },
+    meta: { start, binMs, binEvents, labels, stateGuidanceMessage },
+  };
+}
+
 function riskBucketForEvent(ev) {
   const third = ev?.data?.isThirdParty === true;
   const rt = String(ev?.data?.resourceType || "").toLowerCase();
@@ -1588,6 +1840,8 @@ function hasSeriesData(option) {
 
 function getModeEmptyMessage(viewId) {
   if (viewId === "vendorOverview") return "No vendor activity matches current filters";
+  if (viewId === "vendorBlockRateComparison") return "No multi-vendor data is available for block-rate comparison";
+  if (viewId === "vendorShareOverTime") return "No multi-vendor timeline data is available for share-over-time comparison";
   if (viewId === "vendorAllowedBlockedTimeline") return "No blocked/allowed network events match current filters";
   if (viewId === "vendorTopDomainsEndpoints") return "No domain/endpoint buckets match current vendor scope";
   if (viewId === "riskTrend") return "No risk trend data matches current filters";
@@ -1617,6 +1871,8 @@ function getModeEmptyMessage(viewId) {
     buildPartySplitOption,
     buildHourHeatmapOption,
     buildVendorOverviewOption,
+    buildVendorBlockRateComparisonOption,
+    buildVendorShareOverTimeOption,
     buildRiskTrendOption,
     buildBaselineDetectedBlockedTrendOption,
     buildVendorKindMatrixOption,

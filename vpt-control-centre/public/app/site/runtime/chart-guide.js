@@ -13,6 +13,34 @@ const CHART_GUIDE_BY_VIEW_ID = Object.freeze({
     gotcha: "Sparse vendor scopes may compact to a timeline-style focus.",
     powerDetail: "Switch metric to compare seen, blocked, or observed emphasis.",
   }),
+  vendorBlockRateComparison: Object.freeze({
+    what: "Which vendors have the highest blocked-share in this scope.",
+    how: [
+      "Each horizontal bar is a vendor and the value is blocked percent.",
+      "Higher bars mean more requests were blocked relative to that vendor's total.",
+      "Compare bar height alongside total counts in tooltip.",
+    ],
+    bestFor: [
+      "Prioritizing vendors with high mitigation pressure.",
+      "Comparing enforcement balance across vendors.",
+    ],
+    gotcha: "Small totals can produce unstable percentages.",
+    powerDetail: "Use filters/range to validate whether high rates persist with larger samples.",
+  }),
+  vendorShareOverTime: Object.freeze({
+    what: "How top vendors share total activity across time in this scope.",
+    how: [
+      "Each stacked area shows one vendor's contribution by time bin.",
+      "Top vendors are shown directly; long-tail vendors are grouped as Other.",
+      "Use tooltip totals to compare both counts and share per time bin.",
+    ],
+    bestFor: [
+      "Seeing who dominates activity over time.",
+      "Spotting vendor-share shifts during bursts.",
+    ],
+    gotcha: "Vendor focus hides comparison views; clear vendor focus to compare vendors.",
+    powerDetail: "Adjust range/bin size to stabilize noisy short-window share swings.",
+  }),
   vendorAllowedBlockedTimeline: Object.freeze({
     what: "How one vendor changed over time, split by blocked and observed outcomes.",
     how: [

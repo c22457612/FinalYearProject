@@ -16,6 +16,8 @@ export function createChartOrchestrationController(deps) {
     buildPartySplitOption,
     buildHourHeatmapOption,
     buildVendorOverviewOption,
+    buildVendorBlockRateComparisonOption,
+    buildVendorShareOverTimeOption,
     buildRiskTrendOption,
     buildBaselineDetectedBlockedTrendOption,
     buildVendorKindMatrixOption,
@@ -37,6 +39,7 @@ export function createChartOrchestrationController(deps) {
     if (
       viewId === "timeline"
       || viewId === "vendorAllowedBlockedTimeline"
+      || viewId === "vendorShareOverTime"
       || viewId === "riskTrend"
       || viewId === "baselineDetectedBlockedTrend"
     ) {
@@ -107,6 +110,16 @@ export function createChartOrchestrationController(deps) {
       } else {
         built = buildVendorOverviewOption(events);
       }
+    } else if (requestedViewId === "vendorBlockRateComparison") {
+      built = buildVendorBlockRateComparisonOption(events, {
+        viewMode,
+        selectedVendor: getSelectedVendor(),
+      });
+    } else if (requestedViewId === "vendorShareOverTime") {
+      built = buildVendorShareOverTimeOption(events, {
+        viewMode,
+        selectedVendor: getSelectedVendor(),
+      });
     } else if (requestedViewId === "vendorAllowedBlockedTimeline") {
       built = buildVendorAllowedBlockedTimelineOption(events, { densityAware, viewMode });
     } else if (requestedViewId === "vendorTopDomainsEndpoints") {
@@ -136,6 +149,7 @@ export function createChartOrchestrationController(deps) {
     if (
       viewId === "timeline"
       || viewId === "vendorAllowedBlockedTimeline"
+      || viewId === "vendorShareOverTime"
       || viewId === "riskTrend"
       || viewId === "baselineDetectedBlockedTrend"
     ) {
@@ -181,6 +195,36 @@ export function createChartOrchestrationController(deps) {
         value: label || "",
         title: label || "Vendor",
         summaryHtml: `<div class="muted">${evs.length} vendor-scoped events (current filters/range).</div>`,
+        events: evs,
+        chartPoint,
+        scrollMode: wasAllVendors ? "never" : "force",
+      });
+      return;
+    }
+
+    if (viewId === "vendorBlockRateComparison") {
+      const label = params?.name;
+      const evs = meta.evidenceByLabel?.get(label) || [];
+      const vendor = meta.vendorByLabel?.get(label) || null;
+      const counts = meta.countsByLabel?.get(label) || { seen: 0, blocked: 0, observed: 0 };
+      const wasAllVendors = !getSelectedVendor()?.vendorId;
+
+      if (vendor) {
+        setSelectedVendor(vendor);
+        renderVendorChips();
+        renderECharts();
+        focusVendorDetailsUx(vendor.vendorName || label || "Vendor", evs.length);
+      } else {
+        renderVendorChips();
+        hideVendorSelectionCue();
+      }
+
+      const rate = Number(counts.seen) > 0 ? Number(((Number(counts.blocked || 0) * 100) / Number(counts.seen || 1)).toFixed(1)) : 0;
+      setVizSelection({
+        type: "vendorBlockRate",
+        value: label || "",
+        title: label || "Vendor",
+        summaryHtml: `<div class="muted">Block rate ${rate}% (${counts.blocked || 0} blocked of ${counts.seen || 0} total).</div>`,
         events: evs,
         chartPoint,
         scrollMode: wasAllVendors ? "never" : "force",

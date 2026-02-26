@@ -88,6 +88,8 @@ let vizOptions = defaultVizOptions();
 
 const VIEWS = [
   { id: "vendorOverview", title: "Vendor activity overview" },
+  { id: "vendorBlockRateComparison", title: "Block-rate by vendor comparison (%)" },
+  { id: "vendorShareOverTime", title: "Vendor share over time (stacked area)" },
   { id: "vendorAllowedBlockedTimeline", title: "Vendor allowed vs blocked timeline" },
   { id: "vendorTopDomainsEndpoints", title: "Where this vendor connects (top domains/endpoints)" },
   { id: "riskTrend", title: "Risk trend timeline" },
@@ -106,6 +108,8 @@ const VIEWS = [
 
 const EASY_VIEW_IDS = new Set([
   "vendorOverview",
+  "vendorBlockRateComparison",
+  "vendorShareOverTime",
   "vendorAllowedBlockedTimeline",
   "vendorTopDomainsEndpoints",
   "kinds",
@@ -226,6 +230,8 @@ const chartOrchestrationController = createChartOrchestrationController({
   buildPartySplitOption: chartBuilders.buildPartySplitOption,
   buildHourHeatmapOption: chartBuilders.buildHourHeatmapOption,
   buildVendorOverviewOption: chartBuilders.buildVendorOverviewOption,
+  buildVendorBlockRateComparisonOption: chartBuilders.buildVendorBlockRateComparisonOption,
+  buildVendorShareOverTimeOption: chartBuilders.buildVendorShareOverTimeOption,
   buildRiskTrendOption: chartBuilders.buildRiskTrendOption,
   buildBaselineDetectedBlockedTrendOption: chartBuilders.buildBaselineDetectedBlockedTrendOption,
   buildVendorKindMatrixOption: chartBuilders.buildVendorKindMatrixOption,
@@ -1309,6 +1315,31 @@ function applyHoverPointerToXAxis(axis) {
   };
 }
 
+function applyHoverPointerToYAxis(axis) {
+  const base = axis || {};
+  return {
+    ...base,
+    axisPointer: {
+      ...(base.axisPointer || {}),
+      show: true,
+      snap: true,
+      type: "shadow",
+      shadowStyle: {
+        color: CHART_HOVER_BAND_FILL,
+      },
+      lineStyle: {
+        color: CHART_HOVER_ACCENT,
+        width: 1,
+        type: "dashed",
+      },
+      label: {
+        ...((base.axisPointer && base.axisPointer.label) || {}),
+        show: false,
+      },
+    },
+  };
+}
+
 function disableAxisPointer(option) {
   if (!option) return;
 
@@ -1369,22 +1400,22 @@ function sanitizeVendorEndpointBucketOption(option) {
   }
 }
 
-function applyHoverPointerConfigToOption(option, { disablePointer = false } = {}) {
-  if (!option || !option.xAxis) return;
+function applyHoverPointerConfigToOption(option, { disablePointer = false, pointerAxis = "x" } = {}) {
+  if (!option) return;
   if (disablePointer) {
     disableAxisPointer(option);
     return;
   }
 
   const tooltip = option.tooltip || {};
-  if (tooltip.trigger !== "item") {
+  if (tooltip.trigger !== "item" || pointerAxis === "y") {
     option.tooltip = {
       ...tooltip,
-      trigger: tooltip.trigger || "axis",
+      trigger: "axis",
       axisPointer: {
         ...(tooltip.axisPointer || {}),
-        type: "line",
-        snap: true,
+        type: pointerAxis === "y" ? "shadow" : "line",
+        snap: pointerAxis !== "y",
         lineStyle: {
           color: CHART_HOVER_ACCENT,
           width: 1,
@@ -1398,9 +1429,18 @@ function applyHoverPointerConfigToOption(option, { disablePointer = false } = {}
     };
   }
 
+  if (pointerAxis === "y") {
+    if (Array.isArray(option.yAxis)) {
+      option.yAxis = option.yAxis.map((axis) => applyHoverPointerToYAxis(axis));
+    } else if (option.yAxis) {
+      option.yAxis = applyHoverPointerToYAxis(option.yAxis);
+    }
+    return;
+  }
+
   if (Array.isArray(option.xAxis)) {
     option.xAxis = option.xAxis.map((axis) => applyHoverPointerToXAxis(axis));
-  } else {
+  } else if (option.xAxis) {
     option.xAxis = applyHoverPointerToXAxis(option.xAxis);
   }
 }
@@ -1456,6 +1496,7 @@ function ensureChart() {
       if (
         viewId !== "timeline"
         && viewId !== "vendorAllowedBlockedTimeline"
+        && viewId !== "vendorShareOverTime"
         && viewId !== "riskTrend"
         && viewId !== "baselineDetectedBlockedTrend"
       ) return;
@@ -1587,10 +1628,11 @@ function renderECharts() {
   focusedLensPivotActive = lensPivotActive;
   applyPersistedDataZoom(built?.option, effectiveViewId, built?.meta);
   const disablePointer = isVendorEndpointBucketView(requestedViewId);
+  const pointerAxis = requestedViewId === "vendorBlockRateComparison" ? "y" : "x";
   if (disablePointer) {
     sanitizeVendorEndpointBucketOption(built?.option);
   }
-  applyHoverPointerConfigToOption(built?.option, { disablePointer });
+  applyHoverPointerConfigToOption(built?.option, { disablePointer, pointerAxis });
   decorateSeriesInteractionStyles(built?.option);
 
   scopeInsights.renderLensNotice({ active: false });

@@ -65,6 +65,12 @@ export function createInsightSheet(deps) {
   }
 
   function getWhatThisAnswersLine(viewId) {
+    if (viewId === "vendorBlockRateComparison") {
+      return "What this answers: Which vendors have the highest blocked-share in this scope, relative to their total observed activity.";
+    }
+    if (viewId === "vendorShareOverTime") {
+      return "What this answers: How each top vendor contributes to total activity over time, including grouped long-tail vendors.";
+    }
     if (viewId === "vendorTopDomainsEndpoints") {
       return "What this answers: Which domains/endpoints this selected vendor contacts most in this scope, and how much is blocked vs observed.";
     }
