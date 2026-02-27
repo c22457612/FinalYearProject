@@ -8,6 +8,7 @@ import { createViewNavigationController } from "./view-navigation-controller.js"
 import { createPollingController } from "./polling-controller.js";
 import { createSelectionController } from "./selection-controller.js";
 import { createChartOrchestrationController } from "./chart-orchestration-controller.js";
+import { createVendorScopeBanner } from "./vendor-scope-banner.js";
 import {
   defaultFilterState,
   defaultVizOptions,
@@ -292,6 +293,14 @@ const insightSheet = createInsightSheet({
   getSelectedVendor: () => selectedVendor,
   getViews: () => VIEWS,
   getVizIndex: () => vizIndex,
+});
+
+const vendorScopeBanner = createVendorScopeBanner({
+  qs,
+  getSelectedVendor: () => selectedVendor,
+  getChartEvents,
+  getFocusedLensPivotActive: () => focusedLensPivotActive,
+  getSiteName: () => siteName,
 });
 
 function setStatus(ok, text) {
@@ -653,7 +662,7 @@ function updateFilterSummary() {
   }
 
   el.textContent = parts.join(" | ");
-  renderVendorScopeBanner();
+  vendorScopeBanner.renderVendorScopeBanner();
   sidebarModules.renderSidebarModules();
 }
 
@@ -1704,43 +1713,6 @@ function buildVendorRollup(events) {
 
 function renderVendorChips() {
   vendorScope.renderVendorChips();
-}
-
-function renderVendorScopeBanner() {
-  const box = qs("vendorScopeBanner");
-  if (!box) return;
-
-  if (!selectedVendor?.vendorId) {
-    box.classList.add("hidden");
-    box.innerHTML = "";
-    return;
-  }
-
-  const scopedCount = getChartEvents().length;
-  box.classList.remove("hidden");
-  box.innerHTML = "";
-
-  const text = document.createElement("div");
-  text.className = "vendor-scope-banner-text";
-  text.textContent = focusedLensPivotActive
-    ? `Selected Vendor: ${selectedVendor.vendorName || selectedVendor.vendorId} (${scopedCount} events). Showing timeline because compare has low data.`
-    : `Selected Vendor: ${selectedVendor.vendorName || selectedVendor.vendorId} (${scopedCount} events in current scope).`;
-  box.appendChild(text);
-
-  const actions = document.createElement("div");
-  actions.className = "vendor-scope-banner-actions";
-
-  const vaultLink = document.createElement("a");
-  const vendorParam = selectedVendor.vendorName || selectedVendor.vendorId;
-  vaultLink.href = `/vendor-vault.html?site=${encodeURIComponent(siteName || "")}&vendor=${encodeURIComponent(vendorParam)}`;
-  vaultLink.className = "viz-nav";
-  vaultLink.style.textDecoration = "none";
-  vaultLink.target = "_blank";
-  vaultLink.rel = "noopener noreferrer";
-  vaultLink.textContent = "Open Vendor Vault";
-
-  actions.appendChild(vaultLink);
-  box.appendChild(actions);
 }
 
 function clearVendorFocus() {
