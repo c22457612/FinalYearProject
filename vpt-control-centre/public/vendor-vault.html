@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>VPT Control Centre - Vendor Vault</title>
+  <link rel="stylesheet" href="css/base.css" />
+  <link rel="stylesheet" href="css/site-insights.css" />
+</head>
+<body class="site-page">
+  <header class="site-header">
+    <div class="site-header-left">
+      <a class="back-link" href="/">&larr; Back to Control Centre</a>
+      <h1>Vendor Vault</h1>
+      <div class="site-subtitle">Vendor-scoped inventory and risk placeholders.</div>
+    </div>
+  </header>
+
+  <div class="site-content">
+    <section id="vaultMissingState" class="panel hidden">
+      <div class="panel-title">Vendor Vault</div>
+      <div class="panel-subtitle">Open Vendor Vault from Site Insights after selecting a vendor.</div>
+      <div id="vaultMissingLinks" class="site-actions"></div>
+    </section>
+
+    <section id="vaultContent" class="panel hidden">
+      <div class="panel-header">
+        <div>
+          <div class="panel-title">Vendor Vault</div>
+          <div class="panel-subtitle">Current scope</div>
+        </div>
+        <a id="backToSiteInsightsLink" class="back-link" href="/">Back to Site Insights</a>
+      </div>
+      <div class="site-actions">
+        <span id="vaultSiteChip" class="pill pill-kind">Site: -</span>
+        <span id="vaultVendorChip" class="pill pill-kind">Vendor: -</span>
+      </div>
+    </section>
+
+    <section id="vaultSections" class="summary hidden">
+      <div class="summary-card">
+        <h2>Activity summary</h2>
+        <div class="hint">Coming in VAULT-2</div>
+      </div>
+      <div class="summary-card">
+        <h2>Domains used</h2>
+        <div class="hint">Coming in VAULT-2</div>
+      </div>
+      <div class="summary-card">
+        <h2>Observed parameter keys</h2>
+        <div class="hint">Coming in VAULT-2</div>
+      </div>
+      <div class="summary-card">
+        <h2>Risk summary</h2>
+        <div class="hint">Coming in VAULT-2</div>
+      </div>
+    </section>
+  </div>
+
+  <script type="module" src="vendor-vault.js"></script>
+</body>
+</html>

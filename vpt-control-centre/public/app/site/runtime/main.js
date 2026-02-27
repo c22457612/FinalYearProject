@@ -1726,6 +1726,21 @@ function renderVendorScopeBanner() {
     ? `Selected Vendor: ${selectedVendor.vendorName || selectedVendor.vendorId} (${scopedCount} events). Showing timeline because compare has low data.`
     : `Selected Vendor: ${selectedVendor.vendorName || selectedVendor.vendorId} (${scopedCount} events in current scope).`;
   box.appendChild(text);
+
+  const actions = document.createElement("div");
+  actions.className = "vendor-scope-banner-actions";
+
+  const vaultLink = document.createElement("a");
+  const vendorParam = selectedVendor.vendorName || selectedVendor.vendorId;
+  vaultLink.href = `/vendor-vault.html?site=${encodeURIComponent(siteName || "")}&vendor=${encodeURIComponent(vendorParam)}`;
+  vaultLink.className = "viz-nav";
+  vaultLink.style.textDecoration = "none";
+  vaultLink.target = "_blank";
+  vaultLink.rel = "noopener noreferrer";
+  vaultLink.textContent = "Open Vendor Vault";
+
+  actions.appendChild(vaultLink);
+  box.appendChild(actions);
 }
 
 function clearVendorFocus() {
