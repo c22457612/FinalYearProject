@@ -7,6 +7,7 @@ const path = require("path");
 const { initDb } = require("./db");
 const { buildEnrichmentRecord } = require("./enrichment");
 const { getAnalyticsSnapshot } = require("./analytics");
+const { deriveExposureInventory } = require("./exposure-inventory");
 
 const app = express();
 const PORT = process.env.PORT || 4141;
@@ -791,6 +792,35 @@ app.get("/api/sites/:site/analytics", async (req, res) => {
   } catch (err) {
     console.error("Failed to build /api/sites/:site/analytics snapshot:", err);
     res.status(500).json({ ok: false, error: "analytics_query_failed" });
+  }
+});
+
+app.get("/api/exposure-inventory", async (req, res) => {
+  try {
+    const dbCtx = app.locals.db;
+    if (!dbCtx) return res.status(500).json({ ok: false, error: "db_not_ready" });
+
+    const site = String(req.query.site || "").trim();
+    const vendor = String(req.query.vendor || "").trim() || null;
+
+    if (!site) {
+      return res.status(400).json({ ok: false, error: "site is required" });
+    }
+
+    const inventory = await deriveExposureInventory(dbCtx, { site, vendor });
+    const payload = {
+      site: inventory.site,
+      rows: inventory.rows,
+    };
+    if (inventory.vendor) payload.vendor = inventory.vendor;
+
+    res.json(payload);
+  } catch (err) {
+    if (err?.code === "site_required") {
+      return res.status(400).json({ ok: false, error: "site is required" });
+    }
+    console.error("Failed to build /api/exposure-inventory:", err);
+    res.status(500).json({ ok: false, error: "exposure_inventory_query_failed" });
   }
 });
 
