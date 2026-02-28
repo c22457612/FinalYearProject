@@ -12,7 +12,7 @@
     <div class="site-header-left">
       <a class="back-link" href="/">&larr; Back to Control Centre</a>
       <h1>Vendor Vault</h1>
-      <div class="site-subtitle">Vendor-scoped inventory and risk placeholders.</div>
+      <div class="site-subtitle">Vendor-scoped potentially shared data inventory and guidance.</div>
     </div>
   </header>
 
@@ -23,18 +23,13 @@
       <div id="vaultMissingLinks" class="site-actions"></div>
     </section>
 
-    <section id="vaultContent" class="panel hidden">
-      <div class="panel-header">
-        <div>
-          <div class="panel-title">Vendor Vault</div>
-          <div class="panel-subtitle">Current scope</div>
-        </div>
-        <a id="backToSiteInsightsLink" class="back-link" href="/">Back to Site Insights</a>
-      </div>
-      <div class="site-actions">
+    <section id="vaultContent" class="vendor-vault-header-strip hidden">
+      <div class="vendor-vault-header-title">Vendor Vault</div>
+      <div class="vendor-vault-header-chips">
         <span id="vaultSiteChip" class="pill pill-kind">Site: -</span>
         <span id="vaultVendorChip" class="pill pill-kind">Vendor: -</span>
       </div>
+      <a id="backToSiteInsightsLink" class="back-link vendor-vault-header-link" href="/">Back to Site Insights</a>
     </section>
 
     <section id="vaultSections" class="hidden vendor-vault-sections">
@@ -46,7 +41,6 @@
               Derived from captured browser signals (request metadata). This is not proof of vendor storage.
             </div>
           </div>
-          <div id="exposureScoreLine" class="vendor-vault-score-line">Exposure score: -</div>
         </div>
 
         <div id="exposureLoadingState" class="vendor-vault-state">
@@ -65,51 +59,44 @@
         </div>
 
         <div id="exposureSuccessState" class="hidden">
-          <section id="exposureSharingSummary" class="vendor-vault-sharing-summary">
-            <div class="vendor-vault-sharing-row">
-              <span class="vendor-vault-sharing-label">May have received:</span>
-              <span id="exposureMayHaveReceivedList" class="vendor-vault-sharing-value">-</span>
-            </div>
-            <div class="vendor-vault-sharing-row">
-              <span class="vendor-vault-sharing-label">Attempted to share:</span>
-              <span id="exposureAttemptedToShareList" class="vendor-vault-sharing-value">-</span>
-            </div>
-            <div id="exposureAttemptedOnlyNote" class="vendor-vault-sharing-note hidden">
-              No observed sharing detected; only blocked attempts.
+          <section id="exposureWhatThisMeans" class="vendor-vault-sharing-summary">
+            <div class="vendor-vault-sharing-heading">What this means for you</div>
+            <div class="vendor-vault-summary-grid">
+              <div class="vendor-vault-score-visual" aria-label="Overall exposure score">
+                <svg class="vendor-vault-score-ring" viewBox="0 0 120 120" role="img" aria-hidden="true">
+                  <circle class="vendor-vault-score-ring-track" cx="60" cy="60" r="44"></circle>
+                  <circle id="exposureSummaryScoreRing" class="vendor-vault-score-ring-progress" cx="60" cy="60" r="44"></circle>
+                </svg>
+                <div class="vendor-vault-score-center">
+                  <div id="exposureSummaryScoreValue" class="vendor-vault-score-center-value">-</div>
+                  <div id="exposureSummaryScoreBand" class="vendor-vault-score-center-band">-</div>
+                </div>
+              </div>
+              <div class="vendor-vault-summary-copy">
+                <div id="exposureSummaryScoreText" class="vendor-vault-score-line">Exposure score: -</div>
+                <div class="vendor-vault-sharing-row">
+                  <span class="vendor-vault-sharing-label">Potentially received (Observed):</span>
+                  <span id="exposureMayHaveReceivedList" class="vendor-vault-sharing-value">-</span>
+                </div>
+                <div class="vendor-vault-sharing-row">
+                  <span class="vendor-vault-sharing-label">Blocked attempts:</span>
+                  <span id="exposureAttemptedToReceiveList" class="vendor-vault-sharing-value">-</span>
+                </div>
+                <div class="vendor-vault-sharing-actions">
+                  <div class="vendor-vault-sharing-actions-title">Top recommended actions</div>
+                  <ul id="exposureVendorActionsList" class="vendor-vault-action-list"></ul>
+                </div>
+              </div>
             </div>
           </section>
 
-          <div class="scroll vendor-vault-table-scroll">
-            <table>
-              <thead>
-                <tr>
-                  <th>Data category</th>
-                  <th>Evidence level summary</th>
-                  <th>Count</th>
-                  <th>First seen</th>
-                  <th>Last seen</th>
-                  <th>Confidence</th>
-                  <th>Example key</th>
-                  <th>What this means</th>
-                </tr>
-              </thead>
-              <tbody id="exposureInventoryBody"></tbody>
-            </table>
+          <div class="vendor-vault-inventory-box">
+            <div id="exposureInventoryList" class="vendor-vault-inventory-list" role="list"></div>
           </div>
         </div>
-
-        <details id="exposureExplainDetails" class="insight-technical hidden">
-          <summary>Explain</summary>
-          <div class="insight-technical-body">
-            <div class="insight-technical-title">Score breakdown</div>
-            <ul id="exposureTopContributors" class="vendor-vault-explain-list"></ul>
-            <ul id="exposureKeyMeaningList" class="vendor-vault-explain-list"></ul>
-            <div class="hint">Attempted (blocked) counts at reduced weight and is not proof a vendor received data.</div>
-          </div>
-        </details>
       </section>
 
-      <div class="summary">
+      <div class="summary vendor-vault-future">
         <div class="summary-card">
           <h2>Activity summary</h2>
           <div class="hint">Coming in VAULT-2</div>
