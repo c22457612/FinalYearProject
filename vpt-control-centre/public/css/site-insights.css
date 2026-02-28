@@ -849,6 +849,118 @@
   line-height: 1.32;
 }
 
+.vendor-vault-sections {
+  display: grid;
+  gap: var(--space-md);
+}
+
+.vendor-vault-inventory-panel {
+  min-height: 0;
+}
+
+.vendor-vault-disclaimer {
+  margin-top: 0.22rem;
+  max-width: 70ch;
+  font-size: 0.78rem;
+  color: var(--color-text-muted);
+}
+
+.vendor-vault-score-line {
+  font-size: 1rem;
+  font-weight: 600;
+  color: #bfdbfe;
+}
+
+.vendor-vault-state {
+  display: grid;
+  gap: 0.45rem;
+  padding-top: 0.5rem;
+  color: var(--color-text-muted);
+}
+
+.vendor-vault-table-scroll {
+  max-height: 24rem;
+}
+
+.vendor-vault-sharing-summary {
+  border: 1px solid rgba(148, 163, 184, 0.2);
+  border-radius: 0.55rem;
+  background: rgba(15, 23, 42, 0.35);
+  padding: 0.55rem 0.6rem;
+  margin-bottom: 0.6rem;
+  display: grid;
+  gap: 0.3rem;
+}
+
+.vendor-vault-sharing-row {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 0.4rem;
+  align-items: baseline;
+}
+
+.vendor-vault-sharing-label {
+  color: var(--color-text-faint);
+  font-size: 0.76rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.vendor-vault-sharing-value {
+  color: var(--color-text-main);
+  font-size: 0.82rem;
+}
+
+.vendor-vault-sharing-note {
+  color: #fde68a;
+  font-size: 0.77rem;
+}
+
+.vendor-vault-row-meaning {
+  border: 1px solid rgba(148, 163, 184, 0.2);
+  border-radius: 0.45rem;
+  background: rgba(15, 23, 42, 0.35);
+  overflow: hidden;
+}
+
+.vendor-vault-row-meaning > summary {
+  list-style: none;
+  cursor: pointer;
+  font-size: 0.74rem;
+  color: var(--color-text-main);
+  padding: 0.26rem 0.4rem;
+}
+
+.vendor-vault-row-meaning > summary::-webkit-details-marker {
+  display: none;
+}
+
+.vendor-vault-row-meaning-body {
+  border-top: 1px solid rgba(148, 163, 184, 0.2);
+  padding: 0.42rem 0.45rem;
+  display: grid;
+  gap: 0.25rem;
+  font-size: 0.76rem;
+  color: var(--color-text-muted);
+}
+
+.vendor-vault-row-meaning-key {
+  color: var(--color-text-main);
+}
+
+.vendor-vault-row-meaning-note {
+  color: #fcd34d;
+}
+
+.vendor-vault-explain-list {
+  margin: 0 0 0.55rem;
+  padding-left: 1rem;
+  color: var(--color-text-main);
+  display: grid;
+  gap: 0.22rem;
+  font-size: 0.82rem;
+}
+
 @media (max-width: 1024px) {
   .viz-guided-actions {
     padding: 0 0.6rem 0.5rem;
@@ -896,6 +1008,15 @@
   .viz-kpi-strip {
     grid-template-columns: repeat(2, minmax(0, 1fr));
     padding: 0 0.6rem 0.5rem;
+  }
+
+  .vendor-vault-score-line {
+    font-size: 0.92rem;
+  }
+
+  .vendor-vault-sharing-row {
+    grid-template-columns: 1fr;
+    gap: 0.15rem;
   }
 
   .viz-callouts {

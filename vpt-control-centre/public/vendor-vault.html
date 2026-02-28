@@ -37,22 +37,95 @@
       </div>
     </section>
 
-    <section id="vaultSections" class="summary hidden">
-      <div class="summary-card">
-        <h2>Activity summary</h2>
-        <div class="hint">Coming in VAULT-2</div>
-      </div>
-      <div class="summary-card">
-        <h2>Domains used</h2>
-        <div class="hint">Coming in VAULT-2</div>
-      </div>
-      <div class="summary-card">
-        <h2>Observed parameter keys</h2>
-        <div class="hint">Coming in VAULT-2</div>
-      </div>
-      <div class="summary-card">
-        <h2>Risk summary</h2>
-        <div class="hint">Coming in VAULT-2</div>
+    <section id="vaultSections" class="hidden vendor-vault-sections">
+      <section class="panel vendor-vault-inventory-panel">
+        <div class="panel-header">
+          <div>
+            <div class="panel-title">Potentially shared data inventory</div>
+            <div class="vendor-vault-disclaimer">
+              Derived from captured browser signals (request metadata). This is not proof of vendor storage.
+            </div>
+          </div>
+          <div id="exposureScoreLine" class="vendor-vault-score-line">Exposure score: -</div>
+        </div>
+
+        <div id="exposureLoadingState" class="vendor-vault-state">
+          Loading potentially shared inventory...
+        </div>
+
+        <div id="exposureErrorState" class="vendor-vault-state hidden" role="alert">
+          <div>Could not load potential sharing inventory for this scope.</div>
+          <div>
+            <button id="exposureRetryButton" type="button" class="viz-nav">Retry</button>
+          </div>
+        </div>
+
+        <div id="exposureEmptyState" class="vendor-vault-state hidden">
+          No exposure signals observed for this site and vendor in captured request metadata.
+        </div>
+
+        <div id="exposureSuccessState" class="hidden">
+          <section id="exposureSharingSummary" class="vendor-vault-sharing-summary">
+            <div class="vendor-vault-sharing-row">
+              <span class="vendor-vault-sharing-label">May have received:</span>
+              <span id="exposureMayHaveReceivedList" class="vendor-vault-sharing-value">-</span>
+            </div>
+            <div class="vendor-vault-sharing-row">
+              <span class="vendor-vault-sharing-label">Attempted to share:</span>
+              <span id="exposureAttemptedToShareList" class="vendor-vault-sharing-value">-</span>
+            </div>
+            <div id="exposureAttemptedOnlyNote" class="vendor-vault-sharing-note hidden">
+              No observed sharing detected; only blocked attempts.
+            </div>
+          </section>
+
+          <div class="scroll vendor-vault-table-scroll">
+            <table>
+              <thead>
+                <tr>
+                  <th>Data category</th>
+                  <th>Evidence level summary</th>
+                  <th>Count</th>
+                  <th>First seen</th>
+                  <th>Last seen</th>
+                  <th>Confidence</th>
+                  <th>Example key</th>
+                  <th>What this means</th>
+                </tr>
+              </thead>
+              <tbody id="exposureInventoryBody"></tbody>
+            </table>
+          </div>
+        </div>
+
+        <details id="exposureExplainDetails" class="insight-technical hidden">
+          <summary>Explain</summary>
+          <div class="insight-technical-body">
+            <div class="insight-technical-title">Score breakdown</div>
+            <ul id="exposureTopContributors" class="vendor-vault-explain-list"></ul>
+            <ul id="exposureKeyMeaningList" class="vendor-vault-explain-list"></ul>
+            <div class="hint">Attempted (blocked) counts at reduced weight and is not proof a vendor received data.</div>
+          </div>
+        </details>
+      </section>
+
+      <div class="summary">
+        <div class="summary-card">
+          <h2>Activity summary</h2>
+          <div class="hint">Coming in VAULT-2</div>
+        </div>
+        <div class="summary-card">
+          <h2>Domains used</h2>
+          <div class="hint">Coming in VAULT-2</div>
+        </div>
+        <div class="summary-card">
+          <h2>Observed parameter keys</h2>
+          <div class="hint">Coming in VAULT-2</div>
+        </div>
+        <div class="summary-card">
+          <h2>Risk summary</h2>
+          <div class="hint">Coming in VAULT-2</div>
+        </div>
       </div>
     </section>
   </div>
