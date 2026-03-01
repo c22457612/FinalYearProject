@@ -562,18 +562,6 @@ function renderSummary(scoreMeta, itemModels) {
   renderActionList(vendorActionsList, deriveVendorActions(itemModels));
 }
 
-function createDetailSection(title) {
-  const section = document.createElement("section");
-  section.className = "vendor-vault-entry-section";
-
-  const heading = document.createElement("h4");
-  heading.className = "vendor-vault-entry-section-title";
-  heading.textContent = title;
-  section.appendChild(heading);
-
-  return section;
-}
-
 function appendBulletList(section, bullets, listClassName) {
   const list = document.createElement("ul");
   list.className = listClassName;
@@ -583,6 +571,90 @@ function appendBulletList(section, bullets, listClassName) {
     list.appendChild(li);
   }
   section.appendChild(list);
+}
+
+function formatRequestCount(count) {
+  const safe = toSafeCount(count);
+  return `${safe} request${safe === 1 ? "" : "s"}`;
+}
+
+function getExpandedSummarySentence(item) {
+  const keyText = item.exampleKey && item.exampleKey !== "-" ? ` key '${item.exampleKey}'` : " key pattern";
+  const volumeText = formatRequestCount(item.count);
+
+  if (item.counts.observed > 0 && item.counts.attempted > 0) {
+    return `Observed potential sharing of ${item.categoryLabel}${keyText} (${volumeText}); some attempts were blocked.`;
+  }
+  if (item.counts.observed > 0) {
+    return `Observed potential sharing of ${item.categoryLabel}${keyText} (${volumeText}); vendor may have received this type.`;
+  }
+  if (item.counts.attempted > 0) {
+    return `Blocked attempt to share ${item.categoryLabel}${keyText} (${volumeText}); blocked attempts are not proof of receipt.`;
+  }
+  return `Potential ${item.categoryLabel} signal detected from ${keyText.trim()} (${volumeText}).`;
+}
+
+function renderGuidedActions(container, actions) {
+  const safeActions = Array.isArray(actions) ? actions : [];
+  const primaryAction = safeActions.find((action) => action && action.key === "open_site_insights")
+    || safeActions.find((action) => action && action.href)
+    || safeActions[0];
+  const secondaryActions = safeActions.filter((action) => action !== primaryAction).slice(0, 2);
+
+  if (primaryAction) {
+    const primary = document.createElement(primaryAction.href ? "a" : "button");
+    if (primaryAction.href) primary.href = primaryAction.href;
+    else primary.type = "button";
+    primary.className = "vendor-vault-guided-primary";
+    primary.textContent = primaryAction.text;
+    container.appendChild(primary);
+  }
+
+  const secondary = document.createElement("div");
+  secondary.className = "vendor-vault-guided-secondary";
+  for (const action of secondaryActions) {
+    const link = document.createElement(action && action.href ? "a" : "button");
+    if (action && action.href) link.href = action.href;
+    else link.type = "button";
+    link.className = "vendor-vault-guided-link";
+    link.textContent = action && action.text ? action.text : "Action";
+    secondary.appendChild(link);
+  }
+  if (secondary.childElementCount > 0) container.appendChild(secondary);
+}
+
+function appendEvidenceField(list, label, value) {
+  const row = document.createElement("div");
+  row.className = "vendor-vault-evidence-row";
+
+  const term = document.createElement("dt");
+  term.className = "vendor-vault-evidence-key";
+  term.textContent = label;
+  row.appendChild(term);
+
+  const detail = document.createElement("dd");
+  detail.className = "vendor-vault-evidence-value";
+  detail.textContent = value;
+  row.appendChild(detail);
+
+  list.appendChild(row);
+}
+
+function appendTechnicalDetailRow(container, label, value) {
+  const row = document.createElement("div");
+  row.className = "vendor-vault-technical-row";
+
+  const key = document.createElement("span");
+  key.className = "vendor-vault-technical-key";
+  key.textContent = label;
+  row.appendChild(key);
+
+  const text = document.createElement("span");
+  text.className = "vendor-vault-technical-value";
+  text.textContent = value;
+  row.appendChild(text);
+
+  container.appendChild(row);
 }
 
 function renderInventoryEntries(itemModels) {
@@ -647,54 +719,73 @@ function renderInventoryEntries(itemModels) {
     panel.id = `vault-entry-panel-${item.index}`;
     summary.setAttribute("aria-controls", panel.id);
 
-    const potentialSection = createDetailSection("Potential data");
-    appendBulletList(
-      potentialSection,
-      [
-        `Potentially shared category: ${item.categoryLabel}. ${item.categoryDescription}`,
-        `Key observed: ${item.exampleKey}. ${item.keyHint.meaning} (key-hint confidence: ${item.keyHint.confidence}).`,
-        `Uncertainty: ${item.uncertaintyLine}`,
-      ],
-      "vendor-vault-detail-list"
+    const summaryLine = document.createElement("p");
+    summaryLine.className = "vendor-vault-expanded-summary";
+    summaryLine.textContent = getExpandedSummarySentence(item);
+    panel.appendChild(summaryLine);
+
+    const layout = document.createElement("div");
+    layout.className = "vendor-vault-expanded-layout";
+
+    const left = document.createElement("div");
+    left.className = "vendor-vault-expanded-main";
+
+    const whyHeading = document.createElement("h4");
+    whyHeading.className = "vendor-vault-expanded-heading";
+    whyHeading.textContent = "Why it matters";
+    left.appendChild(whyHeading);
+    appendBulletList(left, item.privacyBullets.slice(0, 2), "vendor-vault-why-list");
+
+    const actionsHeading = document.createElement("h4");
+    actionsHeading.className = "vendor-vault-expanded-heading";
+    actionsHeading.textContent = "What you can do";
+    left.appendChild(actionsHeading);
+
+    const actionWrap = document.createElement("div");
+    actionWrap.className = "vendor-vault-guided-actions";
+    renderGuidedActions(actionWrap, item.actions);
+    left.appendChild(actionWrap);
+
+    layout.appendChild(left);
+
+    const right = document.createElement("aside");
+    right.className = "vendor-vault-evidence-compact";
+
+    const evidenceHeading = document.createElement("h4");
+    evidenceHeading.className = "vendor-vault-evidence-heading";
+    evidenceHeading.textContent = "Evidence";
+    right.appendChild(evidenceHeading);
+
+    const evidenceList = document.createElement("dl");
+    evidenceList.className = "vendor-vault-evidence-kv";
+    appendEvidenceField(evidenceList, "Observed", String(item.counts.observed));
+    appendEvidenceField(evidenceList, "Attempted", String(item.counts.attempted));
+    appendEvidenceField(evidenceList, "Confidence", item.confidenceText);
+    appendEvidenceField(evidenceList, "First seen", item.firstSeen);
+    appendEvidenceField(evidenceList, "Last seen", item.lastSeen);
+    right.appendChild(evidenceList);
+
+    layout.appendChild(right);
+    panel.appendChild(layout);
+
+    const technical = document.createElement("details");
+    technical.className = "vendor-vault-technical-details";
+    const technicalSummary = document.createElement("summary");
+    technicalSummary.textContent = "Show technical details";
+    technical.appendChild(technicalSummary);
+
+    const technicalGrid = document.createElement("div");
+    technicalGrid.className = "vendor-vault-technical-grid";
+    appendTechnicalDetailRow(technicalGrid, "Item score", `${item.itemScoreMeta.itemScore} (${item.itemScoreMeta.itemBand})`);
+    appendTechnicalDetailRow(technicalGrid, "Category weight", String(item.itemScoreMeta.weight));
+    appendTechnicalDetailRow(technicalGrid, "Confidence factor", `${item.itemScoreMeta.confidencePct}%`);
+    appendTechnicalDetailRow(
+      technicalGrid,
+      "Evidence factor",
+      `${item.itemScoreMeta.evidenceFactor.toFixed(2)} (observed=1.0, attempted=0.3, unknown=0.6)`
     );
-    panel.appendChild(potentialSection);
-
-    const whySection = createDetailSection("Why it matters");
-    appendBulletList(whySection, item.privacyBullets, "vendor-vault-detail-list");
-    panel.appendChild(whySection);
-
-    const actionsSection = createDetailSection("Suggested actions");
-    const actionsList = document.createElement("ul");
-    actionsList.className = "vendor-vault-action-list";
-    renderActionList(actionsList, item.actions);
-    actionsSection.appendChild(actionsList);
-    panel.appendChild(actionsSection);
-
-    const evidenceSection = createDetailSection("Evidence summary");
-    appendBulletList(
-      evidenceSection,
-      [
-        `Observed: ${item.counts.observed} | Attempted (blocked): ${item.counts.attempted} | Unknown: ${item.counts.unknown}`,
-        `First seen: ${item.firstSeen} | Last seen: ${item.lastSeen}`,
-        `Confidence (key-based): ${item.confidenceText}`,
-        "Attempted (blocked) is not proof of receipt.",
-      ],
-      "vendor-vault-evidence-list"
-    );
-    panel.appendChild(evidenceSection);
-
-    const scoreSection = createDetailSection("How the score was calculated");
-    appendBulletList(
-      scoreSection,
-      [
-        `Item score: ${item.itemScoreMeta.itemScore} (${item.itemScoreMeta.itemBand})`,
-        `Category weight: ${item.itemScoreMeta.weight}`,
-        `Confidence factor: ${item.itemScoreMeta.confidencePct}%`,
-        `Evidence factor: ${item.itemScoreMeta.evidenceFactor.toFixed(2)} (observed=1.0, attempted=0.3, unknown=0.6)`,
-      ],
-      "vendor-vault-detail-list"
-    );
-    panel.appendChild(scoreSection);
+    technical.appendChild(technicalGrid);
+    panel.appendChild(technical);
 
     card.appendChild(summary);
     card.appendChild(panel);
