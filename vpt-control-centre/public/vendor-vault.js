@@ -7,31 +7,44 @@ const CATEGORY_MEANINGS = {
     label: "Session/auth token",
     description: "A key name suggesting session or authentication state.",
     concern: "Session-linked metadata can increase account linkage risk when observed leaving the browser.",
+    plainEnglishWhat: "A key name that usually relates to login or session state.",
+    plainEnglishWhy: "If this type leaves the browser, activity can be linked to a signed-in session.",
   },
   analytics_ids: {
     label: "Analytics identifier",
     description: "A key name commonly used for analytics attribution.",
     concern: "Persistent analytics identifiers can connect visits over time.",
+    plainEnglishWhat: "A key name used to measure visits and repeat behavior.",
+    plainEnglishWhy: "Persistent analytics IDs can connect actions across pages or sessions.",
   },
   advertising_ids: {
     label: "Advertising identifier",
     description: "A key name associated with ad attribution or campaign tracking.",
     concern: "Advertising identifiers can support profiling and audience segmentation.",
+    plainEnglishWhat: "A key name tied to ad click, campaign, or conversion tracking.",
+    plainEnglishWhy: "Ad identifiers can be used to build interest profiles and target ads.",
   },
   contact_like: {
     label: "Contact-like field",
     description: "A key name that looks like contact information (for example email/phone).",
     concern: "Contact-like fields can increase re-identification risk in outbound requests.",
+    plainEnglishWhat: "A key name that appears to represent contact details such as email or phone.",
+    plainEnglishWhy: "Contact-like fields can raise re-identification risk when shared with third parties.",
   },
   location_like: {
     label: "Location-like field",
     description: "A key name that suggests location coordinates or geo metadata.",
     concern: "Location-like fields can reveal sensitive area or movement context.",
+    plainEnglishWhat: "A key name that suggests location coordinates or geographic context.",
+    plainEnglishWhy: "Location-like fields may reveal sensitive area or movement context.",
   },
   identifiers: {
     label: "Online identifier (generic)",
     description: "A broad identifier-style key that may be config-linked or user-linked depending on endpoint context.",
     concern: "Generic identifiers can still enable cross-request linking.",
+    plainEnglishWhat: "A generic identifier-style key that can tag a browser, app instance, or account context.",
+    plainEnglishWhy: "Even generic identifiers can help link activity across requests over time.",
+    uncertaintyNote: "Generic keys (for example 'id') can be ambiguous without endpoint context.",
   },
 };
 
@@ -211,6 +224,8 @@ function getCategoryMeaning(categoryId) {
     label: titleCaseFromSnake(key || "unknown"),
     description: "Meaning is uncertain from captured key names alone.",
     concern: "Potential impact is uncertain for this key pattern.",
+    plainEnglishWhat: "The category name suggests a potentially shareable identifier or metadata field.",
+    plainEnglishWhy: "Fields in this category can still contribute to tracking or linkage depending on context.",
   };
 }
 
@@ -392,14 +407,12 @@ function mapSuggestedActions({ categoryId, scenario, observed, attempted, site, 
   return deduped.slice(0, 3);
 }
 
-function getUncertaintyLine(item) {
-  if (item.scenario === "observed") {
-    return "Some signals were observed leaving the browser, so the vendor may have received this type.";
-  }
-  if (item.scenario === "attempted_only") {
-    return "Only blocked attempts were detected for this item; attempted (blocked) is not proof of receipt.";
-  }
-  return "Signals are uncertain for this item and should be treated as potential exposure only.";
+function getInThisCaseLine(counts) {
+  const observed = toSafeCount(counts && counts.observed);
+  const attempted = toSafeCount(counts && counts.attempted);
+  if (observed > 0) return "Observed leaving the browser; may have been received.";
+  if (observed === 0 && attempted > 0) return "Attempts were blocked; not proof of receipt.";
+  return "Signal level is uncertain in this scope.";
 }
 
 function buildItemModel(row, index, site, vendor) {
@@ -421,15 +434,24 @@ function buildItemModel(row, index, site, vendor) {
 
   const privacyBullets = [
     meaning.concern,
-    scenario === "attempted_only"
-      ? "Blocked attempts still indicate intent to transmit similar keys on some pages."
-      : "Observed requests indicate this category may have left the browser in this scope.",
   ];
+  if (meaning.uncertaintyNote) privacyBullets.push(meaning.uncertaintyNote);
+
+  let uncertaintyNote = String(meaning.uncertaintyNote || "").trim();
+  if (keyHint.confidence === "low" && keyHint.meaning) {
+    uncertaintyNote = uncertaintyNote
+      ? `${uncertaintyNote} ${keyHint.meaning}`
+      : keyHint.meaning;
+  }
 
   return {
     index,
     categoryLabel: meaning.label,
     categoryDescription: meaning.description,
+    plainEnglishWhat: meaning.plainEnglishWhat,
+    plainEnglishWhy: meaning.plainEnglishWhy,
+    inThisCase: getInThisCaseLine(counts),
+    uncertaintyNote,
     keyHint,
     counts,
     scenario,
@@ -442,7 +464,6 @@ function buildItemModel(row, index, site, vendor) {
     confidenceText: formatConfidence(row && row.confidence),
     actions,
     privacyBullets,
-    uncertaintyLine: getUncertaintyLine({ scenario }),
   };
 }
 
@@ -601,24 +622,28 @@ function renderGuidedActions(container, actions) {
     || safeActions[0];
   const secondaryActions = safeActions.filter((action) => action !== primaryAction).slice(0, 2);
 
-  if (primaryAction) {
-    const primary = document.createElement(primaryAction.href ? "a" : "button");
-    if (primaryAction.href) primary.href = primaryAction.href;
-    else primary.type = "button";
+  if (primaryAction && primaryAction.href) {
+    const primary = document.createElement("a");
+    primary.href = primaryAction.href;
     primary.className = "vendor-vault-guided-primary";
     primary.textContent = primaryAction.text;
     container.appendChild(primary);
+
+    if (primaryAction.guidance) {
+      const guidance = document.createElement("p");
+      guidance.className = "vendor-vault-guided-primary-note";
+      guidance.textContent = primaryAction.guidance;
+      container.appendChild(guidance);
+    }
   }
 
-  const secondary = document.createElement("div");
-  secondary.className = "vendor-vault-guided-secondary";
+  const secondary = document.createElement("ul");
+  secondary.className = "vendor-vault-guided-guidance-list";
   for (const action of secondaryActions) {
-    const link = document.createElement(action && action.href ? "a" : "button");
-    if (action && action.href) link.href = action.href;
-    else link.type = "button";
-    link.className = "vendor-vault-guided-link";
-    link.textContent = action && action.text ? action.text : "Action";
-    secondary.appendChild(link);
+    const bullet = document.createElement("li");
+    bullet.className = "vendor-vault-guided-guidance-item";
+    bullet.textContent = action && action.text ? action.text : "Action";
+    secondary.appendChild(bullet);
   }
   if (secondary.childElementCount > 0) container.appendChild(secondary);
 }
@@ -723,6 +748,37 @@ function renderInventoryEntries(itemModels) {
     summaryLine.className = "vendor-vault-expanded-summary";
     summaryLine.textContent = getExpandedSummarySentence(item);
     panel.appendChild(summaryLine);
+
+    const plainHeading = document.createElement("h4");
+    plainHeading.className = "vendor-vault-expanded-heading";
+    plainHeading.textContent = "In plain English";
+    panel.appendChild(plainHeading);
+
+    const plainBlock = document.createElement("div");
+    plainBlock.className = "vendor-vault-plain-block";
+
+    const whatLine = document.createElement("p");
+    whatLine.className = "vendor-vault-plain-line";
+    whatLine.innerHTML = `<span class="vendor-vault-plain-label">What it is:</span> ${item.plainEnglishWhat}`;
+    plainBlock.appendChild(whatLine);
+
+    const whyLine = document.createElement("p");
+    whyLine.className = "vendor-vault-plain-line";
+    whyLine.innerHTML = `<span class="vendor-vault-plain-label">Why it matters:</span> ${item.plainEnglishWhy}`;
+    plainBlock.appendChild(whyLine);
+
+    const caseLine = document.createElement("p");
+    caseLine.className = "vendor-vault-plain-line";
+    caseLine.innerHTML = `<span class="vendor-vault-plain-label">In this case:</span> ${item.inThisCase}`;
+    plainBlock.appendChild(caseLine);
+
+    if (item.uncertaintyNote) {
+      const noteLine = document.createElement("p");
+      noteLine.className = "vendor-vault-plain-line vendor-vault-plain-note";
+      noteLine.innerHTML = `<span class="vendor-vault-plain-label">Note:</span> ${item.uncertaintyNote}`;
+      plainBlock.appendChild(noteLine);
+    }
+    panel.appendChild(plainBlock);
 
     const layout = document.createElement("div");
     layout.className = "vendor-vault-expanded-layout";
