@@ -133,6 +133,7 @@ const KEY_HINT_RULES = [
 ];
 
 let latestExposureRequestId = 0;
+let latestSummaryRequestId = 0;
 const SCOPE_SITE = "site";
 const SCOPE_ALL = "all";
 const vaultScopeState = {
@@ -256,7 +257,10 @@ function setScope(nextScope, opts = {}) {
   renderScopeChipsAndControls();
   renderScopeCopy();
   if (opts.updateUrl !== false) updateScopeInUrl(vaultScopeState.scope);
-  if (opts.reload !== false) loadExposureInventory();
+  if (opts.reload !== false) {
+    loadExposureInventory();
+    loadVendorVaultSummary();
+  }
 }
 
 function clamp01(value) {
@@ -278,6 +282,208 @@ function formatDateTime(ts) {
   const date = new Date(n);
   if (Number.isNaN(date.getTime())) return "-";
   return date.toLocaleString();
+}
+
+function clearElement(node) {
+  if (!node) return;
+  node.innerHTML = "";
+}
+
+function renderPanelMessage(panelId, text, className) {
+  const panel = qs(panelId);
+  if (!panel) return;
+  clearElement(panel);
+
+  const line = document.createElement("div");
+  line.className = className;
+  line.textContent = text;
+  panel.appendChild(line);
+}
+
+function appendPanelRow(panel, key, value) {
+  if (!panel) return;
+  const row = document.createElement("div");
+  row.className = "vendor-vault-panel-row";
+
+  const keyEl = document.createElement("span");
+  keyEl.className = "vendor-vault-panel-key";
+  keyEl.textContent = key;
+  row.appendChild(keyEl);
+
+  const valueEl = document.createElement("span");
+  valueEl.className = "vendor-vault-panel-value";
+  valueEl.textContent = value;
+  row.appendChild(valueEl);
+
+  panel.appendChild(row);
+}
+
+function appendPanelMeta(panel, text) {
+  if (!panel) return;
+  const line = document.createElement("div");
+  line.className = "vendor-vault-panel-meta";
+  line.textContent = text;
+  panel.appendChild(line);
+}
+
+function appendPanelList(panel, items) {
+  if (!panel || !Array.isArray(items) || !items.length) return;
+  const list = document.createElement("ul");
+  list.className = "vendor-vault-panel-list";
+  for (const item of items) {
+    const li = document.createElement("li");
+    li.textContent = item;
+    list.appendChild(li);
+  }
+  panel.appendChild(list);
+}
+
+function formatRiskLabel(label) {
+  return titleCaseFromSnake(String(label || "").trim()).replace(/Only$/i, " only");
+}
+
+function toCountObject(value) {
+  if (!value || typeof value !== "object") return {};
+  const out = {};
+  for (const [key, count] of Object.entries(value)) {
+    const safeKey = String(key || "").trim();
+    if (!safeKey) continue;
+    out[safeKey] = toSafeCount(count);
+  }
+  return out;
+}
+
+function orderCountEntries(countsObj, preferredOrder = []) {
+  const rows = [];
+  const seen = new Set();
+  for (const key of preferredOrder) {
+    if (!Object.prototype.hasOwnProperty.call(countsObj, key)) continue;
+    rows.push([key, countsObj[key]]);
+    seen.add(key);
+  }
+  for (const [key, count] of Object.entries(countsObj)) {
+    if (seen.has(key)) continue;
+    rows.push([key, count]);
+  }
+  rows.sort((a, b) => (b[1] - a[1]) || a[0].localeCompare(b[0]));
+  return rows;
+}
+
+function renderActivitySummaryPanel(summary, hasData) {
+  const panel = qs("vaultActivityPanel");
+  if (!panel) return;
+  clearElement(panel);
+  if (!hasData) {
+    renderPanelMessage("vaultActivityPanel", "No data observed for this scope.", "vendor-vault-panel-empty");
+    return;
+  }
+
+  appendPanelRow(panel, "Total events", String(toSafeCount(summary && summary.total_events)));
+  appendPanelRow(panel, "Observed", String(toSafeCount(summary && summary.observed_count)));
+  appendPanelRow(panel, "Blocked", String(toSafeCount(summary && summary.blocked_count)));
+  appendPanelRow(panel, "First seen", formatDateTime(summary && summary.first_seen));
+  appendPanelRow(panel, "Last seen", formatDateTime(summary && summary.last_seen));
+}
+
+function renderDomainsPanel(domainsUsed, hasData) {
+  const panel = qs("vaultDomainsPanel");
+  if (!panel) return;
+  clearElement(panel);
+
+  const totalDistinct = toSafeCount(domainsUsed && domainsUsed.domain_count_total);
+  const topDomains = Array.isArray(domainsUsed && domainsUsed.top_domains) ? domainsUsed.top_domains : [];
+  if (!hasData || totalDistinct <= 0) {
+    renderPanelMessage("vaultDomainsPanel", "No data observed for this scope.", "vendor-vault-panel-empty");
+    return;
+  }
+
+  appendPanelRow(panel, "Distinct domains", String(totalDistinct));
+  const topFive = topDomains
+    .slice(0, 5)
+    .map((row) => `${String(row && row.domain ? row.domain : "-")} (${toSafeCount(row && row.count)})`);
+  if (topFive.length) {
+    appendPanelMeta(panel, "Top domains");
+    appendPanelList(panel, topFive);
+  }
+}
+
+function renderKeysPanel(keysSummary, hasData) {
+  const panel = qs("vaultKeysPanel");
+  if (!panel) return;
+  clearElement(panel);
+
+  const totalDistinct = toSafeCount(keysSummary && keysSummary.key_count_total);
+  const topKeys = Array.isArray(keysSummary && keysSummary.top_keys) ? keysSummary.top_keys : [];
+  if (!hasData || totalDistinct <= 0) {
+    renderPanelMessage("vaultKeysPanel", "No data observed for this scope.", "vendor-vault-panel-empty");
+    return;
+  }
+
+  appendPanelRow(panel, "Distinct keys", String(totalDistinct));
+  const topFive = topKeys
+    .slice(0, 5)
+    .map((row) => `${String(row && row.key ? row.key : "-")} (${toSafeCount(row && row.count)})`);
+  if (topFive.length) {
+    appendPanelMeta(panel, "Top keys");
+    appendPanelList(panel, topFive);
+  }
+}
+
+function renderRiskDimension(panel, title, countsObj, preferredOrder, limit) {
+  appendPanelMeta(panel, title);
+  const entries = orderCountEntries(countsObj, preferredOrder).slice(0, Math.max(1, limit || 4));
+  if (!entries.length) {
+    const unavailable = document.createElement("div");
+    unavailable.className = "vendor-vault-panel-empty";
+    unavailable.textContent = "Not available";
+    panel.appendChild(unavailable);
+    return;
+  }
+  appendPanelList(panel, entries.map(([key, count]) => `${formatRiskLabel(key)}: ${count}`));
+}
+
+function renderRiskSummaryPanel(riskSummary, hasData) {
+  const panel = qs("vaultRiskPanel");
+  if (!panel) return;
+  clearElement(panel);
+
+  if (!hasData) {
+    renderPanelMessage("vaultRiskPanel", "No data observed for this scope.", "vendor-vault-panel-empty");
+    return;
+  }
+
+  const mitigation = toCountObject(riskSummary && riskSummary.mitigation_status_counts);
+  const signalType = toCountObject(riskSummary && riskSummary.signal_type_counts);
+  const privacyStatus = toCountObject(riskSummary && riskSummary.privacy_status_counts);
+
+  renderRiskDimension(panel, "Mitigation", mitigation, ["allowed", "observed_only", "blocked", "modified"], 4);
+  renderRiskDimension(panel, "Signal type", signalType, [], 4);
+  renderRiskDimension(panel, "Privacy status", privacyStatus, [], 4);
+}
+
+function setSummaryPanelsLoading() {
+  renderPanelMessage("vaultActivityPanel", "Loading...", "hint");
+  renderPanelMessage("vaultDomainsPanel", "Loading...", "hint");
+  renderPanelMessage("vaultKeysPanel", "Loading...", "hint");
+  renderPanelMessage("vaultRiskPanel", "Loading...", "hint");
+}
+
+function setSummaryPanelsError() {
+  renderPanelMessage("vaultActivityPanel", "Could not load data for this scope.", "vendor-vault-panel-error");
+  renderPanelMessage("vaultDomainsPanel", "Could not load data for this scope.", "vendor-vault-panel-error");
+  renderPanelMessage("vaultKeysPanel", "Could not load data for this scope.", "vendor-vault-panel-error");
+  renderPanelMessage("vaultRiskPanel", "Could not load data for this scope.", "vendor-vault-panel-error");
+}
+
+function renderVendorVaultSummaryPanels(payload) {
+  const safePayload = payload && typeof payload === "object" ? payload : {};
+  const activity = safePayload.activity_summary || {};
+  const hasData = toSafeCount(activity.total_events) > 0;
+
+  renderActivitySummaryPanel(activity, hasData);
+  renderDomainsPanel(safePayload.domains_used, hasData);
+  renderKeysPanel(safePayload.observed_parameter_keys, hasData);
+  renderRiskSummaryPanel(safePayload.risk_summary, hasData);
 }
 
 function formatConfidence(confidence) {
@@ -951,6 +1157,15 @@ function setLoadingView() {
   clearSuccessContent();
 }
 
+function buildVendorVaultSummaryUrl() {
+  const vendor = String(vaultScopeState.vendor || "").trim();
+  const site = String(vaultScopeState.site || "").trim();
+  if (vaultScopeState.scope === SCOPE_ALL) {
+    return `/api/vendor-vault-summary?vendor=${encodeURIComponent(vendor)}`;
+  }
+  return `/api/vendor-vault-summary?site=${encodeURIComponent(site)}&vendor=${encodeURIComponent(vendor)}`;
+}
+
 function buildExposureInventoryUrl() {
   const vendor = String(vaultScopeState.vendor || "").trim();
   const site = String(vaultScopeState.site || "").trim();
@@ -958,6 +1173,24 @@ function buildExposureInventoryUrl() {
     return `/api/exposure-inventory?vendor=${encodeURIComponent(vendor)}`;
   }
   return `/api/exposure-inventory?site=${encodeURIComponent(site)}&vendor=${encodeURIComponent(vendor)}`;
+}
+
+async function loadVendorVaultSummary() {
+  const requestId = ++latestSummaryRequestId;
+  setSummaryPanelsLoading();
+
+  try {
+    const response = await fetch(buildVendorVaultSummaryUrl());
+    if (!response.ok) throw new Error(`summary_request_failed_${response.status}`);
+
+    const payload = await response.json();
+    if (requestId !== latestSummaryRequestId) return;
+    renderVendorVaultSummaryPanels(payload);
+  } catch (err) {
+    if (requestId !== latestSummaryRequestId) return;
+    console.error("Vendor Vault summary fetch failed:", err);
+    setSummaryPanelsError();
+  }
 }
 
 async function loadExposureInventory() {
@@ -1016,6 +1249,7 @@ function bootVendorVault() {
   if (retryButton) {
     retryButton.addEventListener("click", () => {
       loadExposureInventory();
+      loadVendorVaultSummary();
     });
   }
 
@@ -1034,6 +1268,7 @@ function bootVendorVault() {
   }
 
   loadExposureInventory();
+  loadVendorVaultSummary();
 }
 
 window.addEventListener("load", bootVendorVault);

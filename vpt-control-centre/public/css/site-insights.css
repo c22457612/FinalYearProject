@@ -1093,26 +1093,75 @@
   overflow: hidden;
 }
 
-.vendor-vault-future {
-  opacity: 0.78;
-  gap: 0.45rem;
+.vendor-vault-secondary-panels {
+  gap: 0.52rem;
 }
 
-.vendor-vault-future .summary-card {
-  padding: 0.58rem 0.62rem;
-  border: 1px solid rgba(148, 163, 184, 0.16);
-  background: rgba(15, 23, 42, 0.2);
+.vendor-vault-secondary-panels .summary-card {
+  padding: 0.7rem 0.78rem;
+  border: 1px solid rgba(148, 163, 184, 0.18);
+  background: rgba(15, 23, 42, 0.26);
   box-shadow: none;
 }
 
-.vendor-vault-future .summary-card h2 {
-  margin: 0 0 0.16rem;
-  font-size: 0.86rem;
+.vendor-vault-secondary-panels .summary-card h2 {
+  margin: 0 0 0.34rem;
+  font-size: 0.78rem;
 }
 
-.vendor-vault-future .summary-card .hint {
-  font-size: 0.74rem;
+.vendor-vault-panel-body {
+  display: grid;
+  gap: 0.24rem;
+  min-height: 5.1rem;
+  color: var(--color-text-main);
+}
+
+.vendor-vault-panel-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 0.48rem;
+  align-items: baseline;
+  font-size: 0.82rem;
+}
+
+.vendor-vault-panel-key {
+  color: var(--color-text-muted);
+}
+
+.vendor-vault-panel-value {
+  color: var(--color-text-main);
+  text-align: right;
+  font-weight: 600;
+}
+
+.vendor-vault-panel-list {
+  margin: 0.08rem 0 0;
+  padding-left: 1rem;
+  display: grid;
+  gap: 0.16rem;
+  color: var(--color-text-main);
+  font-size: 0.8rem;
+}
+
+.vendor-vault-panel-list li {
+  line-height: 1.45;
+}
+
+.vendor-vault-panel-empty {
+  color: var(--color-text-muted);
+  font-size: 0.8rem;
+  line-height: 1.55;
+}
+
+.vendor-vault-panel-error {
+  color: #fca5a5;
+  font-size: 0.8rem;
+  line-height: 1.55;
+}
+
+.vendor-vault-panel-meta {
   color: var(--color-text-faint);
+  font-size: 0.77rem;
 }
 
 .vendor-vault-inventory-list {
