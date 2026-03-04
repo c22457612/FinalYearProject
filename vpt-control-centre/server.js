@@ -803,11 +803,14 @@ app.get("/api/exposure-inventory", async (req, res) => {
     const site = String(req.query.site || "").trim();
     const vendor = String(req.query.vendor || "").trim() || null;
 
-    if (!site) {
-      return res.status(400).json({ ok: false, error: "site is required" });
+    if (!site && !vendor) {
+      return res.status(400).json({ ok: false, error: "site or vendor is required" });
     }
 
-    const inventory = await deriveExposureInventory(dbCtx, { site, vendor });
+    const inventory = await deriveExposureInventory(dbCtx, {
+      site: site || null,
+      vendor,
+    });
     const payload = {
       site: inventory.site,
       rows: inventory.rows,
@@ -816,8 +819,8 @@ app.get("/api/exposure-inventory", async (req, res) => {
 
     res.json(payload);
   } catch (err) {
-    if (err?.code === "site_required") {
-      return res.status(400).json({ ok: false, error: "site is required" });
+    if (err?.code === "site_or_vendor_required") {
+      return res.status(400).json({ ok: false, error: "site or vendor is required" });
     }
     console.error("Failed to build /api/exposure-inventory:", err);
     res.status(500).json({ ok: false, error: "exposure_inventory_query_failed" });

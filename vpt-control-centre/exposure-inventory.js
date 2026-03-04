@@ -2,6 +2,7 @@ const { classifyExposureKey, normalizeKeyName } = require("./exposure-taxonomy")
 
 const DEFAULT_EVIDENCE_IDS_LIMIT = 8;
 const DEFAULT_BASE_CONFIDENCE = 0.5;
+const DEFAULT_TOP_SITES_LIMIT = 3;
 
 function clamp01(value) {
   const n = Number(value);
@@ -76,21 +77,21 @@ function selectExampleKey(keyCounts) {
   return bestKey;
 }
 
-async function deriveExposureInventory(dbCtx, opts = {}) {
-  const site = String(opts.site || "").trim();
-  if (!site) {
-    const err = new Error("site_required");
-    err.code = "site_required";
-    throw err;
-  }
+function normalizeSite(site) {
+  const value = String(site || "").trim();
+  return value || "unknown";
+}
 
-  const vendor = String(opts.vendor || "").trim() || null;
-  const evidenceIdsLimit = Math.max(
-    1,
-    Math.min(50, Math.floor(Number(opts.evidenceIdsLimit) || DEFAULT_EVIDENCE_IDS_LIMIT))
-  );
+function selectTopSites(siteCounts, limit) {
+  const safeLimit = Math.max(1, Math.min(10, Math.floor(Number(limit) || DEFAULT_TOP_SITES_LIMIT)));
+  return Array.from(siteCounts.entries())
+    .sort((a, b) => (b[1] - a[1]) || a[0].localeCompare(b[0]))
+    .slice(0, safeLimit)
+    .map(([site, count]) => ({ site, count }));
+}
 
-  const sourceRows = await dbCtx.all(
+async function loadSiteScopedSourceRows(dbCtx, { site, vendor }) {
+  return dbCtx.all(
     `
       SELECT
         event_id,
@@ -111,6 +112,55 @@ async function deriveExposureInventory(dbCtx, opts = {}) {
     `,
     [site, vendor, vendor]
   );
+}
+
+async function loadVendorGlobalSourceRows(dbCtx, { vendor }) {
+  return dbCtx.all(
+    `
+      SELECT
+        event_id,
+        enriched_ts,
+        confidence,
+        surface,
+        surface_detail,
+        mitigation_status,
+        COALESCE(NULLIF(vendor_id, ''), 'unknown') AS vendor_id,
+        COALESCE(NULLIF(first_party_site, ''), 'unknown') AS first_party_site,
+        request_url
+      FROM event_enrichment
+      WHERE COALESCE(NULLIF(vendor_id, ''), 'unknown') = ?
+        AND surface_detail = 'network_request'
+        AND request_url IS NOT NULL
+        AND request_url != ''
+      ORDER BY enriched_ts ASC
+    `,
+    [vendor]
+  );
+}
+
+async function deriveExposureInventory(dbCtx, opts = {}) {
+  const site = String(opts.site || "").trim() || null;
+  const vendor = String(opts.vendor || "").trim() || null;
+
+  if (!site && !vendor) {
+    const err = new Error("site_or_vendor_required");
+    err.code = "site_or_vendor_required";
+    throw err;
+  }
+
+  const isSiteScoped = Boolean(site);
+  const evidenceIdsLimit = Math.max(
+    1,
+    Math.min(50, Math.floor(Number(opts.evidenceIdsLimit) || DEFAULT_EVIDENCE_IDS_LIMIT))
+  );
+  const topSitesLimit = Math.max(
+    1,
+    Math.min(10, Math.floor(Number(opts.topSitesLimit) || DEFAULT_TOP_SITES_LIMIT))
+  );
+
+  const sourceRows = isSiteScoped
+    ? await loadSiteScopedSourceRows(dbCtx, { site, vendor })
+    : await loadVendorGlobalSourceRows(dbCtx, { vendor });
 
   const aggregates = new Map();
 
@@ -128,6 +178,7 @@ async function deriveExposureInventory(dbCtx, opts = {}) {
 
     // Prevent an event with many keys in one category from over-counting.
     const perEventContributions = new Map();
+    const contributionSite = isSiteScoped ? site : normalizeSite(row.first_party_site);
 
     for (const keyName of keyNames) {
       const match = classifyExposureKey(surface, keyName);
@@ -136,17 +187,14 @@ async function deriveExposureInventory(dbCtx, opts = {}) {
       const normalizedKey = normalizeKeyName(keyName).toLowerCase();
       if (!normalizedKey) continue;
 
-      const aggregateKey = [
-        site,
-        vendorId,
-        match.data_category,
-        surface,
-      ].join("::");
+      const aggregateKey = isSiteScoped
+        ? [site, vendorId, match.data_category, surface].join("::")
+        : [vendorId, match.data_category, surface].join("::");
 
       const existing = perEventContributions.get(aggregateKey);
       if (!existing || match.key_confidence > existing.key_confidence) {
         perEventContributions.set(aggregateKey, {
-          site,
+          site: contributionSite,
           vendor_id: vendorId,
           data_category: match.data_category,
           surface,
@@ -161,7 +209,7 @@ async function deriveExposureInventory(dbCtx, opts = {}) {
       let agg = aggregates.get(aggregateKey);
       if (!agg) {
         agg = {
-          site: contribution.site,
+          site: isSiteScoped ? contribution.site : null,
           vendor_id: contribution.vendor_id,
           data_category: contribution.data_category,
           surface: contribution.surface,
@@ -177,6 +225,7 @@ async function deriveExposureInventory(dbCtx, opts = {}) {
             attempted: 0,
             unknown: 0,
           },
+          site_counts: new Map(),
         };
         aggregates.set(aggregateKey, agg);
       }
@@ -185,6 +234,9 @@ async function deriveExposureInventory(dbCtx, opts = {}) {
       if (agg.last_seen == null || safeTs > agg.last_seen) agg.last_seen = safeTs;
       agg.count += 1;
       agg.confidence_sum += clamp01(baseConfidence * contribution.key_confidence);
+      if (!isSiteScoped) {
+        agg.site_counts.set(contribution.site, (agg.site_counts.get(contribution.site) || 0) + 1);
+      }
 
       const existingKey = agg.key_counts.get(contribution.normalized_key) || {
         example_key: contribution.example_key,
@@ -210,19 +262,30 @@ async function deriveExposureInventory(dbCtx, opts = {}) {
   }
 
   const rows = Array.from(aggregates.values())
-    .map((agg) => ({
-      site: agg.site,
-      vendor_id: agg.vendor_id,
-      data_category: agg.data_category,
-      surface: agg.surface,
-      first_seen: agg.first_seen || 0,
-      last_seen: agg.last_seen || 0,
-      count: agg.count,
-      confidence: Number(clamp01(agg.confidence_sum / Math.max(1, agg.count)).toFixed(4)),
-      example_key: selectExampleKey(agg.key_counts),
-      evidence_event_ids: agg.evidence_event_ids,
-      evidence_levels: agg.evidence_levels,
-    }))
+    .map((agg) => {
+      const baseRow = {
+        site: agg.site,
+        vendor_id: agg.vendor_id,
+        data_category: agg.data_category,
+        surface: agg.surface,
+        first_seen: agg.first_seen || 0,
+        last_seen: agg.last_seen || 0,
+        count: agg.count,
+        confidence: Number(clamp01(agg.confidence_sum / Math.max(1, agg.count)).toFixed(4)),
+        example_key: selectExampleKey(agg.key_counts),
+        evidence_event_ids: agg.evidence_event_ids,
+        evidence_levels: agg.evidence_levels,
+      };
+
+      if (isSiteScoped) {
+        return baseRow;
+      }
+
+      return {
+        ...baseRow,
+        top_sites: selectTopSites(agg.site_counts, topSitesLimit),
+      };
+    })
     .sort((a, b) =>
       (b.count - a.count) ||
       (b.last_seen - a.last_seen) ||
@@ -232,7 +295,7 @@ async function deriveExposureInventory(dbCtx, opts = {}) {
     );
 
   return {
-    site,
+    site: isSiteScoped ? site : null,
     vendor: vendor || undefined,
     rows,
   };
