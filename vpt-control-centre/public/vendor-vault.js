@@ -141,6 +141,8 @@ const vaultScopeState = {
   vendor: "",
   scope: SCOPE_SITE,
 };
+const EXPORT_APP_NAME = "Visual Privacy Toolkit - Vendor Vault";
+const EXPORT_DATA_SOURCE_NOTE = "Derived from captured browser signals (request metadata). Keys/categories only; not proof of vendor storage; no raw values exported.";
 
 function buildSiteInsightsHref(site) {
   if (!String(site || "").trim()) return "/";
@@ -256,6 +258,7 @@ function setScope(nextScope, opts = {}) {
   vaultScopeState.scope = requested;
   renderScopeChipsAndControls();
   renderScopeCopy();
+  setExportStatus("");
   if (opts.updateUrl !== false) updateScopeInUrl(vaultScopeState.scope);
   if (opts.reload !== false) {
     loadExposureInventory();
@@ -282,6 +285,86 @@ function formatDateTime(ts) {
   const date = new Date(n);
   if (Number.isNaN(date.getTime())) return "-";
   return date.toLocaleString();
+}
+
+function formatIsoDate(value) {
+  const date = value instanceof Date ? value : new Date(value);
+  if (Number.isNaN(date.getTime())) return "1970-01-01";
+  return date.toISOString().slice(0, 10);
+}
+
+function sanitizeFilenamePart(value, fallback) {
+  const cleaned = String(value || "")
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9._-]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .replace(/-{2,}/g, "-");
+  return cleaned || fallback;
+}
+
+function getScopedSiteValue() {
+  if (vaultScopeState.scope === SCOPE_ALL) return null;
+  const site = String(vaultScopeState.site || "").trim();
+  return site || null;
+}
+
+function setExportStatus(message, isError = false) {
+  const status = qs("vaultExportStatus");
+  if (!status) return;
+  status.textContent = message || "";
+  status.classList.toggle("is-error", Boolean(isError));
+}
+
+function setExportBusy(mode) {
+  const jsonButton = qs("vaultExportButton");
+  const csvButton = qs("vaultExportCsvButton");
+  const isBusy = Boolean(mode);
+  const isJson = mode === "json";
+  const isCsv = mode === "csv";
+
+  if (jsonButton) {
+    jsonButton.disabled = isBusy;
+    jsonButton.textContent = isJson ? "Exporting..." : "Export JSON";
+  }
+  if (csvButton) {
+    csvButton.disabled = isBusy;
+    csvButton.textContent = isCsv ? "Exporting..." : "Export CSV";
+  }
+}
+
+function downloadTextFile(filename, text, mimeType) {
+  const blob = new Blob([text], { type: mimeType || "text/plain;charset=utf-8" });
+  const objectUrl = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = objectUrl;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(objectUrl);
+}
+
+function downloadJsonFile(filename, payload) {
+  downloadTextFile(filename, JSON.stringify(payload, null, 2), "application/json");
+}
+
+function escapeCsvCell(value) {
+  const raw = value == null ? "" : String(value);
+  const escaped = raw.replace(/"/g, "\"\"");
+  return `"${escaped}"`;
+}
+
+function rowToCsv(cells) {
+  return cells.map((value) => escapeCsvCell(value)).join(",");
+}
+
+function formatExportTimestamp(value) {
+  const n = Number(value);
+  if (!Number.isFinite(n) || n <= 0) return "";
+  const date = new Date(n);
+  if (Number.isNaN(date.getTime())) return "";
+  return date.toISOString();
 }
 
 function clearElement(node) {
@@ -1175,6 +1258,231 @@ function buildExposureInventoryUrl() {
   return `/api/exposure-inventory?site=${encodeURIComponent(site)}&vendor=${encodeURIComponent(vendor)}`;
 }
 
+async function fetchJsonOrThrow(url, label) {
+  const response = await fetch(url);
+  if (!response.ok) throw new Error(`${label}_request_failed_${response.status}`);
+  return response.json();
+}
+
+function buildExportBaseFilename() {
+  const safeVendor = sanitizeFilenamePart(vaultScopeState.vendor, "vendor");
+  const sitePart = vaultScopeState.scope === SCOPE_ALL
+    ? "all"
+    : sanitizeFilenamePart(vaultScopeState.site, "site");
+  const datePart = formatIsoDate(new Date());
+  return `vendor-vault_${safeVendor}_${sitePart}_${datePart}`;
+}
+
+function buildExportFilename(ext) {
+  return `${buildExportBaseFilename()}.${ext}`;
+}
+
+function buildExportBundle(exposureInventory, vaultSummary) {
+  return {
+    meta: {
+      generated_at: new Date().toISOString(),
+      scope: vaultScopeState.scope === SCOPE_ALL ? SCOPE_ALL : SCOPE_SITE,
+      vendor: String(vaultScopeState.vendor || "").trim(),
+      site: getScopedSiteValue(),
+      app: EXPORT_APP_NAME,
+    },
+    data_source_note: EXPORT_DATA_SOURCE_NOTE,
+    exposure_inventory: exposureInventory,
+    vault_summary: vaultSummary,
+  };
+}
+
+async function fetchExportPayloads() {
+  return Promise.all([
+    fetchJsonOrThrow(buildExposureInventoryUrl(), "inventory"),
+    fetchJsonOrThrow(buildVendorVaultSummaryUrl(), "summary"),
+  ]);
+}
+
+function bundleToCsv(bundle) {
+  const rows = [
+    ["section", "subsection", "index", "key", "label", "value", "count", "site", "vendor", "first_seen", "last_seen", "details"],
+  ];
+
+  const meta = bundle && bundle.meta ? bundle.meta : {};
+  rows.push(["meta", "", "", "generated_at", "", meta.generated_at || "", "", "", "", "", "", ""]);
+  rows.push(["meta", "", "", "scope", "", meta.scope || "", "", "", "", "", "", ""]);
+  rows.push(["meta", "", "", "vendor", "", meta.vendor || "", "", "", "", "", "", ""]);
+  rows.push(["meta", "", "", "site", "", meta.site == null ? "" : meta.site, "", "", "", "", "", ""]);
+  rows.push(["meta", "", "", "app", "", meta.app || "", "", "", "", "", "", ""]);
+  rows.push(["meta", "", "", "data_source_note", "", bundle.data_source_note || "", "", "", "", "", "", ""]);
+
+  const exposureInventory = bundle && bundle.exposure_inventory ? bundle.exposure_inventory : {};
+  const inventoryRows = Array.isArray(exposureInventory.rows) ? exposureInventory.rows : [];
+  for (let i = 0; i < inventoryRows.length; i++) {
+    const row = inventoryRows[i] || {};
+    const details = {
+      confidence: row.confidence,
+      evidence_levels: row.evidence_levels,
+      evidence_event_ids: row.evidence_event_ids,
+      top_sites: row.top_sites,
+    };
+    rows.push([
+      "exposure_inventory",
+      "rows",
+      i + 1,
+      row.data_category || "",
+      row.surface || "",
+      row.example_key || "",
+      row.count || 0,
+      row.site || "",
+      row.vendor_id || meta.vendor || "",
+      formatExportTimestamp(row.first_seen),
+      formatExportTimestamp(row.last_seen),
+      JSON.stringify(details),
+    ]);
+  }
+
+  const summary = bundle && bundle.vault_summary ? bundle.vault_summary : {};
+  const activity = summary.activity_summary || {};
+  rows.push(["vault_summary", "activity_summary", "", "total_events", "", activity.total_events || 0, "", "", "", "", "", ""]);
+  rows.push(["vault_summary", "activity_summary", "", "observed_count", "", activity.observed_count || 0, "", "", "", "", "", ""]);
+  rows.push(["vault_summary", "activity_summary", "", "blocked_count", "", activity.blocked_count || 0, "", "", "", "", "", ""]);
+  rows.push(["vault_summary", "activity_summary", "", "first_seen", "", formatExportTimestamp(activity.first_seen), "", "", "", "", "", ""]);
+  rows.push(["vault_summary", "activity_summary", "", "last_seen", "", formatExportTimestamp(activity.last_seen), "", "", "", "", "", ""]);
+
+  const topDomains = Array.isArray(summary.domains_used && summary.domains_used.top_domains)
+    ? summary.domains_used.top_domains
+    : [];
+  rows.push([
+    "vault_summary",
+    "domains_used",
+    "",
+    "domain_count_total",
+    "",
+    summary.domains_used && summary.domains_used.domain_count_total ? summary.domains_used.domain_count_total : 0,
+    "",
+    "",
+    "",
+    "",
+    "",
+    "",
+  ]);
+  for (let i = 0; i < topDomains.length; i++) {
+    const row = topDomains[i] || {};
+    rows.push([
+      "vault_summary",
+      "domains_used.top_domains",
+      i + 1,
+      row.domain || "",
+      "",
+      "",
+      row.count || 0,
+      "",
+      "",
+      "",
+      "",
+      "",
+    ]);
+  }
+
+  const topKeys = Array.isArray(summary.observed_parameter_keys && summary.observed_parameter_keys.top_keys)
+    ? summary.observed_parameter_keys.top_keys
+    : [];
+  rows.push([
+    "vault_summary",
+    "observed_parameter_keys",
+    "",
+    "key_count_total",
+    "",
+    summary.observed_parameter_keys && summary.observed_parameter_keys.key_count_total
+      ? summary.observed_parameter_keys.key_count_total
+      : 0,
+    "",
+    "",
+    "",
+    "",
+    "",
+    "",
+  ]);
+  for (let i = 0; i < topKeys.length; i++) {
+    const row = topKeys[i] || {};
+    rows.push([
+      "vault_summary",
+      "observed_parameter_keys.top_keys",
+      i + 1,
+      row.key || "",
+      "",
+      "",
+      row.count || 0,
+      "",
+      "",
+      "",
+      "",
+      "",
+    ]);
+  }
+
+  const risk = summary.risk_summary || {};
+  const dimensions = [
+    ["mitigation_status_counts", risk.mitigation_status_counts],
+    ["signal_type_counts", risk.signal_type_counts],
+    ["privacy_status_counts", risk.privacy_status_counts],
+  ];
+  for (const [name, counts] of dimensions) {
+    const safeCounts = counts && typeof counts === "object" ? counts : {};
+    for (const [key, count] of Object.entries(safeCounts)) {
+      rows.push([
+        "vault_summary",
+        `risk_summary.${name}`,
+        "",
+        key,
+        "",
+        "",
+        count || 0,
+        "",
+        "",
+        "",
+        "",
+        "",
+      ]);
+    }
+  }
+
+  return rows.map((row) => rowToCsv(row)).join("\r\n");
+}
+
+async function handleExportJsonClick() {
+  try {
+    setExportStatus("");
+    setExportBusy("json");
+
+    const [exposureInventory, vaultSummary] = await fetchExportPayloads();
+
+    const bundle = buildExportBundle(exposureInventory, vaultSummary);
+    downloadJsonFile(buildExportFilename("json"), bundle);
+    setExportStatus("JSON export downloaded.");
+  } catch (err) {
+    console.error("Vendor Vault JSON export failed:", err);
+    setExportStatus("JSON export failed. Try again.", true);
+  } finally {
+    setExportBusy("");
+  }
+}
+
+async function handleExportCsvClick() {
+  try {
+    setExportStatus("");
+    setExportBusy("csv");
+
+    const [exposureInventory, vaultSummary] = await fetchExportPayloads();
+    const bundle = buildExportBundle(exposureInventory, vaultSummary);
+    const csv = bundleToCsv(bundle);
+    downloadTextFile(buildExportFilename("csv"), csv, "text/csv;charset=utf-8");
+    setExportStatus("CSV export downloaded.");
+  } catch (err) {
+    console.error("Vendor Vault CSV export failed:", err);
+    setExportStatus("CSV export failed. Try again.", true);
+  } finally {
+    setExportBusy("");
+  }
+}
+
 async function loadVendorVaultSummary() {
   const requestId = ++latestSummaryRequestId;
   setSummaryPanelsLoading();
@@ -1250,6 +1558,19 @@ function bootVendorVault() {
     retryButton.addEventListener("click", () => {
       loadExposureInventory();
       loadVendorVaultSummary();
+    });
+  }
+
+  const exportButton = qs("vaultExportButton");
+  if (exportButton) {
+    exportButton.addEventListener("click", () => {
+      handleExportJsonClick();
+    });
+  }
+  const exportCsvButton = qs("vaultExportCsvButton");
+  if (exportCsvButton) {
+    exportCsvButton.addEventListener("click", () => {
+      handleExportCsvClick();
     });
   }
 

@@ -918,6 +918,34 @@
   color: var(--color-text-muted);
 }
 
+.vendor-vault-export-controls {
+  display: grid;
+  justify-items: end;
+  gap: 0.24rem;
+}
+
+.vendor-vault-export-buttons {
+  display: inline-flex;
+  gap: 0.32rem;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.vendor-vault-export-btn {
+  min-width: 7.2rem;
+}
+
+.vendor-vault-export-status {
+  min-height: 1rem;
+  font-size: 0.78rem;
+  line-height: 1.35;
+  color: var(--color-text-faint);
+}
+
+.vendor-vault-export-status.is-error {
+  color: #fca5a5;
+}
+
 .vendor-vault-score-line {
   font-size: 1.08rem;
   font-weight: 600;
@@ -1568,6 +1596,15 @@
 
   .vendor-vault-scope-toggle {
     width: 100%;
+  }
+
+  .vendor-vault-export-controls {
+    width: 100%;
+    justify-items: start;
+  }
+
+  .vendor-vault-export-buttons {
+    justify-content: flex-start;
   }
 
   .vendor-vault-summary-grid {
