@@ -856,7 +856,7 @@
 
 .vendor-vault-header-strip {
   display: grid;
-  grid-template-columns: auto minmax(0, 1fr) auto;
+  grid-template-columns: auto minmax(0, 1fr) auto auto;
   align-items: center;
   gap: 0.55rem;
   margin-bottom: var(--space-md);
@@ -881,6 +881,27 @@
 
 .vendor-vault-header-link {
   font-size: 0.79rem;
+}
+
+.vendor-vault-scope-toggle {
+  display: inline-flex;
+  gap: 0.35rem;
+  flex-wrap: wrap;
+  justify-content: flex-start;
+}
+
+.vendor-vault-scope-btn {
+  min-width: 5.3rem;
+}
+
+.vendor-vault-scope-btn.is-active {
+  border-color: rgba(59, 130, 246, 0.85);
+  background: rgba(59, 130, 246, 0.2);
+}
+
+.vendor-vault-scope-btn:disabled {
+  opacity: 0.45;
+  cursor: default;
 }
 
 .vendor-vault-inventory-panel {
@@ -1485,6 +1506,10 @@
     grid-template-columns: 1fr;
     align-items: flex-start;
     gap: 0.32rem;
+  }
+
+  .vendor-vault-scope-toggle {
+    width: 100%;
   }
 
   .vendor-vault-summary-grid {

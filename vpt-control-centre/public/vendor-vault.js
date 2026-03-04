@@ -133,8 +133,16 @@ const KEY_HINT_RULES = [
 ];
 
 let latestExposureRequestId = 0;
+const SCOPE_SITE = "site";
+const SCOPE_ALL = "all";
+const vaultScopeState = {
+  site: "",
+  vendor: "",
+  scope: SCOPE_SITE,
+};
 
 function buildSiteInsightsHref(site) {
+  if (!String(site || "").trim()) return "/";
   return `/site.html?site=${encodeURIComponent(site)}`;
 }
 
@@ -165,22 +173,90 @@ function showMissingState(site) {
   }
 }
 
+function normalizeScope(scope) {
+  const value = String(scope || "").trim().toLowerCase();
+  if (value === SCOPE_ALL) return SCOPE_ALL;
+  if (value === SCOPE_SITE) return SCOPE_SITE;
+  return "";
+}
+
+function resolveInitialScope(site, scopeParam) {
+  const normalized = normalizeScope(scopeParam);
+  if (normalized === SCOPE_SITE && site) return SCOPE_SITE;
+  if (normalized === SCOPE_ALL) return SCOPE_ALL;
+  return site ? SCOPE_SITE : SCOPE_ALL;
+}
+
+function updateScopeInUrl(scope) {
+  const url = new URL(window.location.href);
+  url.searchParams.set("scope", scope === SCOPE_ALL ? SCOPE_ALL : SCOPE_SITE);
+  const next = `${url.pathname}?${url.searchParams.toString()}`;
+  window.history.replaceState({}, "", next);
+}
+
 function showVaultContent(site, vendor) {
   const missing = qs("vaultMissingState");
   const content = qs("vaultContent");
   const sections = qs("vaultSections");
-  const siteChip = qs("vaultSiteChip");
   const vendorChip = qs("vaultVendorChip");
   const backLink = qs("backToSiteInsightsLink");
-  if (!missing || !content || !sections || !siteChip || !vendorChip || !backLink) return;
+  if (!missing || !content || !sections || !vendorChip || !backLink) return;
 
   missing.classList.add("hidden");
   content.classList.remove("hidden");
   sections.classList.remove("hidden");
 
-  siteChip.textContent = `Site: ${site}`;
   vendorChip.textContent = `Vendor: ${vendor}`;
-  backLink.href = buildSiteInsightsHref(site);
+  backLink.href = site ? buildSiteInsightsHref(site) : "/";
+}
+
+function renderScopeChipsAndControls() {
+  const siteChip = qs("vaultSiteChip");
+  const vendorChip = qs("vaultVendorChip");
+  const allSitesChip = qs("vaultAllSitesChip");
+  const siteButton = qs("vaultScopeSiteButton");
+  const allButton = qs("vaultScopeAllButton");
+  const backLink = qs("backToSiteInsightsLink");
+  if (!siteChip || !vendorChip || !allSitesChip || !siteButton || !allButton || !backLink) return;
+
+  const hasSite = Boolean(vaultScopeState.site);
+  const isAll = vaultScopeState.scope === SCOPE_ALL;
+
+  vendorChip.textContent = `Vendor: ${vaultScopeState.vendor}`;
+  siteChip.textContent = `Site: ${vaultScopeState.site || "-"}`;
+  siteChip.classList.toggle("hidden", isAll);
+  allSitesChip.classList.toggle("hidden", !isAll);
+
+  siteButton.disabled = !hasSite;
+  siteButton.classList.toggle("is-active", !isAll);
+  siteButton.setAttribute("aria-pressed", String(!isAll));
+
+  allButton.classList.toggle("is-active", isAll);
+  allButton.setAttribute("aria-pressed", String(isAll));
+
+  backLink.href = hasSite ? buildSiteInsightsHref(vaultScopeState.site) : "/";
+}
+
+function renderScopeCopy() {
+  const empty = qs("exposureEmptyState");
+  if (!empty) return;
+  if (vaultScopeState.scope === SCOPE_ALL) {
+    empty.textContent = "No exposure signals observed for this vendor across captured sites in request metadata.";
+    return;
+  }
+  empty.textContent = "No exposure signals observed for this scope in captured request metadata.";
+}
+
+function setScope(nextScope, opts = {}) {
+  const requested = normalizeScope(nextScope) || SCOPE_SITE;
+  if (requested === SCOPE_SITE && !vaultScopeState.site) return;
+  if (vaultScopeState.scope === requested) return;
+
+  vaultScopeState.scope = requested;
+  renderScopeChipsAndControls();
+  renderScopeCopy();
+  if (opts.updateUrl !== false) updateScopeInUrl(vaultScopeState.scope);
+  if (opts.reload !== false) loadExposureInventory();
 }
 
 function clamp01(value) {
@@ -333,11 +409,14 @@ function getItemScenario(counts) {
 
 function makeOpenInSiteInsightsAction(site, vendor) {
   const guidanceVendor = String(vendor || "").trim();
+  const hasSite = Boolean(String(site || "").trim());
   return {
     key: "open_site_insights",
     text: "Open in Site Insights",
-    href: buildSiteInsightsHref(site),
-    guidance: guidanceVendor ? `Then select ${guidanceVendor} in vendor focus.` : "Then select this vendor in vendor focus.",
+    href: hasSite ? buildSiteInsightsHref(site) : null,
+    guidance: hasSite
+      ? (guidanceVendor ? `Then select ${guidanceVendor} in vendor focus.` : "Then select this vendor in vendor focus.")
+      : "Open Site Insights from a specific site to focus this vendor there.",
   };
 }
 
@@ -872,14 +951,21 @@ function setLoadingView() {
   clearSuccessContent();
 }
 
-async function loadExposureInventory(site, vendor) {
+function buildExposureInventoryUrl() {
+  const vendor = String(vaultScopeState.vendor || "").trim();
+  const site = String(vaultScopeState.site || "").trim();
+  if (vaultScopeState.scope === SCOPE_ALL) {
+    return `/api/exposure-inventory?vendor=${encodeURIComponent(vendor)}`;
+  }
+  return `/api/exposure-inventory?site=${encodeURIComponent(site)}&vendor=${encodeURIComponent(vendor)}`;
+}
+
+async function loadExposureInventory() {
   const requestId = ++latestExposureRequestId;
   setLoadingView();
 
   try {
-    const response = await fetch(
-      `/api/exposure-inventory?site=${encodeURIComponent(site)}&vendor=${encodeURIComponent(vendor)}`
-    );
+    const response = await fetch(buildExposureInventoryUrl());
     if (!response.ok) throw new Error(`inventory_request_failed_${response.status}`);
 
     const payload = await response.json();
@@ -887,7 +973,9 @@ async function loadExposureInventory(site, vendor) {
 
     const rows = Array.isArray(payload && payload.rows) ? payload.rows : [];
     const scoreMeta = computeExposureScore(rows);
-    const itemModels = rows.map((row, index) => buildItemModel(row, index, site, vendor));
+    const itemModels = rows.map((row, index) =>
+      buildItemModel(row, index, vaultScopeState.site, vaultScopeState.vendor)
+    );
 
     renderSummary(scoreMeta, itemModels);
 
@@ -909,22 +997,43 @@ function bootVendorVault() {
   const params = new URLSearchParams(window.location.search);
   const site = String(params.get("site") || "").trim();
   const vendor = String(params.get("vendor") || "").trim();
+  const initialScope = resolveInitialScope(site, params.get("scope"));
 
-  if (!site || !vendor) {
+  if (!vendor) {
     showMissingState(site);
     return;
   }
 
+  vaultScopeState.site = site;
+  vaultScopeState.vendor = vendor;
+  vaultScopeState.scope = initialScope;
+
   showVaultContent(site, vendor);
+  renderScopeChipsAndControls();
+  renderScopeCopy();
 
   const retryButton = qs("exposureRetryButton");
   if (retryButton) {
     retryButton.addEventListener("click", () => {
-      loadExposureInventory(site, vendor);
+      loadExposureInventory();
     });
   }
 
-  loadExposureInventory(site, vendor);
+  const scopeSiteButton = qs("vaultScopeSiteButton");
+  if (scopeSiteButton) {
+    scopeSiteButton.addEventListener("click", () => {
+      setScope(SCOPE_SITE, { updateUrl: true, reload: true });
+    });
+  }
+
+  const scopeAllButton = qs("vaultScopeAllButton");
+  if (scopeAllButton) {
+    scopeAllButton.addEventListener("click", () => {
+      setScope(SCOPE_ALL, { updateUrl: true, reload: true });
+    });
+  }
+
+  loadExposureInventory();
 }
 
 window.addEventListener("load", bootVendorVault);

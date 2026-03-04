@@ -28,6 +28,11 @@
       <div class="vendor-vault-header-chips">
         <span id="vaultSiteChip" class="pill pill-kind">Site: -</span>
         <span id="vaultVendorChip" class="pill pill-kind">Vendor: -</span>
+        <span id="vaultAllSitesChip" class="pill pill-kind hidden">All sites</span>
+      </div>
+      <div id="vaultScopeToggle" class="vendor-vault-scope-toggle" role="group" aria-label="Vendor Vault scope">
+        <button id="vaultScopeSiteButton" type="button" class="viz-nav vendor-vault-scope-btn">This site</button>
+        <button id="vaultScopeAllButton" type="button" class="viz-nav vendor-vault-scope-btn">All sites</button>
       </div>
       <a id="backToSiteInsightsLink" class="back-link vendor-vault-header-link" href="/">Back to Site Insights</a>
     </section>
@@ -55,7 +60,7 @@
         </div>
 
         <div id="exposureEmptyState" class="vendor-vault-state hidden">
-          No exposure signals observed for this site and vendor in captured request metadata.
+          No exposure signals observed for this scope in captured request metadata.
         </div>
 
         <div id="exposureSuccessState" class="hidden">
