@@ -32,7 +32,6 @@
           <p class="vendor-vault-landing-description">
             See what data types a vendor may have received (or attempted) based on captured signals.
           </p>
-          <p id="vaultMissingScopeNotice" class="vendor-vault-landing-note hidden"></p>
           <div class="site-actions vendor-vault-landing-actions">
             <a id="vaultOpenSiteInsightsLink" class="viz-nav vendor-vault-landing-primary" href="/?view=sites">
               Open Site Insights
@@ -42,6 +41,30 @@
           <div id="vaultHowItWorksBody" class="vendor-vault-landing-how hidden">
             Vendor Vault is derived from captured request metadata keys and categories only. It indicates
             potential sharing signals, not proof that a vendor stored the underlying data.
+          </div>
+          <div class="vendor-directory">
+            <div class="vendor-directory-header">Vendor Directory</div>
+            <div class="vendor-directory-toolbar">
+              <input
+                id="vendorDirectorySearch"
+                type="search"
+                class="vendor-directory-input"
+                placeholder="Search vendor name..."
+                aria-label="Search vendors"
+              />
+              <select id="vendorDirectorySort" class="vendor-directory-select" aria-label="Sort vendors">
+                <option value="activity">Most activity</option>
+                <option value="recent">Most recent</option>
+                <option value="blocked">Most blocked</option>
+              </select>
+              <select id="vendorDirectoryScope" class="vendor-directory-select" aria-label="Vendor scope">
+                <option value="all">All sites</option>
+                <option value="site">Specific site</option>
+              </select>
+              <select id="vendorDirectorySite" class="vendor-directory-select hidden" aria-label="Specific site"></select>
+            </div>
+            <div id="vendorDirectoryStatus" class="vendor-vault-landing-note hidden"></div>
+            <div id="vendorDirectoryGrid" class="vendor-directory-grid"></div>
           </div>
         </section>
 

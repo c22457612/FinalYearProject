@@ -141,6 +141,19 @@ const vaultScopeState = {
   vendor: "",
   scope: SCOPE_SITE,
 };
+const LANDING_SORT_ACTIVITY = "activity";
+const LANDING_SORT_RECENT = "recent";
+const LANDING_SORT_BLOCKED = "blocked";
+let landingDirectoryControlsBound = false;
+let latestLandingVendorsRequestId = 0;
+const landingDirectoryState = {
+  scope: SCOPE_ALL,
+  selectedSite: "",
+  search: "",
+  sort: LANDING_SORT_ACTIVITY,
+  sites: [],
+  vendors: [],
+};
 const EXPORT_APP_NAME = "Visual Privacy Toolkit - Vendor Vault";
 const EXPORT_DATA_SOURCE_NOTE = "Derived from captured browser signals (request metadata). Keys/categories only; not proof of vendor storage; no raw values exported.";
 
@@ -154,10 +167,9 @@ function showMissingState(site, scopeParam) {
   const content = qs("vaultContent");
   const sections = qs("vaultSections");
   const openSiteInsightsLink = qs("vaultOpenSiteInsightsLink");
-  const scopeNotice = qs("vaultMissingScopeNotice");
   const howItWorksButton = qs("vaultHowItWorksButton");
   const howItWorksBody = qs("vaultHowItWorksBody");
-  if (!missing || !content || !sections || !openSiteInsightsLink || !scopeNotice || !howItWorksButton || !howItWorksBody) return;
+  if (!missing || !content || !sections || !openSiteInsightsLink || !howItWorksButton || !howItWorksBody) return;
 
   missing.classList.remove("hidden");
   content.classList.add("hidden");
@@ -165,14 +177,6 @@ function showMissingState(site, scopeParam) {
 
   const hasSite = Boolean(String(site || "").trim());
   openSiteInsightsLink.href = hasSite ? buildSiteInsightsHref(site) : "/?view=sites";
-
-  const showScopeNotice = normalizeScope(scopeParam) === SCOPE_ALL;
-  scopeNotice.classList.toggle("hidden", !showScopeNotice);
-  if (showScopeNotice) {
-    scopeNotice.textContent = "Choose a vendor by opening Vendor Vault from Site Insights (select a vendor then Open Vendor Vault). Vendor picker coming soon.";
-  } else {
-    scopeNotice.textContent = "";
-  }
 
   howItWorksBody.classList.add("hidden");
   howItWorksButton.setAttribute("aria-expanded", "false");
@@ -183,6 +187,320 @@ function showMissingState(site, scopeParam) {
     howItWorksButton.setAttribute("aria-expanded", String(isHidden));
     howItWorksButton.textContent = isHidden ? "Hide details" : "How it works";
   };
+
+  bootLandingDirectory(site, scopeParam);
+}
+
+function normalizeLandingSort(sort) {
+  const value = String(sort || "").trim().toLowerCase();
+  if (value === LANDING_SORT_RECENT) return LANDING_SORT_RECENT;
+  if (value === LANDING_SORT_BLOCKED) return LANDING_SORT_BLOCKED;
+  return LANDING_SORT_ACTIVITY;
+}
+
+function getLandingSiteSelect() {
+  return qs("vendorDirectorySite");
+}
+
+function setLandingDirectoryStatus(message, opts = {}) {
+  const status = qs("vendorDirectoryStatus");
+  if (!status) return;
+  const text = String(message || "").trim();
+  status.textContent = text;
+  status.classList.toggle("hidden", !text);
+  status.classList.toggle("vendor-directory-status-error", Boolean(opts.isError) && Boolean(text));
+}
+
+function updateLandingScopeInUrl() {
+  const url = new URL(window.location.href);
+  url.searchParams.delete("vendor");
+  url.searchParams.set("scope", landingDirectoryState.scope === SCOPE_SITE ? SCOPE_SITE : SCOPE_ALL);
+  if (landingDirectoryState.scope === SCOPE_SITE && landingDirectoryState.selectedSite) {
+    url.searchParams.set("site", landingDirectoryState.selectedSite);
+  } else {
+    url.searchParams.delete("site");
+  }
+  const next = `${url.pathname}?${url.searchParams.toString()}`;
+  window.history.replaceState({}, "", next);
+}
+
+function toDirectoryVendorRow(row) {
+  const vendorId = String(row && row.vendor_id ? row.vendor_id : "").trim() || "unknown";
+  const vendorName = String(row && row.vendor_name ? row.vendor_name : vendorId).trim() || vendorId;
+  const totalEvents = toSafeCount(row && row.total_events);
+  const observedCount = toSafeCount(row && row.observed_count);
+  const blockedCount = toSafeCount(row && row.blocked_count);
+  const lastSeen = Number(row && row.last_seen) > 0 ? Number(row.last_seen) : 0;
+  return {
+    vendor_id: vendorId,
+    vendor_name: vendorName,
+    total_events: totalEvents,
+    observed_count: observedCount,
+    blocked_count: blockedCount,
+    last_seen: lastSeen,
+  };
+}
+
+function computeDirectoryActivityScore(row) {
+  return toSafeCount(row && row.observed_count) + toSafeCount(row && row.blocked_count);
+}
+
+function getFilteredAndSortedLandingVendors() {
+  const search = String(landingDirectoryState.search || "").trim().toLowerCase();
+  const filtered = landingDirectoryState.vendors.filter((row) => {
+    if (!search) return true;
+    return String(row.vendor_name || "").toLowerCase().includes(search);
+  });
+
+  filtered.sort((a, b) => {
+    if (landingDirectoryState.sort === LANDING_SORT_RECENT) {
+      return (b.last_seen - a.last_seen)
+        || (computeDirectoryActivityScore(b) - computeDirectoryActivityScore(a))
+        || a.vendor_name.localeCompare(b.vendor_name);
+    }
+    if (landingDirectoryState.sort === LANDING_SORT_BLOCKED) {
+      return (b.blocked_count - a.blocked_count)
+        || (b.last_seen - a.last_seen)
+        || a.vendor_name.localeCompare(b.vendor_name);
+    }
+    return (computeDirectoryActivityScore(b) - computeDirectoryActivityScore(a))
+      || (b.last_seen - a.last_seen)
+      || a.vendor_name.localeCompare(b.vendor_name);
+  });
+
+  return filtered;
+}
+
+function buildLandingVendorHref(vendorId) {
+  const params = new URLSearchParams();
+  params.set("vendor", String(vendorId || "").trim() || "unknown");
+  if (landingDirectoryState.scope === SCOPE_SITE && landingDirectoryState.selectedSite) {
+    params.set("site", landingDirectoryState.selectedSite);
+    params.set("scope", SCOPE_SITE);
+  } else {
+    params.set("scope", SCOPE_ALL);
+  }
+  return `/vendor-vault.html?${params.toString()}`;
+}
+
+function clearLandingVendorGrid() {
+  const grid = qs("vendorDirectoryGrid");
+  if (!grid) return;
+  grid.innerHTML = "";
+}
+
+function renderLandingVendorGrid() {
+  const grid = qs("vendorDirectoryGrid");
+  if (!grid) return;
+  grid.innerHTML = "";
+
+  const rows = getFilteredAndSortedLandingVendors();
+  if (!rows.length) {
+    if (!landingDirectoryState.vendors.length) {
+      setLandingDirectoryStatus("No vendors observed in this scope yet.");
+    } else {
+      setLandingDirectoryStatus("No vendors match your search.");
+    }
+    return;
+  }
+
+  setLandingDirectoryStatus("");
+
+  for (const row of rows) {
+    const card = document.createElement("button");
+    card.type = "button";
+    card.className = "vendor-directory-card";
+
+    const title = document.createElement("div");
+    title.className = "vendor-directory-card-title";
+    title.textContent = row.vendor_name;
+    card.appendChild(title);
+
+    const counts = document.createElement("div");
+    counts.className = "vendor-directory-card-meta";
+    counts.textContent = `Observed: ${row.observed_count} | Blocked: ${row.blocked_count}`;
+    card.appendChild(counts);
+
+    const lastSeen = document.createElement("div");
+    lastSeen.className = "vendor-directory-card-meta";
+    lastSeen.textContent = `Last seen: ${formatDateTime(row.last_seen)}`;
+    card.appendChild(lastSeen);
+
+    card.addEventListener("click", () => {
+      window.location.assign(buildLandingVendorHref(row.vendor_id));
+    });
+
+    grid.appendChild(card);
+  }
+}
+
+function setLandingSiteSelectVisible(visible) {
+  const siteSelect = getLandingSiteSelect();
+  if (!siteSelect) return;
+  siteSelect.classList.toggle("hidden", !visible);
+}
+
+function renderLandingSiteOptions() {
+  const siteSelect = getLandingSiteSelect();
+  if (!siteSelect) return;
+
+  siteSelect.innerHTML = "";
+  const placeholder = document.createElement("option");
+  placeholder.value = "";
+  placeholder.textContent = "Choose site...";
+  siteSelect.appendChild(placeholder);
+
+  for (const site of landingDirectoryState.sites) {
+    const option = document.createElement("option");
+    option.value = site;
+    option.textContent = site;
+    siteSelect.appendChild(option);
+  }
+
+  if (landingDirectoryState.selectedSite && landingDirectoryState.sites.includes(landingDirectoryState.selectedSite)) {
+    siteSelect.value = landingDirectoryState.selectedSite;
+  } else {
+    siteSelect.value = "";
+  }
+}
+
+async function loadLandingSites() {
+  try {
+    const response = await fetch("/api/sites");
+    if (!response.ok) throw new Error(`sites_request_failed_${response.status}`);
+    const rows = await response.json();
+    landingDirectoryState.sites = Array.from(new Set(
+      (Array.isArray(rows) ? rows : [])
+        .map((row) => String(row && row.site ? row.site : "").trim())
+        .filter(Boolean)
+    ));
+    renderLandingSiteOptions();
+  } catch (err) {
+    console.error("Vendor directory sites fetch failed:", err);
+    landingDirectoryState.sites = [];
+    renderLandingSiteOptions();
+    setLandingDirectoryStatus("Could not load sites list.", { isError: true });
+  }
+}
+
+function buildLandingVendorsUrl() {
+  if (landingDirectoryState.scope === SCOPE_SITE && landingDirectoryState.selectedSite) {
+    return `/api/vendors?site=${encodeURIComponent(landingDirectoryState.selectedSite)}`;
+  }
+  return "/api/vendors";
+}
+
+async function loadLandingVendors() {
+  const requestId = ++latestLandingVendorsRequestId;
+  clearLandingVendorGrid();
+  setLandingDirectoryStatus("Loading vendors...");
+
+  if (landingDirectoryState.scope === SCOPE_SITE && !landingDirectoryState.selectedSite) {
+    landingDirectoryState.vendors = [];
+    setLandingDirectoryStatus("Choose a site to view vendors.");
+    return;
+  }
+
+  try {
+    const response = await fetch(buildLandingVendorsUrl());
+    if (!response.ok) throw new Error(`vendors_request_failed_${response.status}`);
+    const payload = await response.json();
+    if (requestId !== latestLandingVendorsRequestId) return;
+    const rows = Array.isArray(payload) ? payload : [];
+    landingDirectoryState.vendors = rows.map(toDirectoryVendorRow);
+    renderLandingVendorGrid();
+  } catch (err) {
+    if (requestId !== latestLandingVendorsRequestId) return;
+    console.error("Vendor directory fetch failed:", err);
+    landingDirectoryState.vendors = [];
+    clearLandingVendorGrid();
+    setLandingDirectoryStatus("Could not load vendors for this scope.", { isError: true });
+  }
+}
+
+async function handleLandingScopeChange(nextScope) {
+  landingDirectoryState.scope = nextScope === SCOPE_SITE ? SCOPE_SITE : SCOPE_ALL;
+  setLandingSiteSelectVisible(landingDirectoryState.scope === SCOPE_SITE);
+
+  if (landingDirectoryState.scope === SCOPE_SITE) {
+    await loadLandingSites();
+    if (!landingDirectoryState.selectedSite && landingDirectoryState.sites.length) {
+      landingDirectoryState.selectedSite = landingDirectoryState.sites[0];
+    }
+    renderLandingSiteOptions();
+  } else {
+    landingDirectoryState.selectedSite = "";
+  }
+
+  updateLandingScopeInUrl();
+  await loadLandingVendors();
+}
+
+function bindLandingDirectoryControls() {
+  if (landingDirectoryControlsBound) return;
+
+  const searchInput = qs("vendorDirectorySearch");
+  const sortSelect = qs("vendorDirectorySort");
+  const scopeSelect = qs("vendorDirectoryScope");
+  const siteSelect = getLandingSiteSelect();
+  if (!searchInput || !sortSelect || !scopeSelect || !siteSelect) return;
+
+  searchInput.addEventListener("input", () => {
+    landingDirectoryState.search = searchInput.value || "";
+    renderLandingVendorGrid();
+  });
+
+  sortSelect.addEventListener("change", () => {
+    landingDirectoryState.sort = normalizeLandingSort(sortSelect.value);
+    renderLandingVendorGrid();
+  });
+
+  scopeSelect.addEventListener("change", () => {
+    void handleLandingScopeChange(scopeSelect.value);
+  });
+
+  siteSelect.addEventListener("change", () => {
+    landingDirectoryState.selectedSite = String(siteSelect.value || "").trim();
+    updateLandingScopeInUrl();
+    void loadLandingVendors();
+  });
+
+  landingDirectoryControlsBound = true;
+}
+
+function bootLandingDirectory(initialSite, scopeParam) {
+  const searchInput = qs("vendorDirectorySearch");
+  const sortSelect = qs("vendorDirectorySort");
+  const scopeSelect = qs("vendorDirectoryScope");
+  const siteSelect = getLandingSiteSelect();
+  if (!searchInput || !sortSelect || !scopeSelect || !siteSelect) return;
+
+  landingDirectoryState.search = "";
+  landingDirectoryState.sort = LANDING_SORT_ACTIVITY;
+  landingDirectoryState.scope = normalizeScope(scopeParam) === SCOPE_SITE ? SCOPE_SITE : SCOPE_ALL;
+  landingDirectoryState.selectedSite = landingDirectoryState.scope === SCOPE_SITE ? String(initialSite || "").trim() : "";
+
+  searchInput.value = "";
+  sortSelect.value = LANDING_SORT_ACTIVITY;
+  scopeSelect.value = landingDirectoryState.scope;
+
+  bindLandingDirectoryControls();
+  setLandingSiteSelectVisible(landingDirectoryState.scope === SCOPE_SITE);
+
+  if (landingDirectoryState.scope === SCOPE_SITE) {
+    void loadLandingSites().then(() => {
+      if (!landingDirectoryState.selectedSite && landingDirectoryState.sites.length) {
+        landingDirectoryState.selectedSite = landingDirectoryState.sites[0];
+      }
+      renderLandingSiteOptions();
+      updateLandingScopeInUrl();
+      return loadLandingVendors();
+    });
+    return;
+  }
+
+  updateLandingScopeInUrl();
+  void loadLandingVendors();
 }
 
 function normalizeScope(scope) {

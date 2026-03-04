@@ -828,6 +828,52 @@ app.get("/api/exposure-inventory", async (req, res) => {
   }
 });
 
+app.get("/api/vendors", async (req, res) => {
+  try {
+    const dbCtx = app.locals.db;
+    if (!dbCtx) return res.status(500).json({ ok: false, error: "db_not_ready" });
+
+    const site = String(req.query.site || "").trim() || null;
+    const rows = await dbCtx.all(
+      `
+        SELECT
+          COALESCE(NULLIF(vendor_id, ''), 'unknown') AS vendor_id,
+          COALESCE(
+            NULLIF(MAX(CASE WHEN vendor_name IS NOT NULL AND vendor_name != '' THEN vendor_name END), ''),
+            COALESCE(NULLIF(vendor_id, ''), 'unknown')
+          ) AS vendor_name,
+          COUNT(*) AS total_events,
+          SUM(CASE WHEN mitigation_status IN ('allowed', 'observed_only') THEN 1 ELSE 0 END) AS observed_count,
+          SUM(CASE WHEN mitigation_status = 'blocked' THEN 1 ELSE 0 END) AS blocked_count,
+          MAX(enriched_ts) AS last_seen
+        FROM event_enrichment
+        WHERE (? IS NULL OR first_party_site = ?)
+        GROUP BY COALESCE(NULLIF(vendor_id, ''), 'unknown')
+        ORDER BY
+          (SUM(CASE WHEN mitigation_status IN ('allowed', 'observed_only') THEN 1 ELSE 0 END)
+           + SUM(CASE WHEN mitigation_status = 'blocked' THEN 1 ELSE 0 END)) DESC,
+          MAX(enriched_ts) DESC,
+          vendor_id ASC
+      `,
+      [site, site]
+    );
+
+    const out = (rows || []).map((row) => ({
+      vendor_id: String(row?.vendor_id || "unknown").trim() || "unknown",
+      vendor_name: String(row?.vendor_name || row?.vendor_id || "unknown").trim() || "unknown",
+      total_events: Number(row?.total_events) || 0,
+      observed_count: Number(row?.observed_count) || 0,
+      blocked_count: Number(row?.blocked_count) || 0,
+      last_seen: Number(row?.last_seen) || 0,
+    }));
+
+    res.json(out);
+  } catch (err) {
+    console.error("Failed to build /api/vendors:", err);
+    res.status(500).json({ ok: false, error: "vendors_query_failed" });
+  }
+});
+
 app.get("/api/vendor-vault-summary", async (req, res) => {
   try {
     const dbCtx = app.locals.db;
