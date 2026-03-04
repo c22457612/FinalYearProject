@@ -46,6 +46,17 @@
               Derived from captured browser signals (request metadata). This is not proof of vendor storage.
             </div>
           </div>
+          <div class="vendor-vault-export-controls">
+            <div class="vendor-vault-export-buttons">
+              <button id="vaultExportButton" type="button" class="viz-nav vendor-vault-export-btn">
+                Export JSON
+              </button>
+              <button id="vaultExportCsvButton" type="button" class="viz-nav vendor-vault-export-btn">
+                Export CSV
+              </button>
+            </div>
+            <div id="vaultExportStatus" class="vendor-vault-export-status" aria-live="polite"></div>
+          </div>
         </div>
 
         <div id="exposureLoadingState" class="vendor-vault-state">
