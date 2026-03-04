@@ -115,6 +115,7 @@ header h1 {
   display: block;
   width: 100%;
   text-align: left;
+  text-decoration: none;
   padding: 0.4rem 0.6rem;
   border-radius: var(--radius-sm);
   border: none;

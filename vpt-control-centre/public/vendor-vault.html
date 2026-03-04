@@ -16,129 +16,153 @@
     </div>
   </header>
 
-  <div class="site-content">
-    <section id="vaultMissingState" class="panel hidden">
-      <div class="panel-title">Vendor Vault</div>
-      <div class="panel-subtitle">Open Vendor Vault from Site Insights after selecting a vendor.</div>
-      <div id="vaultMissingLinks" class="site-actions"></div>
-    </section>
+  <div class="app-shell">
+    <aside class="sidebar">
+      <div class="sidebar-title">Sections</div>
+      <a class="nav-item" href="/?view=home">Home</a>
+      <a class="nav-item" href="/?view=sites">Sites</a>
+      <a class="nav-item" href="/?view=cookies">Cookies</a>
+      <a class="nav-item active" data-page="vendor-vault" href="/vendor-vault.html?scope=all">Vendor Vault</a>
+    </aside>
 
-    <section id="vaultContent" class="vendor-vault-header-strip hidden">
-      <div class="vendor-vault-header-title">Vendor Vault</div>
-      <div class="vendor-vault-header-chips">
-        <span id="vaultSiteChip" class="pill pill-kind">Site: -</span>
-        <span id="vaultVendorChip" class="pill pill-kind">Vendor: -</span>
-        <span id="vaultAllSitesChip" class="pill pill-kind hidden">All sites</span>
-      </div>
-      <div id="vaultScopeToggle" class="vendor-vault-scope-toggle" role="group" aria-label="Vendor Vault scope">
-        <button id="vaultScopeSiteButton" type="button" class="viz-nav vendor-vault-scope-btn">This site</button>
-        <button id="vaultScopeAllButton" type="button" class="viz-nav vendor-vault-scope-btn">All sites</button>
-      </div>
-      <a id="backToSiteInsightsLink" class="back-link vendor-vault-header-link" href="/">Back to Site Insights</a>
-    </section>
-
-    <section id="vaultSections" class="hidden vendor-vault-sections">
-      <section class="panel vendor-vault-inventory-panel">
-        <div class="panel-header">
-          <div>
-            <div class="panel-title">Potentially shared data inventory</div>
-            <div class="vendor-vault-disclaimer">
-              Derived from captured browser signals (request metadata). This is not proof of vendor storage.
-            </div>
+    <div class="app-content">
+      <div class="site-content">
+        <section id="vaultMissingState" class="panel hidden">
+          <div class="panel-title">Vendor Vault</div>
+          <p class="vendor-vault-landing-description">
+            See what data types a vendor may have received (or attempted) based on captured signals.
+          </p>
+          <p id="vaultMissingScopeNotice" class="vendor-vault-landing-note hidden"></p>
+          <div class="site-actions vendor-vault-landing-actions">
+            <a id="vaultOpenSiteInsightsLink" class="viz-nav vendor-vault-landing-primary" href="/?view=sites">
+              Open Site Insights
+            </a>
+            <button id="vaultHowItWorksButton" type="button" class="viz-nav">How it works</button>
           </div>
-          <div class="vendor-vault-export-controls">
-            <div class="vendor-vault-export-buttons">
-              <button id="vaultExportButton" type="button" class="viz-nav vendor-vault-export-btn">
-                Export JSON
-              </button>
-              <button id="vaultExportCsvButton" type="button" class="viz-nav vendor-vault-export-btn">
-                Export CSV
-              </button>
-            </div>
-            <div id="vaultExportStatus" class="vendor-vault-export-status" aria-live="polite"></div>
+          <div id="vaultHowItWorksBody" class="vendor-vault-landing-how hidden">
+            Vendor Vault is derived from captured request metadata keys and categories only. It indicates
+            potential sharing signals, not proof that a vendor stored the underlying data.
           </div>
-        </div>
+        </section>
 
-        <div id="exposureLoadingState" class="vendor-vault-state">
-          Loading potentially shared inventory...
-        </div>
-
-        <div id="exposureErrorState" class="vendor-vault-state hidden" role="alert">
-          <div>Could not load potential sharing inventory for this scope.</div>
-          <div>
-            <button id="exposureRetryButton" type="button" class="viz-nav">Retry</button>
+        <section id="vaultContent" class="vendor-vault-header-strip hidden">
+          <div class="vendor-vault-header-title">Vendor Vault</div>
+          <div class="vendor-vault-header-chips">
+            <span id="vaultSiteChip" class="pill pill-kind">Site: -</span>
+            <span id="vaultVendorChip" class="pill pill-kind">Vendor: -</span>
+            <span id="vaultAllSitesChip" class="pill pill-kind hidden">All sites</span>
           </div>
-        </div>
+          <div id="vaultScopeToggle" class="vendor-vault-scope-toggle" role="group" aria-label="Vendor Vault scope">
+            <button id="vaultScopeSiteButton" type="button" class="viz-nav vendor-vault-scope-btn">This site</button>
+            <button id="vaultScopeAllButton" type="button" class="viz-nav vendor-vault-scope-btn">All sites</button>
+          </div>
+          <a id="backToSiteInsightsLink" class="back-link vendor-vault-header-link" href="/">Back to Site Insights</a>
+        </section>
 
-        <div id="exposureEmptyState" class="vendor-vault-state hidden">
-          No exposure signals observed for this scope in captured request metadata.
-        </div>
-
-        <div id="exposureSuccessState" class="hidden">
-          <section id="exposureWhatThisMeans" class="vendor-vault-sharing-summary">
-            <div class="vendor-vault-sharing-heading">What this means for you</div>
-            <div class="vendor-vault-summary-grid">
-              <div class="vendor-vault-score-visual" aria-label="Overall exposure score">
-                <svg class="vendor-vault-score-ring" viewBox="0 0 120 120" role="img" aria-hidden="true">
-                  <circle class="vendor-vault-score-ring-track" cx="60" cy="60" r="44"></circle>
-                  <circle id="exposureSummaryScoreRing" class="vendor-vault-score-ring-progress" cx="60" cy="60" r="44"></circle>
-                </svg>
-                <div class="vendor-vault-score-center">
-                  <div id="exposureSummaryScoreValue" class="vendor-vault-score-center-value">-</div>
-                  <div id="exposureSummaryScoreBand" class="vendor-vault-score-center-band">-</div>
+        <section id="vaultSections" class="hidden vendor-vault-sections">
+          <section class="panel vendor-vault-inventory-panel">
+            <div class="panel-header">
+              <div>
+                <div class="panel-title">Potentially shared data inventory</div>
+                <div class="vendor-vault-disclaimer">
+                  Derived from captured browser signals (request metadata). This is not proof of vendor storage.
                 </div>
               </div>
-              <div class="vendor-vault-summary-copy">
-                <div id="exposureSummaryScoreText" class="vendor-vault-score-line">Exposure score: -</div>
-                <div class="vendor-vault-sharing-row">
-                  <span class="vendor-vault-sharing-label">Potentially received (Observed):</span>
-                  <span id="exposureMayHaveReceivedList" class="vendor-vault-sharing-value">-</span>
+              <div class="vendor-vault-export-controls">
+                <div class="vendor-vault-export-buttons">
+                  <button id="vaultExportButton" type="button" class="viz-nav vendor-vault-export-btn">
+                    Export JSON
+                  </button>
+                  <button id="vaultExportCsvButton" type="button" class="viz-nav vendor-vault-export-btn">
+                    Export CSV
+                  </button>
                 </div>
-                <div class="vendor-vault-sharing-row">
-                  <span class="vendor-vault-sharing-label">Blocked attempts:</span>
-                  <span id="exposureAttemptedToReceiveList" class="vendor-vault-sharing-value">-</span>
+                <div id="vaultExportStatus" class="vendor-vault-export-status" aria-live="polite"></div>
+              </div>
+            </div>
+
+            <div id="exposureLoadingState" class="vendor-vault-state">
+              Loading potentially shared inventory...
+            </div>
+
+            <div id="exposureErrorState" class="vendor-vault-state hidden" role="alert">
+              <div>Could not load potential sharing inventory for this scope.</div>
+              <div>
+                <button id="exposureRetryButton" type="button" class="viz-nav">Retry</button>
+              </div>
+            </div>
+
+            <div id="exposureEmptyState" class="vendor-vault-state hidden">
+              No exposure signals observed for this scope in captured request metadata.
+            </div>
+
+            <div id="exposureSuccessState" class="hidden">
+              <section id="exposureWhatThisMeans" class="vendor-vault-sharing-summary">
+                <div class="vendor-vault-sharing-heading">What this means for you</div>
+                <div class="vendor-vault-summary-grid">
+                  <div class="vendor-vault-score-visual" aria-label="Overall exposure score">
+                    <svg class="vendor-vault-score-ring" viewBox="0 0 120 120" role="img" aria-hidden="true">
+                      <circle class="vendor-vault-score-ring-track" cx="60" cy="60" r="44"></circle>
+                      <circle id="exposureSummaryScoreRing" class="vendor-vault-score-ring-progress" cx="60" cy="60" r="44"></circle>
+                    </svg>
+                    <div class="vendor-vault-score-center">
+                      <div id="exposureSummaryScoreValue" class="vendor-vault-score-center-value">-</div>
+                      <div id="exposureSummaryScoreBand" class="vendor-vault-score-center-band">-</div>
+                    </div>
+                  </div>
+                  <div class="vendor-vault-summary-copy">
+                    <div id="exposureSummaryScoreText" class="vendor-vault-score-line">Exposure score: -</div>
+                    <div class="vendor-vault-sharing-row">
+                      <span class="vendor-vault-sharing-label">Potentially received (Observed):</span>
+                      <span id="exposureMayHaveReceivedList" class="vendor-vault-sharing-value">-</span>
+                    </div>
+                    <div class="vendor-vault-sharing-row">
+                      <span class="vendor-vault-sharing-label">Blocked attempts:</span>
+                      <span id="exposureAttemptedToReceiveList" class="vendor-vault-sharing-value">-</span>
+                    </div>
+                    <div class="vendor-vault-sharing-actions">
+                      <div class="vendor-vault-sharing-actions-title">Top recommended actions</div>
+                      <ul id="exposureVendorActionsList" class="vendor-vault-action-list"></ul>
+                    </div>
+                  </div>
                 </div>
-                <div class="vendor-vault-sharing-actions">
-                  <div class="vendor-vault-sharing-actions-title">Top recommended actions</div>
-                  <ul id="exposureVendorActionsList" class="vendor-vault-action-list"></ul>
-                </div>
+              </section>
+
+              <div class="vendor-vault-inventory-box">
+                <div id="exposureInventoryList" class="vendor-vault-inventory-list" role="list"></div>
               </div>
             </div>
           </section>
 
-          <div class="vendor-vault-inventory-box">
-            <div id="exposureInventoryList" class="vendor-vault-inventory-list" role="list"></div>
+          <div class="summary vendor-vault-secondary-panels">
+            <div class="summary-card">
+              <h2>Activity summary</h2>
+              <div id="vaultActivityPanel" class="vendor-vault-panel-body">
+                <div class="hint">Loading...</div>
+              </div>
+            </div>
+            <div class="summary-card">
+              <h2>Domains used</h2>
+              <div id="vaultDomainsPanel" class="vendor-vault-panel-body">
+                <div class="hint">Loading...</div>
+              </div>
+            </div>
+            <div class="summary-card">
+              <h2>Observed parameter keys</h2>
+              <div id="vaultKeysPanel" class="vendor-vault-panel-body">
+                <div class="hint">Loading...</div>
+              </div>
+            </div>
+            <div class="summary-card">
+              <h2>Risk summary</h2>
+              <div id="vaultRiskPanel" class="vendor-vault-panel-body">
+                <div class="hint">Loading...</div>
+              </div>
+            </div>
           </div>
-        </div>
-      </section>
-
-      <div class="summary vendor-vault-secondary-panels">
-        <div class="summary-card">
-          <h2>Activity summary</h2>
-          <div id="vaultActivityPanel" class="vendor-vault-panel-body">
-            <div class="hint">Loading...</div>
-          </div>
-        </div>
-        <div class="summary-card">
-          <h2>Domains used</h2>
-          <div id="vaultDomainsPanel" class="vendor-vault-panel-body">
-            <div class="hint">Loading...</div>
-          </div>
-        </div>
-        <div class="summary-card">
-          <h2>Observed parameter keys</h2>
-          <div id="vaultKeysPanel" class="vendor-vault-panel-body">
-            <div class="hint">Loading...</div>
-          </div>
-        </div>
-        <div class="summary-card">
-          <h2>Risk summary</h2>
-          <div id="vaultRiskPanel" class="vendor-vault-panel-body">
-            <div class="hint">Loading...</div>
-          </div>
-        </div>
+        </section>
       </div>
-    </section>
+    </div>
   </div>
 
   <script type="module" src="vendor-vault.js"></script>

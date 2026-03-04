@@ -854,6 +854,38 @@
   gap: var(--space-md);
 }
 
+.vendor-vault-landing-description {
+  margin: 0.25rem 0 0;
+  color: var(--color-text-main);
+  font-size: 0.92rem;
+  line-height: 1.55;
+  max-width: 68ch;
+}
+
+.vendor-vault-landing-note {
+  margin: 0.05rem 0 0;
+  color: #fde68a;
+  font-size: 0.83rem;
+  line-height: 1.45;
+  max-width: 72ch;
+}
+
+.vendor-vault-landing-actions {
+  margin-top: 0.2rem;
+}
+
+.vendor-vault-landing-primary {
+  text-decoration: none;
+}
+
+.vendor-vault-landing-how {
+  margin-top: 0.12rem;
+  color: var(--color-text-muted);
+  font-size: 0.83rem;
+  line-height: 1.5;
+  max-width: 72ch;
+}
+
 .vendor-vault-header-strip {
   display: grid;
   grid-template-columns: auto minmax(0, 1fr) auto auto;

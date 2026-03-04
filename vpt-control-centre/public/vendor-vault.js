@@ -149,31 +149,40 @@ function buildSiteInsightsHref(site) {
   return `/site.html?site=${encodeURIComponent(site)}`;
 }
 
-function createLink(text, href) {
-  const link = document.createElement("a");
-  link.className = "viz-nav";
-  link.style.textDecoration = "none";
-  link.href = href;
-  link.textContent = text;
-  return link;
-}
-
-function showMissingState(site) {
+function showMissingState(site, scopeParam) {
   const missing = qs("vaultMissingState");
   const content = qs("vaultContent");
   const sections = qs("vaultSections");
-  const links = qs("vaultMissingLinks");
-  if (!missing || !content || !sections || !links) return;
+  const openSiteInsightsLink = qs("vaultOpenSiteInsightsLink");
+  const scopeNotice = qs("vaultMissingScopeNotice");
+  const howItWorksButton = qs("vaultHowItWorksButton");
+  const howItWorksBody = qs("vaultHowItWorksBody");
+  if (!missing || !content || !sections || !openSiteInsightsLink || !scopeNotice || !howItWorksButton || !howItWorksBody) return;
 
   missing.classList.remove("hidden");
   content.classList.add("hidden");
   sections.classList.add("hidden");
-  links.innerHTML = "";
 
-  links.appendChild(createLink("Back to Control Centre", "/"));
-  if (site) {
-    links.appendChild(createLink("Back to Site Insights", buildSiteInsightsHref(site)));
+  const hasSite = Boolean(String(site || "").trim());
+  openSiteInsightsLink.href = hasSite ? buildSiteInsightsHref(site) : "/?view=sites";
+
+  const showScopeNotice = normalizeScope(scopeParam) === SCOPE_ALL;
+  scopeNotice.classList.toggle("hidden", !showScopeNotice);
+  if (showScopeNotice) {
+    scopeNotice.textContent = "Choose a vendor by opening Vendor Vault from Site Insights (select a vendor then Open Vendor Vault). Vendor picker coming soon.";
+  } else {
+    scopeNotice.textContent = "";
   }
+
+  howItWorksBody.classList.add("hidden");
+  howItWorksButton.setAttribute("aria-expanded", "false");
+  howItWorksButton.textContent = "How it works";
+  howItWorksButton.onclick = () => {
+    const isHidden = howItWorksBody.classList.contains("hidden");
+    howItWorksBody.classList.toggle("hidden", !isHidden);
+    howItWorksButton.setAttribute("aria-expanded", String(isHidden));
+    howItWorksButton.textContent = isHidden ? "Hide details" : "How it works";
+  };
 }
 
 function normalizeScope(scope) {
@@ -1541,7 +1550,7 @@ function bootVendorVault() {
   const initialScope = resolveInitialScope(site, params.get("scope"));
 
   if (!vendor) {
-    showMissingState(site);
+    showMissingState(site, params.get("scope"));
     return;
   }
 

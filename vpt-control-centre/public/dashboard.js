@@ -223,8 +223,16 @@ window.addEventListener("load", () => {
     });
   });
 
-  // Default to Home on load
-  switchView("home");
+  function resolveInitialView() {
+    const params = new URLSearchParams(window.location.search);
+    const requested = String(params.get("view") || "").trim().toLowerCase();
+    if (requested === "sites" || requested === "cookies" || requested === "home") {
+      return requested;
+    }
+    return "home";
+  }
+
+  switchView(resolveInitialView());
 
   const trustBtn = document.getElementById("trust-site-btn");
   if (trustBtn) {
