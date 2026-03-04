@@ -8,6 +8,7 @@ const { initDb } = require("./db");
 const { buildEnrichmentRecord } = require("./enrichment");
 const { getAnalyticsSnapshot } = require("./analytics");
 const { deriveExposureInventory } = require("./exposure-inventory");
+const { getVendorVaultSummary } = require("./vendor-vault-summary");
 
 const app = express();
 const PORT = process.env.PORT || 4141;
@@ -824,6 +825,28 @@ app.get("/api/exposure-inventory", async (req, res) => {
     }
     console.error("Failed to build /api/exposure-inventory:", err);
     res.status(500).json({ ok: false, error: "exposure_inventory_query_failed" });
+  }
+});
+
+app.get("/api/vendor-vault-summary", async (req, res) => {
+  try {
+    const dbCtx = app.locals.db;
+    if (!dbCtx) return res.status(500).json({ ok: false, error: "db_not_ready" });
+
+    const vendor = String(req.query.vendor || "").trim();
+    const site = String(req.query.site || "").trim() || null;
+    if (!vendor) {
+      return res.status(400).json({ ok: false, error: "vendor is required" });
+    }
+
+    const summary = await getVendorVaultSummary(dbCtx, { vendor, site });
+    res.json(summary);
+  } catch (err) {
+    if (err?.code === "vendor_required") {
+      return res.status(400).json({ ok: false, error: "vendor is required" });
+    }
+    console.error("Failed to build /api/vendor-vault-summary:", err);
+    res.status(500).json({ ok: false, error: "vendor_vault_summary_query_failed" });
   }
 });
 
