@@ -230,24 +230,25 @@
 
       <!-- COOKIES VIEW -->
       <main id="view-cookies" class="cookies-view hidden">
-        <section class="cookies-hero-row">
+        <section id="cookiesHighlightsSection" class="cookies-hero-row">
           <div class="panel cookies-wall-card cookies-hero-card">
             <div class="panel-header cookies-hero-header">
               <div>
-                <div class="panel-title">Cookie snapshot carousel</div>
+                <div class="panel-title">Highlights</div>
                 <div id="cookiesSummarySubtitle" class="panel-subtitle">
-                  Click a site snapshot to focus and open cookie details.
+                  Curated sites from current cookie activity.
                 </div>
               </div>
-              <div class="cookies-carousel-controls">
-                <button id="cookiesCarouselPrevBtn" class="cookies-carousel-btn" type="button" aria-label="Scroll snapshots left">&#9664;</button>
-                <button id="cookiesCarouselNextBtn" class="cookies-carousel-btn" type="button" aria-label="Scroll snapshots right">&#9654;</button>
+              <div class="cookies-highlights-actions">
+                <button id="cookiesOpenAllSitesBtn" class="btn-secondary" type="button">
+                  View all sites (0)
+                </button>
               </div>
             </div>
-            <div id="cookiesCarouselTrack" class="cookies-carousel-track"></div>
-            <div id="cookiesCarouselEmpty" class="cookies-hero-empty hidden">
-              <strong>No cookie snapshot activity yet.</strong>
-              <span>Browse a site with capture enabled, then return to this page to see snapshot cards.</span>
+            <div id="cookiesHighlightsTrack" class="cookies-highlights-track"></div>
+            <div id="cookiesHighlightsEmpty" class="cookies-hero-empty hidden">
+              <strong>No highlights available yet.</strong>
+              <span>Browse a site with capture enabled, then revisit this page.</span>
             </div>
           </div>
         </section>
@@ -328,7 +329,7 @@
               <div class="cookies-table-actions">
                 <button id="cookiesClearSiteFilterBtn" class="btn-secondary hidden" type="button">Clear site filter</button>
                 <button id="cookiesToggleSiteTableBtn" class="btn-secondary" type="button" aria-expanded="false">
-                  Show full site table
+                  Explore all sites table
                 </button>
               </div>
             </div>
@@ -353,7 +354,7 @@
           <div class="panel cookies-detail-panel">
             <div class="panel-header cookies-detail-header">
               <button id="cookiesBackBtn" class="btn-secondary">
-                <- Back to snapshot wall
+                <- Back to highlights
               </button>
               <div>
                 <div class="panel-title" id="cookies-detail-title">Cookie details</div>
@@ -364,6 +365,35 @@
             </div>
             <div id="cookies-details-body" class="panel-body cookies-details-body">
               <div class="details-placeholder">No site selected.</div>
+            </div>
+          </div>
+        </section>
+
+        <section
+          id="cookiesAllSitesModal"
+          class="cookies-modal hidden"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="cookiesAllSitesTitle"
+        >
+          <div id="cookiesAllSitesBackdrop" class="cookies-modal-backdrop"></div>
+          <div id="cookiesAllSitesPanel" class="cookies-modal-panel" tabindex="-1">
+            <div class="cookies-modal-scroll">
+              <div class="cookies-modal-sticky">
+                <div class="cookies-modal-title-row">
+                  <div id="cookiesAllSitesTitle" class="panel-title">All sites</div>
+                  <button id="cookiesAllSitesCloseBtn" class="cookies-modal-close" type="button" aria-label="Close all sites modal">X</button>
+                </div>
+                <div class="cookies-modal-controls">
+                  <input id="cookiesAllSitesSearch" class="cookies-modal-search" type="search" placeholder="Search site..." />
+                  <select id="cookiesAllSitesSort" class="cookies-modal-sort">
+                    <option value="activity">Most activity</option>
+                    <option value="third-party">Most third-party</option>
+                    <option value="recent">Most recent</option>
+                  </select>
+                </div>
+              </div>
+              <div id="cookiesAllSitesGrid" class="cookies-modal-grid"></div>
             </div>
           </div>
         </section>

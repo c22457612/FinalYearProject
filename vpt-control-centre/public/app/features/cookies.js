@@ -5,7 +5,12 @@ let activeSiteFilter = null;
 let selectedCookieSite = null;
 let cookiesWallMode = "grid"; // "grid" or "detail"
 let siteTableExpanded = false;
-let carouselBound = false;
+let modalEventsBound = false;
+let modalOpen = false;
+let modalSearchTerm = "";
+let modalSortMode = "activity";
+let modalReturnFocusEl = null;
+let allSiteCardsCache = [];
 
 function getUtils() {
   const utils = window.VPT?.utils;
@@ -141,6 +146,18 @@ function derivePartyCountsForEvent(ev) {
   return { firstParty, thirdParty, unknown };
 }
 
+function isBlockedCookieEvent(ev) {
+  const kind = String(ev?.kind || "").toLowerCase();
+  const data = ev?.data && typeof ev.data === "object" ? ev.data : {};
+  const outcome = String(data.outcome || data.mitigation_status || "").toLowerCase();
+  return (
+    kind.includes("blocked")
+    || data.blocked === true
+    || data.wasBlocked === true
+    || outcome === "blocked"
+  );
+}
+
 function deriveCookieDashboardData(events, siteFilter = null) {
   const filter = siteFilter ? normalizeSite(siteFilter) : null;
   const actorCounts = new Map();
@@ -150,6 +167,7 @@ function deriveCookieDashboardData(events, siteFilter = null) {
   let firstParty = 0;
   let thirdParty = 0;
   let unknownParty = 0;
+  let blockedAttempts = 0;
   let lastSeenTs = 0;
 
   for (const ev of events || []) {
@@ -168,6 +186,7 @@ function deriveCookieDashboardData(events, siteFilter = null) {
       firstParty: 0,
       thirdParty: 0,
       unknownParty: 0,
+      blockedAttempts: 0,
       lastSeenTs: 0,
     };
 
@@ -181,6 +200,11 @@ function deriveCookieDashboardData(events, siteFilter = null) {
     firstParty += party.firstParty;
     thirdParty += party.thirdParty;
     unknownParty += party.unknown;
+
+    if (isBlockedCookieEvent(ev)) {
+      siteRow.blockedAttempts += 1;
+      blockedAttempts += 1;
+    }
 
     const actorSignals = deriveEventActorSignals(ev);
     for (const actor of actorSignals) {
@@ -211,9 +235,102 @@ function deriveCookieDashboardData(events, siteFilter = null) {
     firstParty,
     thirdParty,
     unknownParty,
+    blockedAttempts,
     topActors,
     siteRows,
   };
+}
+
+function buildSiteCards(allData, snapshots) {
+  const snapshotBySite = new Map((snapshots || []).map((row) => [row.site, row]));
+  const cards = (allData?.siteRows || []).map((row) => {
+    const snapshot = snapshotBySite.get(row.site) || null;
+    const partyTotal = row.firstParty + row.thirdParty + row.unknownParty;
+    const cookieCount = snapshot
+      ? snapshot.count
+      : Math.max(row.firstParty + row.thirdParty + row.unknownParty, 0);
+    const thirdCount = snapshot ? snapshot.third : row.thirdParty;
+    const firstCount = snapshot ? Math.max(snapshot.count - snapshot.third, 0) : row.firstParty;
+
+    return {
+      site: row.site,
+      totalSignals: row.totalSignals,
+      cookieCount,
+      firstCount,
+      thirdCount,
+      unknownCount: row.unknownParty,
+      blockedAttempts: row.blockedAttempts || 0,
+      lastSeenTs: row.lastSeenTs || 0,
+      thirdShare: partyTotal > 0 ? (row.thirdParty / partyTotal) : 0,
+      unknownShare: partyTotal > 0 ? (row.unknownParty / partyTotal) : 0,
+    };
+  });
+
+  cards.sort((a, b) =>
+    (b.totalSignals - a.totalSignals)
+    || (b.thirdCount - a.thirdCount)
+    || (b.lastSeenTs - a.lastSeenTs)
+    || a.site.localeCompare(b.site)
+  );
+  return cards;
+}
+
+function comparePriority(a, b) {
+  return (
+    (b.totalSignals - a.totalSignals)
+    || (b.thirdCount - a.thirdCount)
+    || (b.lastSeenTs - a.lastSeenTs)
+    || a.site.localeCompare(b.site)
+  );
+}
+
+function selectHighlights(siteCards) {
+  if (!siteCards.length) return [];
+
+  const maxHighlights = Math.min(8, siteCards.length);
+  const selected = [];
+  const seen = new Set();
+
+  function pickBest(reason, scoreFn, predicate = () => true) {
+    let bestCard = null;
+    let bestScore = Number.NEGATIVE_INFINITY;
+
+    for (const card of siteCards) {
+      if (seen.has(card.site) || !predicate(card)) continue;
+      const score = Number(scoreFn(card));
+      if (!Number.isFinite(score)) continue;
+
+      if (score > bestScore) {
+        bestCard = card;
+        bestScore = score;
+        continue;
+      }
+
+      if (Math.abs(score - bestScore) < 1e-9 && bestCard && comparePriority(card, bestCard) < 0) {
+        bestCard = card;
+        bestScore = score;
+      }
+    }
+
+    if (!bestCard) return;
+    seen.add(bestCard.site);
+    selected.push({ ...bestCard, reason });
+  }
+
+  pickBest("Most third-party", (card) => card.thirdShare, (card) => card.thirdShare > 0);
+  pickBest("Most activity", (card) => card.totalSignals, (card) => card.totalSignals > 0);
+  pickBest("Most recent", (card) => card.lastSeenTs, (card) => card.lastSeenTs > 0);
+  pickBest("Most unknown", (card) => card.unknownShare, (card) => card.unknownShare > 0);
+  pickBest("Most blocked", (card) => card.blockedAttempts, (card) => card.blockedAttempts > 0);
+
+  for (const card of siteCards) {
+    if (selected.length >= maxHighlights) break;
+    if (seen.has(card.site)) continue;
+    seen.add(card.site);
+    selected.push({ ...card, reason: "High activity" });
+  }
+
+  return selected;
 }
 
 function buildDonutGradient(segments, total) {
@@ -411,7 +528,7 @@ function syncSiteTableExpansion() {
   if (!body || !toggleBtn) return;
   body.classList.toggle("hidden", !siteTableExpanded);
   toggleBtn.setAttribute("aria-expanded", siteTableExpanded ? "true" : "false");
-  toggleBtn.textContent = siteTableExpanded ? "Hide full site table" : "Show full site table";
+  toggleBtn.textContent = siteTableExpanded ? "Hide all sites table" : "Explore all sites table";
 }
 
 function renderSiteTable(allData) {
@@ -484,7 +601,7 @@ function renderSubtitle(scopeData, allData) {
   if (!utils) return;
 
   if (!allData.totalSignals) {
-    subtitle.textContent = "No cookie data observed yet. Use the extension while browsing, then revisit this carousel.";
+    subtitle.textContent = "No cookie data observed yet. Use the extension while browsing, then revisit this page.";
     return;
   }
 
@@ -495,7 +612,8 @@ function renderSubtitle(scopeData, allData) {
   }
 
   const lastSeen = allData.lastSeenTs ? utils.friendlyTime(allData.lastSeenTs) : "n/a";
-  subtitle.textContent = `${formatCount(allData.totalSignals)} cookie signals across ${formatCount(allData.distinctSites)} sites. Last seen ${lastSeen}.`;
+  subtitle.textContent = `${formatCount(allData.totalSignals)} cookie signals across ${formatCount(allData.distinctSites)} sites. Highlights show notable sites first.`;
+  if (lastSeen !== "n/a") subtitle.textContent += ` Last seen ${lastSeen}.`;
 }
 
 function renderEmptyState(allData) {
@@ -584,72 +702,84 @@ function renderCookieDetails(snapshot) {
   `;
 }
 
-function updateCarouselControls(itemCount = null) {
-  const track = document.getElementById("cookiesCarouselTrack");
-  const prevBtn = document.getElementById("cookiesCarouselPrevBtn");
-  const nextBtn = document.getElementById("cookiesCarouselNextBtn");
-  if (!track || !prevBtn || !nextBtn) return;
+function renderSiteCardHtml(card, reason = "") {
+  const utils = getUtils();
+  if (!utils) return "";
+  const lastSeen = card.lastSeenTs ? utils.friendlyTime(card.lastSeenTs) : "-";
 
-  const totalItems = itemCount != null ? itemCount : track.children.length;
-  if (totalItems <= 1) {
-    prevBtn.disabled = true;
-    nextBtn.disabled = true;
+  return `
+    <div class="cookie-card-site">${utils.escapeHtml(card.site)}</div>
+    <div class="cookie-card-count">${formatCount(card.cookieCount)} cookies</div>
+    <div class="cookie-card-signal">${formatCount(card.totalSignals)} signals</div>
+    <div class="cookie-card-meta">1P ${formatCount(card.firstCount)} | 3P ${formatCount(card.thirdCount)}</div>
+    <div class="cookie-badges">
+      <span class="cookie-chip">Last seen ${utils.escapeHtml(lastSeen)}</span>
+      ${reason ? `<span class="cookie-chip cookie-reason-chip">${utils.escapeHtml(reason)}</span>` : ""}
+    </div>
+  `;
+}
+
+function closeAllSitesModal({ restoreFocus = true } = {}) {
+  const modal = document.getElementById("cookiesAllSitesModal");
+  if (!modal || !modalOpen) return;
+  modalOpen = false;
+  modal.classList.add("hidden");
+  document.body.classList.remove("cookies-modal-open");
+  if (restoreFocus && modalReturnFocusEl && typeof modalReturnFocusEl.focus === "function") {
+    modalReturnFocusEl.focus();
+  }
+}
+
+function applyFocusToSite(site, { openDetails = true, closeModal = false } = {}) {
+  activeSiteFilter = normalizeSite(site);
+  selectedCookieSite = activeSiteFilter;
+  if (openDetails) cookiesWallMode = "detail";
+  if (closeModal) closeAllSitesModal({ restoreFocus: false });
+  const latest = getLatestEventsCb ? getLatestEventsCb() : [];
+  renderCookiesView(latest);
+}
+
+function renderHighlights(highlights, allSiteCount) {
+  const track = document.getElementById("cookiesHighlightsTrack");
+  const emptyState = document.getElementById("cookiesHighlightsEmpty");
+  const openBtn = document.getElementById("cookiesOpenAllSitesBtn");
+  if (!track || !emptyState || !openBtn) return;
+
+  openBtn.textContent = `View all sites (${formatCount(allSiteCount)})`;
+  openBtn.disabled = allSiteCount === 0;
+
+  track.innerHTML = "";
+  if (!highlights.length) {
+    emptyState.classList.remove("hidden");
     return;
   }
 
-  const maxScroll = Math.max(0, track.scrollWidth - track.clientWidth);
-  const atStart = track.scrollLeft <= 4;
-  const atEnd = track.scrollLeft >= (maxScroll - 4);
-  prevBtn.disabled = atStart;
-  nextBtn.disabled = atEnd;
+  emptyState.classList.add("hidden");
+  for (const card of highlights) {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "cookie-card cookie-highlight-card";
+    if (activeSiteFilter === card.site) button.classList.add("focused");
+    button.innerHTML = renderSiteCardHtml(card, card.reason || "");
+    button.addEventListener("click", () => {
+      applyFocusToSite(card.site, { openDetails: true, closeModal: false });
+    });
+    track.appendChild(button);
+  }
 }
 
-function bindCarouselControls() {
-  if (carouselBound) return;
-  const track = document.getElementById("cookiesCarouselTrack");
-  const prevBtn = document.getElementById("cookiesCarouselPrevBtn");
-  const nextBtn = document.getElementById("cookiesCarouselNextBtn");
-  if (!track || !prevBtn || !nextBtn) return;
-
-  const move = (direction) => {
-    const distance = Math.max(240, Math.floor(track.clientWidth * 0.84));
-    track.scrollBy({ left: direction * distance, behavior: "smooth" });
-    window.setTimeout(() => updateCarouselControls(), 220);
-  };
-
-  prevBtn.addEventListener("click", () => move(-1));
-  nextBtn.addEventListener("click", () => move(1));
-  track.addEventListener("scroll", () => updateCarouselControls());
-  window.addEventListener("resize", () => updateCarouselControls());
-  carouselBound = true;
-}
-
-function renderCookieWall(events, allData, snapshots) {
-  const track = document.getElementById("cookiesCarouselTrack");
-  const emptyHero = document.getElementById("cookiesCarouselEmpty");
+function renderDetailsPanel(snapshots) {
   const detailSection = document.getElementById("cookiesDetailView");
-  if (!track || !detailSection || !emptyHero) return;
-
-  const utils = getUtils();
-  if (!utils) return;
-  const { friendlyTime, escapeHtml } = utils;
+  if (!detailSection) return;
 
   const snapshotRows = Array.isArray(snapshots) ? snapshots : [];
-  const siteStats = new Map((allData?.siteRows || []).map((row) => [row.site, row]));
-
-  track.innerHTML = "";
-
   if (!snapshotRows.length) {
-    emptyHero.classList.remove("hidden");
     detailSection.classList.add("hidden");
     renderCookieDetails(null);
     selectedCookieSite = null;
     cookiesWallMode = "grid";
-    updateCarouselControls(0);
     return;
   }
-
-  emptyHero.classList.add("hidden");
 
   if (activeSiteFilter && snapshotRows.some((row) => row.site === activeSiteFilter)) {
     selectedCookieSite = activeSiteFilter;
@@ -658,48 +788,164 @@ function renderCookieWall(events, allData, snapshots) {
     selectedCookieSite = snapshotRows[0].site;
   }
 
-  for (const snapshot of snapshotRows) {
-    const row = siteStats.get(snapshot.site);
-    const first = Math.max(snapshot.count - snapshot.third, 0);
-    const totalSignals = row ? row.totalSignals : 0;
-
-    const card = document.createElement("button");
-    card.type = "button";
-    card.className = "cookie-card";
-    if (snapshot.site === selectedCookieSite) card.classList.add("selected");
-    if (snapshot.site === activeSiteFilter) card.classList.add("focused");
-
-    card.innerHTML = `
-      <div class="cookie-card-site">${escapeHtml(snapshot.site)}</div>
-      <div class="cookie-card-count">${formatCount(snapshot.count)} cookies</div>
-      <div class="cookie-card-signal">${formatCount(totalSignals)} signals</div>
-      <div class="cookie-card-meta">1P ${formatCount(first)} | 3P ${formatCount(snapshot.third)}</div>
-      <div class="cookie-badges">
-        <span class="cookie-chip">Last seen ${escapeHtml(friendlyTime(snapshot.ts))}</span>
-      </div>
-    `;
-
-    card.addEventListener("click", () => {
-      selectedCookieSite = snapshot.site;
-      activeSiteFilter = snapshot.site;
-      cookiesWallMode = "detail";
-      const latest = getLatestEventsCb ? getLatestEventsCb() : (events || []);
-      renderCookiesView(latest);
-    });
-
-    track.appendChild(card);
-  }
-
-  if (cookiesWallMode === "detail") {
-    detailSection.classList.remove("hidden");
-    const selected = snapshotRows.find((s) => s.site === selectedCookieSite) || snapshotRows[0];
-    renderCookieDetails(selected);
-  } else {
+  if (cookiesWallMode !== "detail") {
     detailSection.classList.add("hidden");
     renderCookieDetails(null);
+    return;
   }
 
-  updateCarouselControls(snapshotRows.length);
+  const selected = snapshotRows.find((row) => row.site === selectedCookieSite) || snapshotRows[0];
+  detailSection.classList.remove("hidden");
+  renderCookieDetails(selected);
+}
+
+function getFocusableElements(root) {
+  if (!root) return [];
+  const selector = [
+    "a[href]",
+    "button:not([disabled])",
+    "input:not([disabled])",
+    "select:not([disabled])",
+    "textarea:not([disabled])",
+    "[tabindex]:not([tabindex='-1'])",
+  ].join(",");
+  return Array.from(root.querySelectorAll(selector))
+    .filter((el) => !el.hasAttribute("hidden") && el.getAttribute("aria-hidden") !== "true");
+}
+
+function sortModalCards(cards) {
+  const list = cards.slice();
+  if (modalSortMode === "third-party") {
+    list.sort((a, b) =>
+      (b.thirdShare - a.thirdShare)
+      || (b.thirdCount - a.thirdCount)
+      || comparePriority(a, b)
+    );
+    return list;
+  }
+  if (modalSortMode === "recent") {
+    list.sort((a, b) =>
+      (b.lastSeenTs - a.lastSeenTs)
+      || comparePriority(a, b)
+    );
+    return list;
+  }
+  list.sort(comparePriority);
+  return list;
+}
+
+function renderAllSitesModalGrid() {
+  const grid = document.getElementById("cookiesAllSitesGrid");
+  if (!grid) return;
+
+  const term = modalSearchTerm.trim().toLowerCase();
+  const filtered = allSiteCardsCache.filter((card) => (
+    !term || card.site.toLowerCase().includes(term)
+  ));
+  const rows = sortModalCards(filtered);
+
+  grid.innerHTML = "";
+  if (!rows.length) {
+    grid.innerHTML = '<div class="cookies-empty-hint">No sites match this filter.</div>';
+    return;
+  }
+
+  for (const card of rows) {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "cookie-card cookie-modal-card";
+    if (activeSiteFilter === card.site) button.classList.add("focused");
+    button.innerHTML = renderSiteCardHtml(card, "");
+    button.addEventListener("click", () => {
+      applyFocusToSite(card.site, { openDetails: true, closeModal: true });
+    });
+    grid.appendChild(button);
+  }
+}
+
+function openAllSitesModal() {
+  const modal = document.getElementById("cookiesAllSitesModal");
+  const search = document.getElementById("cookiesAllSitesSearch");
+  if (!modal) return;
+  modalReturnFocusEl = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+  modalOpen = true;
+  modal.classList.remove("hidden");
+  document.body.classList.add("cookies-modal-open");
+  renderAllSitesModalGrid();
+  if (search) search.focus();
+}
+
+function handleModalKeydown(event) {
+  if (!modalOpen) return;
+  const panel = document.getElementById("cookiesAllSitesPanel");
+  if (!panel) return;
+
+  if (event.key === "Escape") {
+    event.preventDefault();
+    closeAllSitesModal({ restoreFocus: true });
+    return;
+  }
+
+  if (event.key !== "Tab") return;
+  const focusable = getFocusableElements(panel);
+  if (!focusable.length) {
+    event.preventDefault();
+    return;
+  }
+
+  const first = focusable[0];
+  const last = focusable[focusable.length - 1];
+  const active = document.activeElement;
+
+  if (event.shiftKey) {
+    if (active === first || !panel.contains(active)) {
+      event.preventDefault();
+      last.focus();
+    }
+    return;
+  }
+
+  if (active === last) {
+    event.preventDefault();
+    first.focus();
+  }
+}
+
+function bindModalEvents() {
+  if (modalEventsBound) return;
+  const modal = document.getElementById("cookiesAllSitesModal");
+  if (!modal) return;
+
+  const openBtn = document.getElementById("cookiesOpenAllSitesBtn");
+  const closeBtn = document.getElementById("cookiesAllSitesCloseBtn");
+  const backdrop = document.getElementById("cookiesAllSitesBackdrop");
+  const search = document.getElementById("cookiesAllSitesSearch");
+  const sort = document.getElementById("cookiesAllSitesSort");
+
+  if (openBtn) {
+    openBtn.addEventListener("click", () => openAllSitesModal());
+  }
+  if (closeBtn) {
+    closeBtn.addEventListener("click", () => closeAllSitesModal({ restoreFocus: true }));
+  }
+  if (backdrop) {
+    backdrop.addEventListener("click", () => closeAllSitesModal({ restoreFocus: true }));
+  }
+  if (search) {
+    search.addEventListener("input", (event) => {
+      modalSearchTerm = String(event.target?.value || "");
+      renderAllSitesModalGrid();
+    });
+  }
+  if (sort) {
+    sort.addEventListener("change", (event) => {
+      modalSortMode = String(event.target?.value || "activity");
+      renderAllSitesModalGrid();
+    });
+  }
+
+  document.addEventListener("keydown", handleModalKeydown);
+  modalEventsBound = true;
 }
 
 function renderFocusMode(scopeData, allData, snapshotBySite) {
@@ -711,6 +957,7 @@ function renderFocusMode(scopeData, allData, snapshotBySite) {
   const globalBreakdownRow = document.getElementById("cookiesGlobalBreakdownRow");
   const emptyState = document.getElementById("cookiesEmptyState");
   const siteTableSection = document.getElementById("cookiesSiteTableSection");
+  const highlightsSection = document.getElementById("cookiesHighlightsSection");
 
   if (!root || !focusBanner || !focusedSiteLabel || !focusedRow) return;
 
@@ -722,6 +969,7 @@ function renderFocusMode(scopeData, allData, snapshotBySite) {
   if (globalKpiRow) globalKpiRow.classList.toggle("hidden", hasFocus);
   if (globalBreakdownRow) globalBreakdownRow.classList.toggle("hidden", hasFocus);
   if (siteTableSection) siteTableSection.classList.toggle("cookies-muted-section", hasFocus);
+  if (highlightsSection) highlightsSection.classList.toggle("cookies-highlights-dimmed", hasFocus);
   if (emptyState && hasFocus) emptyState.classList.add("hidden");
 
   if (!hasFocus) {
@@ -744,6 +992,9 @@ export function renderCookiesView(events) {
     : allData;
   const snapshots = buildCookieSnapshots(sourceEvents);
   const snapshotBySite = new Map(snapshots.map((row) => [row.site, row]));
+  const siteCards = buildSiteCards(allData, snapshots);
+  const highlights = selectHighlights(siteCards);
+  allSiteCardsCache = siteCards;
 
   renderKpis(scopeData);
   renderPartySplit(scopeData);
@@ -752,8 +1003,10 @@ export function renderCookiesView(events) {
   syncSiteTableExpansion();
   renderSubtitle(scopeData, allData);
   renderEmptyState(allData);
-  renderCookieWall(sourceEvents, allData, snapshots);
+  renderHighlights(highlights, siteCards.length);
+  renderDetailsPanel(snapshots);
   renderFocusMode(scopeData, allData, snapshotBySite);
+  if (modalOpen) renderAllSitesModalGrid();
 }
 
 function clearFocusState() {
@@ -763,7 +1016,7 @@ function clearFocusState() {
 
 export function initCookiesFeature({ getLatestEvents } = {}) {
   getLatestEventsCb = typeof getLatestEvents === "function" ? getLatestEvents : null;
-  bindCarouselControls();
+  bindModalEvents();
   syncSiteTableExpansion();
 
   const clearBtn = document.getElementById("cookiesClearSiteFilterBtn");
