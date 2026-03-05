@@ -203,6 +203,7 @@ window.addEventListener("load", () => {
     // show chosen view
     if (view === "cookies") {
       cookiesView.classList.remove("hidden");
+      window.VPT?.features?.cookies?.renderCookiesView?.(latestEvents);
     } else if (view === "sites") {
       sitesView.classList.remove("hidden");
     } else {
