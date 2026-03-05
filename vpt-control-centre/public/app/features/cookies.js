@@ -357,9 +357,11 @@ function renderDonutBlock({
   centerLabel,
   total,
   segments,
+  emphasis,
 }) {
   const totalValue = Math.max(0, Number(total) || 0);
   const gradient = buildDonutGradient(segments, totalValue);
+  const emphasisClass = emphasis === "large" ? " cookies-donut-block-large" : "";
 
   const legendHtml = segments.map((segment) => {
     const value = Math.max(0, Number(segment.value) || 0);
@@ -368,13 +370,15 @@ function renderDonutBlock({
       <div class="cookies-donut-legend-row">
         <span class="cookies-donut-dot" style="background:${segment.color};"></span>
         <span class="cookies-donut-name">${segment.label}</span>
-        <strong>${formatCount(value)} (${pct}%)</strong>
+        <span class="cookies-donut-connector" aria-hidden="true"></span>
+        <strong class="cookies-donut-count">${formatCount(value)}</strong>
+        <span class="cookies-donut-pct">${pct}%</span>
       </div>
     `;
   }).join("");
 
   return `
-    <div class="cookies-donut-block">
+    <div class="cookies-donut-block${emphasisClass}">
       ${title ? `<div class="cookies-donut-title">${title}</div>` : ""}
       <div class="cookies-donut-wrap">
         <div class="cookies-donut-ring" style="background:${gradient};">
@@ -383,8 +387,8 @@ function renderDonutBlock({
             <span>${centerLabel}</span>
           </div>
         </div>
-        <div class="cookies-donut-legend">${legendHtml}</div>
       </div>
+      <div class="cookies-donut-legend">${legendHtml}</div>
     </div>
   `;
 }
@@ -419,6 +423,7 @@ function renderPartySplit(data) {
     title: "",
     centerLabel: "signals",
     total,
+    emphasis: "large",
     segments: [
       { label: "First-party", value: data.firstParty, color: "rgba(34, 197, 94, 0.95)" },
       { label: "Third-party", value: data.thirdParty, color: "rgba(59, 130, 246, 0.98)" },

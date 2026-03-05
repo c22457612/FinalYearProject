@@ -113,6 +113,11 @@
   gap: var(--space-md);
 }
 
+.cookies-focused-grid > .cookies-donut-block:nth-child(2) {
+  border-left: 1px solid rgba(148, 163, 184, 0.3);
+  padding-left: var(--space-md);
+}
+
 .cookies-kpi-row {
   padding: var(--space-md) var(--space-lg) 0;
   display: grid;
@@ -169,6 +174,13 @@
 .cookies-donut-block {
   display: grid;
   gap: 0.65rem;
+  --cookies-donut-size: 132px;
+  --cookies-donut-thickness: 13px;
+}
+
+.cookies-donut-block-large {
+  --cookies-donut-size: 176px;
+  --cookies-donut-thickness: 20px;
 }
 
 .cookies-donut-title {
@@ -177,20 +189,20 @@
 }
 
 .cookies-donut-wrap {
-  display: grid;
-  grid-template-columns: 132px minmax(0, 1fr);
-  gap: var(--space-md);
+  display: flex;
+  justify-content: center;
   align-items: center;
 }
 
 .cookies-donut-ring {
-  width: 132px;
-  height: 132px;
+  width: min(100%, var(--cookies-donut-size));
+  aspect-ratio: 1 / 1;
   border-radius: 50%;
-  padding: 13px;
+  padding: var(--cookies-donut-thickness);
   display: flex;
   align-items: center;
   justify-content: center;
+  margin: 0 auto;
 }
 
 .cookies-donut-center {
@@ -219,15 +231,18 @@
 
 .cookies-donut-legend {
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
   gap: 0.42rem;
+  margin-top: 0.15rem;
 }
 
 .cookies-donut-legend-row {
-  display: flex;
-  justify-content: space-between;
+  display: grid;
+  grid-template-columns: auto auto minmax(1.5rem, 1fr) auto auto;
   align-items: center;
   gap: 0.55rem;
   font-size: 0.86rem;
+  line-height: 1.2;
 }
 
 .cookies-donut-dot {
@@ -237,8 +252,26 @@
 }
 
 .cookies-donut-name {
-  flex: 1;
   color: var(--color-text-muted);
+}
+
+.cookies-donut-connector {
+  display: block;
+  height: 1px;
+  width: 100%;
+  background: rgba(148, 163, 184, 0.35);
+}
+
+.cookies-donut-count {
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+.cookies-donut-pct {
+  color: var(--color-text-faint);
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+  min-width: 3.1rem;
 }
 
 .cookies-focus-stats {
@@ -673,6 +706,13 @@
     grid-template-columns: minmax(0, 1fr);
   }
 
+  .cookies-focused-grid > .cookies-donut-block:nth-child(2) {
+    border-left: none;
+    border-top: 1px solid rgba(148, 163, 184, 0.25);
+    padding-left: 0;
+    padding-top: var(--space-md);
+  }
+
   .cookies-kpi-row {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
@@ -681,13 +721,14 @@
     grid-template-columns: minmax(0, 1fr);
   }
 
-  .cookies-donut-wrap {
-    grid-template-columns: 112px minmax(0, 1fr);
+  .cookies-donut-block-large {
+    --cookies-donut-size: 164px;
+    --cookies-donut-thickness: 18px;
   }
 
-  .cookies-donut-ring {
-    width: 112px;
-    height: 112px;
+  .cookies-donut-block {
+    --cookies-donut-size: 124px;
+    --cookies-donut-thickness: 12px;
   }
 }
 
@@ -712,12 +753,21 @@
   }
 
   .cookies-donut-wrap {
-    grid-template-columns: minmax(0, 1fr);
-    justify-items: center;
+    width: 100%;
   }
 
   .cookies-donut-legend {
     width: 100%;
+  }
+
+  .cookies-donut-block-large {
+    --cookies-donut-size: min(72vw, 168px);
+    --cookies-donut-thickness: 17px;
+  }
+
+  .cookies-donut-block {
+    --cookies-donut-size: min(64vw, 136px);
+    --cookies-donut-thickness: 12px;
   }
 
   .cookie-card {
