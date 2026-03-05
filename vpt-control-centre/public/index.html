@@ -230,38 +230,130 @@
 
       <!-- COOKIES VIEW -->
       <main id="view-cookies" class="cookies-view hidden">
-        <!-- Top summary cards -->
-        <section class="cookies-summary-row">
-          <div class="summary-card">
-            <h2>Sites with cookie snapshots</h2>
-            <div id="cookieStatSites" class="value">0</div>
-            <div class="hint">based on latest snapshots</div>
-          </div>
-          <div class="summary-card">
-            <h2>Total cookies</h2>
-            <div id="cookieStatTotal" class="value">0</div>
-            <div class="hint">in latest snapshots</div>
-          </div>
-          <div class="summary-card">
-            <h2>Third-party cookies</h2>
-            <div id="cookieStatThird" class="value">0</div>
-            <div class="hint">estimated from cookie domains</div>
-          </div>
-        </section>
-
-        <!-- 1) Wall of cookies (grid) -->
-        <section id="cookiesWall" class="cookies-layout">
-          <div class="cookies-grid" id="cookiesGrid">
-            <!-- site tiles inserted by dashboard.js -->
+        <section class="cookies-hero-row">
+          <div class="panel cookies-wall-card cookies-hero-card">
+            <div class="panel-header cookies-hero-header">
+              <div>
+                <div class="panel-title">Cookie snapshot carousel</div>
+                <div id="cookiesSummarySubtitle" class="panel-subtitle">
+                  Click a site snapshot to focus and open cookie details.
+                </div>
+              </div>
+              <div class="cookies-carousel-controls">
+                <button id="cookiesCarouselPrevBtn" class="cookies-carousel-btn" type="button" aria-label="Scroll snapshots left">&#9664;</button>
+                <button id="cookiesCarouselNextBtn" class="cookies-carousel-btn" type="button" aria-label="Scroll snapshots right">&#9654;</button>
+              </div>
+            </div>
+            <div id="cookiesCarouselTrack" class="cookies-carousel-track"></div>
+            <div id="cookiesCarouselEmpty" class="cookies-hero-empty hidden">
+              <strong>No cookie snapshot activity yet.</strong>
+              <span>Browse a site with capture enabled, then return to this page to see snapshot cards.</span>
+            </div>
           </div>
         </section>
 
-        <!-- 2) Full-screen details for a single site -->
+        <section id="cookiesFocusBanner" class="panel cookies-focus-banner hidden">
+          <div class="cookies-focus-banner-text">
+            Focused on: <strong id="cookiesFocusedSiteLabel">-</strong>
+          </div>
+          <button id="cookiesClearFocusBtn" class="btn-secondary" type="button">Clear focus</button>
+        </section>
+
+        <section id="cookiesFocusedInsightsRow" class="cookies-focused-row hidden">
+          <div class="panel cookies-focused-card">
+            <div class="panel-header">
+              <div>
+                <div class="panel-title">Focused insights</div>
+                <div class="panel-subtitle">Party split and key stats for the focused site.</div>
+              </div>
+            </div>
+            <div id="cookieFocusedInsightsVisual" class="cookies-focused-visual"></div>
+          </div>
+        </section>
+
+        <section id="cookiesGlobalKpiRow" class="cookies-kpi-row">
+          <div class="panel cookies-kpi-card">
+            <div class="cookies-kpi-label">Total cookie signals/events</div>
+            <div id="cookieKpiTotalSignals" class="cookies-kpi-value">0</div>
+          </div>
+          <div class="panel cookies-kpi-card">
+            <div class="cookies-kpi-label">Distinct sites</div>
+            <div id="cookieKpiDistinctSites" class="cookies-kpi-value">0</div>
+          </div>
+          <div class="panel cookies-kpi-card">
+            <div class="cookies-kpi-label">Distinct domains/vendors</div>
+            <div id="cookieKpiDistinctActors" class="cookies-kpi-value">0</div>
+          </div>
+          <div class="panel cookies-kpi-card">
+            <div class="cookies-kpi-label">Last seen</div>
+            <div id="cookieKpiLastSeen" class="cookies-kpi-value cookies-kpi-time">-</div>
+          </div>
+        </section>
+
+        <section id="cookiesGlobalBreakdownRow" class="cookies-breakdown-row">
+          <div class="panel cookies-breakdown-card">
+            <div class="panel-header">
+              <div>
+                <div class="panel-title">First-party vs third-party split</div>
+                <div class="panel-subtitle">Donut split for the current scope</div>
+              </div>
+            </div>
+            <div id="cookiePartySplitVisual" class="cookies-party-visual"></div>
+          </div>
+
+          <div class="panel cookies-breakdown-card">
+            <div class="panel-header">
+              <div>
+                <div class="panel-title">Top cookie-setting domains/vendors</div>
+                <div class="panel-subtitle">Ranked by observed cookie activity</div>
+              </div>
+            </div>
+            <div id="cookieTopActorsRank" class="cookies-actors-list"></div>
+          </div>
+        </section>
+
+        <section id="cookiesEmptyState" class="panel cookies-empty-state hidden">
+          <div class="panel-body">
+            <p class="muted">No cookie activity observed for this scope.</p>
+          </div>
+        </section>
+
+        <section id="cookiesSiteTableSection" class="cookies-drilldown-row">
+          <div class="panel cookies-drilldown-card">
+            <div class="panel-header">
+              <div>
+                <div class="panel-title">Cookie activity by site</div>
+                <div id="cookiesActiveSiteLabel" class="panel-subtitle">Showing all sites</div>
+              </div>
+              <div class="cookies-table-actions">
+                <button id="cookiesClearSiteFilterBtn" class="btn-secondary hidden" type="button">Clear site filter</button>
+                <button id="cookiesToggleSiteTableBtn" class="btn-secondary" type="button" aria-expanded="false">
+                  Show full site table
+                </button>
+              </div>
+            </div>
+            <div id="cookiesSiteTableCollapsible" class="cookies-site-table-wrap hidden">
+              <table class="cookies-site-table">
+                <thead>
+                  <tr>
+                    <th>Site</th>
+                    <th>Total</th>
+                    <th>First-party</th>
+                    <th>Third-party</th>
+                    <th>Last seen</th>
+                  </tr>
+                </thead>
+                <tbody id="cookieSiteActivityBody"></tbody>
+              </table>
+            </div>
+          </div>
+        </section>
+
         <section id="cookiesDetailView" class="cookies-detail-view hidden">
           <div class="panel cookies-detail-panel">
             <div class="panel-header cookies-detail-header">
               <button id="cookiesBackBtn" class="btn-secondary">
-                ← Back to cookie wall
+                <- Back to snapshot wall
               </button>
               <div>
                 <div class="panel-title" id="cookies-detail-title">Cookie details</div>
@@ -298,5 +390,4 @@
 
 </body>
 </html>
-
 
