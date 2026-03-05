@@ -837,35 +837,101 @@ app.get("/api/vendors", async (req, res) => {
     const rows = await dbCtx.all(
       `
         SELECT
-          COALESCE(NULLIF(vendor_id, ''), 'unknown') AS vendor_id,
-          COALESCE(
-            NULLIF(MAX(CASE WHEN vendor_name IS NOT NULL AND vendor_name != '' THEN vendor_name END), ''),
-            COALESCE(NULLIF(vendor_id, ''), 'unknown')
-          ) AS vendor_name,
+          COALESCE(NULLIF(LOWER(TRIM(vendor_id)), ''), 'unknown') AS vendor_id,
+          COALESCE(NULLIF(TRIM(vendor_name), ''), '') AS vendor_name,
           COUNT(*) AS total_events,
           SUM(CASE WHEN mitigation_status IN ('allowed', 'observed_only') THEN 1 ELSE 0 END) AS observed_count,
           SUM(CASE WHEN mitigation_status = 'blocked' THEN 1 ELSE 0 END) AS blocked_count,
           MAX(enriched_ts) AS last_seen
         FROM event_enrichment
         WHERE (? IS NULL OR first_party_site = ?)
-        GROUP BY COALESCE(NULLIF(vendor_id, ''), 'unknown')
-        ORDER BY
-          (SUM(CASE WHEN mitigation_status IN ('allowed', 'observed_only') THEN 1 ELSE 0 END)
-           + SUM(CASE WHEN mitigation_status = 'blocked' THEN 1 ELSE 0 END)) DESC,
-          MAX(enriched_ts) DESC,
-          vendor_id ASC
+        GROUP BY
+          COALESCE(NULLIF(LOWER(TRIM(vendor_id)), ''), 'unknown'),
+          COALESCE(NULLIF(TRIM(vendor_name), ''), '')
       `,
       [site, site]
     );
 
-    const out = (rows || []).map((row) => ({
-      vendor_id: String(row?.vendor_id || "unknown").trim() || "unknown",
-      vendor_name: String(row?.vendor_name || row?.vendor_id || "unknown").trim() || "unknown",
-      total_events: Number(row?.total_events) || 0,
-      observed_count: Number(row?.observed_count) || 0,
-      blocked_count: Number(row?.blocked_count) || 0,
-      last_seen: Number(row?.last_seen) || 0,
-    }));
+    const isGenericVendorName = (name, vendorId) => {
+      const normalized = String(name || "").trim().toLowerCase();
+      if (!normalized) return true;
+      if (normalized === String(vendorId || "").trim().toLowerCase()) return true;
+      return normalized === "unknown"
+        || normalized === "other"
+        || normalized === "n/a"
+        || normalized === "na"
+        || normalized === "vendor";
+    };
+
+    const pickPreferredVendorName = (nameStats, vendorId) => {
+      const entries = Array.from(nameStats.entries());
+      if (!entries.length) return vendorId;
+
+      entries.sort((a, b) => {
+        const aName = a[0];
+        const bName = b[0];
+        const aCount = Number(a[1]) || 0;
+        const bCount = Number(b[1]) || 0;
+        if (bCount !== aCount) return bCount - aCount;
+
+        const aGeneric = isGenericVendorName(aName, vendorId);
+        const bGeneric = isGenericVendorName(bName, vendorId);
+        if (aGeneric !== bGeneric) return aGeneric ? 1 : -1;
+
+        if (bName.length !== aName.length) return bName.length - aName.length;
+        return aName.localeCompare(bName);
+      });
+
+      return entries[0][0] || vendorId;
+    };
+
+    const merged = new Map();
+    for (const row of rows || []) {
+      const vendorId = String(row?.vendor_id || "unknown").trim().toLowerCase() || "unknown";
+      const rowVendorName = String(row?.vendor_name || "").trim();
+      const totalEvents = Number(row?.total_events) || 0;
+      const observedCount = Number(row?.observed_count) || 0;
+      const blockedCount = Number(row?.blocked_count) || 0;
+      const lastSeen = Number(row?.last_seen) || 0;
+
+      const existing = merged.get(vendorId) || {
+        vendor_id: vendorId,
+        vendor_name: vendorId,
+        total_events: 0,
+        observed_count: 0,
+        blocked_count: 0,
+        last_seen: 0,
+        name_stats: new Map(),
+      };
+
+      existing.total_events += totalEvents;
+      existing.observed_count += observedCount;
+      existing.blocked_count += blockedCount;
+      existing.last_seen = Math.max(existing.last_seen, lastSeen);
+      if (rowVendorName) {
+        existing.name_stats.set(
+          rowVendorName,
+          (existing.name_stats.get(rowVendorName) || 0) + Math.max(1, totalEvents)
+        );
+      }
+
+      merged.set(vendorId, existing);
+    }
+
+    const out = Array.from(merged.values())
+      .map((row) => ({
+        vendor_id: row.vendor_id || "unknown",
+        vendor_name: pickPreferredVendorName(row.name_stats, row.vendor_id || "unknown"),
+        total_events: Number(row.total_events) || 0,
+        observed_count: Number(row.observed_count) || 0,
+        blocked_count: Number(row.blocked_count) || 0,
+        last_seen: Number(row.last_seen) || 0,
+      }))
+      .sort((a, b) =>
+        ((b.observed_count + b.blocked_count) - (a.observed_count + a.blocked_count))
+        || (b.last_seen - a.last_seen)
+        || a.vendor_id.localeCompare(b.vendor_id)
+      );
 
     res.json(out);
   } catch (err) {

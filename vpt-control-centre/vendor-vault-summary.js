@@ -12,8 +12,11 @@ function toSafeTimestamp(value) {
   return n;
 }
 
+const CANON_VENDOR_SQL = "COALESCE(NULLIF(LOWER(TRIM(vendor_id)), ''), 'unknown')";
+
 function normalizeVendor(vendor) {
-  return String(vendor || "").trim();
+  const value = String(vendor || "").trim().toLowerCase();
+  return value || "unknown";
 }
 
 function normalizeSite(site) {
@@ -22,7 +25,7 @@ function normalizeSite(site) {
 }
 
 function buildScopeFilter({ vendor, site }) {
-  const where = ["COALESCE(NULLIF(vendor_id, ''), 'unknown') = ?"];
+  const where = [`${CANON_VENDOR_SQL} = ?`];
   const params = [vendor];
   if (site) {
     where.push("first_party_site = ?");

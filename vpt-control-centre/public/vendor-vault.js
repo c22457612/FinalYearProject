@@ -225,7 +225,8 @@ function updateLandingScopeInUrl() {
 }
 
 function toDirectoryVendorRow(row) {
-  const vendorId = String(row && row.vendor_id ? row.vendor_id : "").trim() || "unknown";
+  const vendorIdRaw = String(row && row.vendor_id ? row.vendor_id : "").trim().toLowerCase();
+  const vendorId = vendorIdRaw && vendorIdRaw !== "unknown" ? vendorIdRaw : "unknown";
   const vendorName = String(row && row.vendor_name ? row.vendor_name : vendorId).trim() || vendorId;
   const totalEvents = toSafeCount(row && row.total_events);
   const observedCount = toSafeCount(row && row.observed_count);
@@ -239,6 +240,79 @@ function toDirectoryVendorRow(row) {
     blocked_count: blockedCount,
     last_seen: lastSeen,
   };
+}
+
+function isGenericVendorName(name, vendorId) {
+  const normalized = String(name || "").trim().toLowerCase();
+  if (!normalized) return true;
+  if (normalized === String(vendorId || "").trim().toLowerCase()) return true;
+  return normalized === "unknown"
+    || normalized === "other"
+    || normalized === "n/a"
+    || normalized === "na"
+    || normalized === "vendor";
+}
+
+function pickPreferredDirectoryVendorName(nameCounts, vendorId) {
+  const entries = Array.from(nameCounts.entries());
+  if (!entries.length) return vendorId;
+
+  entries.sort((a, b) => {
+    const aName = a[0];
+    const bName = b[0];
+    const aCount = Number(a[1]) || 0;
+    const bCount = Number(b[1]) || 0;
+    if (bCount !== aCount) return bCount - aCount;
+
+    const aGeneric = isGenericVendorName(aName, vendorId);
+    const bGeneric = isGenericVendorName(bName, vendorId);
+    if (aGeneric !== bGeneric) return aGeneric ? 1 : -1;
+
+    if (bName.length !== aName.length) return bName.length - aName.length;
+    return aName.localeCompare(bName);
+  });
+
+  return entries[0][0] || vendorId;
+}
+
+function dedupeLandingVendorRows(rows) {
+  const merged = new Map();
+
+  for (const row of rows || []) {
+    const safeRow = toDirectoryVendorRow(row);
+    const vendorId = safeRow.vendor_id || "unknown";
+    const existing = merged.get(vendorId) || {
+      vendor_id: vendorId,
+      vendor_name: vendorId,
+      total_events: 0,
+      observed_count: 0,
+      blocked_count: 0,
+      last_seen: 0,
+      name_counts: new Map(),
+    };
+
+    existing.total_events += safeRow.total_events;
+    existing.observed_count += safeRow.observed_count;
+    existing.blocked_count += safeRow.blocked_count;
+    existing.last_seen = Math.max(existing.last_seen, safeRow.last_seen);
+    if (safeRow.vendor_name) {
+      existing.name_counts.set(
+        safeRow.vendor_name,
+        (existing.name_counts.get(safeRow.vendor_name) || 0) + Math.max(1, safeRow.total_events)
+      );
+    }
+
+    merged.set(vendorId, existing);
+  }
+
+  return Array.from(merged.values()).map((row) => ({
+    vendor_id: row.vendor_id || "unknown",
+    vendor_name: pickPreferredDirectoryVendorName(row.name_counts, row.vendor_id || "unknown"),
+    total_events: toSafeCount(row.total_events),
+    observed_count: toSafeCount(row.observed_count),
+    blocked_count: toSafeCount(row.blocked_count),
+    last_seen: Number(row.last_seen) || 0,
+  }));
 }
 
 function computeDirectoryActivityScore(row) {
@@ -407,7 +481,7 @@ async function loadLandingVendors() {
     const payload = await response.json();
     if (requestId !== latestLandingVendorsRequestId) return;
     const rows = Array.isArray(payload) ? payload : [];
-    landingDirectoryState.vendors = rows.map(toDirectoryVendorRow);
+    landingDirectoryState.vendors = dedupeLandingVendorRows(rows);
     renderLandingVendorGrid();
   } catch (err) {
     if (requestId !== latestLandingVendorsRequestId) return;

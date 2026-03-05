@@ -3,6 +3,7 @@ const { classifyExposureKey, normalizeKeyName } = require("./exposure-taxonomy")
 const DEFAULT_EVIDENCE_IDS_LIMIT = 8;
 const DEFAULT_BASE_CONFIDENCE = 0.5;
 const DEFAULT_TOP_SITES_LIMIT = 3;
+const CANON_VENDOR_SQL = "COALESCE(NULLIF(LOWER(TRIM(vendor_id)), ''), 'unknown')";
 
 function clamp01(value) {
   const n = Number(value);
@@ -13,7 +14,7 @@ function clamp01(value) {
 }
 
 function normalizeVendorId(vendorId) {
-  const value = String(vendorId || "").trim();
+  const value = String(vendorId || "").trim().toLowerCase();
   return value || "unknown";
 }
 
@@ -100,11 +101,11 @@ async function loadSiteScopedSourceRows(dbCtx, { site, vendor }) {
         surface,
         surface_detail,
         mitigation_status,
-        COALESCE(NULLIF(vendor_id, ''), 'unknown') AS vendor_id,
+        ${CANON_VENDOR_SQL} AS vendor_id,
         request_url
       FROM event_enrichment
       WHERE first_party_site = ?
-        AND (? IS NULL OR COALESCE(NULLIF(vendor_id, ''), 'unknown') = ?)
+        AND (? IS NULL OR ${CANON_VENDOR_SQL} = ?)
         AND surface_detail = 'network_request'
         AND request_url IS NOT NULL
         AND request_url != ''
@@ -124,11 +125,11 @@ async function loadVendorGlobalSourceRows(dbCtx, { vendor }) {
         surface,
         surface_detail,
         mitigation_status,
-        COALESCE(NULLIF(vendor_id, ''), 'unknown') AS vendor_id,
+        ${CANON_VENDOR_SQL} AS vendor_id,
         COALESCE(NULLIF(first_party_site, ''), 'unknown') AS first_party_site,
         request_url
       FROM event_enrichment
-      WHERE COALESCE(NULLIF(vendor_id, ''), 'unknown') = ?
+      WHERE ${CANON_VENDOR_SQL} = ?
         AND surface_detail = 'network_request'
         AND request_url IS NOT NULL
         AND request_url != ''
@@ -140,7 +141,8 @@ async function loadVendorGlobalSourceRows(dbCtx, { vendor }) {
 
 async function deriveExposureInventory(dbCtx, opts = {}) {
   const site = String(opts.site || "").trim() || null;
-  const vendor = String(opts.vendor || "").trim() || null;
+  const vendorInput = String(opts.vendor || "").trim();
+  const vendor = vendorInput ? normalizeVendorId(vendorInput) : null;
 
   if (!site && !vendor) {
     const err = new Error("site_or_vendor_required");
