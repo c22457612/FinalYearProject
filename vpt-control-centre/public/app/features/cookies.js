@@ -4,7 +4,6 @@ let getLatestEventsCb = null;
 let activeSiteFilter = null;
 let selectedCookieSite = null;
 let cookiesWallMode = "grid"; // "grid" or "detail"
-let siteTableExpanded = false;
 let modalEventsBound = false;
 let modalOpen = false;
 let modalSearchTerm = "";
@@ -493,104 +492,85 @@ function renderFocusedInsights(scopeData, allData, snapshotBySite) {
   `;
 }
 
-function renderTopActors(data) {
-  const container = document.getElementById("cookieTopActorsRank");
+function renderWhyMatters(scopeData, allData, snapshotBySite) {
+  const container = document.getElementById("cookieWhyMattersPanel");
   if (!container) return;
 
-  if (!data.topActors.length) {
-    container.innerHTML = '<div class="cookies-empty-hint">No domain/vendor activity observed yet.</div>';
-    return;
-  }
-
-  const max = Math.max(...data.topActors.map((row) => row.count), 1);
   const utils = getUtils();
   if (!utils) return;
 
-  container.innerHTML = data.topActors.map((row) => {
-    const width = Math.max(6, Math.round((row.count / max) * 100));
-    return `
-      <div class="cookies-actor-row">
-        <div class="cookies-actor-head">
-          <span class="cookies-actor-label">${utils.escapeHtml(row.label)}</span>
-          <strong>${formatCount(row.count)}</strong>
-        </div>
-        <div class="cookies-actor-bar-track">
-          <span class="cookies-actor-bar-fill" style="width:${width}%"></span>
-        </div>
-      </div>
+  if (!activeSiteFilter || !scopeData.totalSignals) {
+    const totalParty = allData.firstParty + allData.thirdParty + allData.unknownParty;
+    const thirdPct = percent(allData.thirdParty, totalParty);
+    const unknownPct = percent(allData.unknownParty, totalParty);
+
+    container.innerHTML = `
+      <section class="cookies-narrative-section">
+        <h4>Global snapshot</h4>
+        <p>
+          Third-party cookies can increase cross-site tracking exposure, while unknown-party signals reduce clarity about who is involved.
+        </p>
+      </section>
+      <section class="cookies-narrative-section">
+        <h4>What this means</h4>
+        <ul>
+          <li>${formatCount(allData.thirdParty)} third-party signals (${thirdPct}%) suggest external cookie activity.</li>
+          <li>${formatCount(allData.unknownParty)} unknown-party signals (${unknownPct}%) indicate limited attribution confidence.</li>
+          <li>Use Highlights or "View all sites" to focus on sites with stronger third-party or unknown patterns.</li>
+        </ul>
+      </section>
+      <section class="cookies-narrative-section">
+        <h4>What we capture</h4>
+        <p>
+          We store event-level signals, counts, domains, timing, and party classification. Raw personal values are not stored here.
+        </p>
+      </section>
     `;
-  }).join("");
-}
-
-function syncSiteTableExpansion() {
-  const body = document.getElementById("cookiesSiteTableCollapsible");
-  const toggleBtn = document.getElementById("cookiesToggleSiteTableBtn");
-  if (!body || !toggleBtn) return;
-  body.classList.toggle("hidden", !siteTableExpanded);
-  toggleBtn.setAttribute("aria-expanded", siteTableExpanded ? "true" : "false");
-  toggleBtn.textContent = siteTableExpanded ? "Hide all sites table" : "Explore all sites table";
-}
-
-function renderSiteTable(allData) {
-  const tbody = document.getElementById("cookieSiteActivityBody");
-  const activeLabel = document.getElementById("cookiesActiveSiteLabel");
-  const clearBtn = document.getElementById("cookiesClearSiteFilterBtn");
-  if (!tbody || !activeLabel || !clearBtn) return;
-
-  const utils = getUtils();
-  if (!utils) return;
-
-  if (activeSiteFilter && !allData.siteRows.some((row) => row.site === activeSiteFilter)) {
-    activeSiteFilter = null;
-  }
-
-  if (!allData.siteRows.length) {
-    tbody.innerHTML = `
-      <tr>
-        <td class="cookies-table-empty" colspan="5">No site activity available.</td>
-      </tr>
-    `;
-    activeLabel.textContent = "Showing all sites";
-    clearBtn.classList.add("hidden");
     return;
   }
 
-  tbody.innerHTML = "";
-  for (const row of allData.siteRows) {
-    const tr = document.createElement("tr");
-    tr.className = "cookies-site-row";
-    if (activeSiteFilter === row.site) tr.classList.add("active");
+  const focusedSnapshot = snapshotBySite.get(activeSiteFilter) || null;
+  const lastSeen = scopeData.lastSeenTs ? utils.friendlyTime(scopeData.lastSeenTs) : "-";
+  const firstCount = focusedSnapshot ? Math.max(focusedSnapshot.count - focusedSnapshot.third, 0) : scopeData.firstParty;
+  const thirdCount = focusedSnapshot ? focusedSnapshot.third : scopeData.thirdParty;
+  const totalSignals = scopeData.totalSignals;
+  const siteUrl = `/site.html?site=${encodeURIComponent(activeSiteFilter)}`;
 
-    tr.innerHTML = `
-      <td>${utils.escapeHtml(row.site)}</td>
-      <td>${formatCount(row.totalSignals)}</td>
-      <td>${formatCount(row.firstParty)}</td>
-      <td>${formatCount(row.thirdParty)}</td>
-      <td>${row.lastSeenTs ? utils.escapeHtml(utils.friendlyTime(row.lastSeenTs)) : "-"}</td>
-    `;
+  container.innerHTML = `
+    <section class="cookies-narrative-section">
+      <h4>What we saw</h4>
+      <ul>
+        <li>Total signals: ${formatCount(totalSignals)}</li>
+        <li>First-party: ${formatCount(firstCount)} | Third-party: ${formatCount(thirdCount)}</li>
+        <li>Last seen: ${utils.escapeHtml(lastSeen)}</li>
+      </ul>
+    </section>
+    <section class="cookies-narrative-section">
+      <h4>Why it matters</h4>
+      <ul>
+        <li>Third-party cookie activity can support tracking that follows users across sites.</li>
+        <li>Higher third-party share can increase data-sharing exposure beyond the visited site.</li>
+        <li>Signals show observed activity patterns, not confirmed storage or downstream use by vendors.</li>
+      </ul>
+    </section>
+    <section class="cookies-narrative-section">
+      <h4>Suggested actions</h4>
+      <p class="cookies-guidance-text">Review this site in Site Insights for broader context, then adjust browser/site controls where needed.</p>
+      <a class="btn-secondary cookies-guidance-action" href="${siteUrl}">Open Site Insights</a>
+    </section>
+    <section class="cookies-narrative-section">
+      <h4>Limits</h4>
+      <p>
+        Raw cookie values are not stored in this view, and observed signals are not proof that a vendor stored or merged personal data.
+      </p>
+    </section>
+  `;
+}
 
-    tr.addEventListener("click", () => {
-      if (activeSiteFilter === row.site) {
-        activeSiteFilter = null;
-        cookiesWallMode = "grid";
-      } else {
-        activeSiteFilter = row.site;
-        selectedCookieSite = row.site;
-      }
-      const latest = getLatestEventsCb ? getLatestEventsCb() : [];
-      renderCookiesView(latest);
-    });
-
-    tbody.appendChild(tr);
-  }
-
-  if (activeSiteFilter) {
-    activeLabel.textContent = `Focused site: ${activeSiteFilter}`;
-    clearBtn.classList.remove("hidden");
-  } else {
-    activeLabel.textContent = "Showing all sites";
-    clearBtn.classList.add("hidden");
-  }
+function renderSignalsDisclaimer() {
+  const el = document.getElementById("cookieSignalsDisclaimer");
+  if (!el) return;
+  el.textContent = "About these signals: they show observed cookie-related activity and timing, not proof of vendor-side storage.";
 }
 
 function renderSubtitle(scopeData, allData) {
@@ -956,7 +936,6 @@ function renderFocusMode(scopeData, allData, snapshotBySite) {
   const globalKpiRow = document.getElementById("cookiesGlobalKpiRow");
   const globalBreakdownRow = document.getElementById("cookiesGlobalBreakdownRow");
   const emptyState = document.getElementById("cookiesEmptyState");
-  const siteTableSection = document.getElementById("cookiesSiteTableSection");
   const highlightsSection = document.getElementById("cookiesHighlightsSection");
 
   if (!root || !focusBanner || !focusedSiteLabel || !focusedRow) return;
@@ -968,7 +947,6 @@ function renderFocusMode(scopeData, allData, snapshotBySite) {
 
   if (globalKpiRow) globalKpiRow.classList.toggle("hidden", hasFocus);
   if (globalBreakdownRow) globalBreakdownRow.classList.toggle("hidden", hasFocus);
-  if (siteTableSection) siteTableSection.classList.toggle("cookies-muted-section", hasFocus);
   if (highlightsSection) highlightsSection.classList.toggle("cookies-highlights-dimmed", hasFocus);
   if (emptyState && hasFocus) emptyState.classList.add("hidden");
 
@@ -998,9 +976,8 @@ export function renderCookiesView(events) {
 
   renderKpis(scopeData);
   renderPartySplit(scopeData);
-  renderTopActors(scopeData);
-  renderSiteTable(allData);
-  syncSiteTableExpansion();
+  renderSignalsDisclaimer();
+  renderWhyMatters(scopeData, allData, snapshotBySite);
   renderSubtitle(scopeData, allData);
   renderEmptyState(allData);
   renderHighlights(highlights, siteCards.length);
@@ -1017,16 +994,6 @@ function clearFocusState() {
 export function initCookiesFeature({ getLatestEvents } = {}) {
   getLatestEventsCb = typeof getLatestEvents === "function" ? getLatestEvents : null;
   bindModalEvents();
-  syncSiteTableExpansion();
-
-  const clearBtn = document.getElementById("cookiesClearSiteFilterBtn");
-  if (clearBtn) {
-    clearBtn.addEventListener("click", () => {
-      clearFocusState();
-      const latest = getLatestEventsCb ? getLatestEventsCb() : [];
-      renderCookiesView(latest);
-    });
-  }
 
   const clearFocusBtn = document.getElementById("cookiesClearFocusBtn");
   if (clearFocusBtn) {
@@ -1034,14 +1001,6 @@ export function initCookiesFeature({ getLatestEvents } = {}) {
       clearFocusState();
       const latest = getLatestEventsCb ? getLatestEventsCb() : [];
       renderCookiesView(latest);
-    });
-  }
-
-  const toggleTableBtn = document.getElementById("cookiesToggleSiteTableBtn");
-  if (toggleTableBtn) {
-    toggleTableBtn.addEventListener("click", () => {
-      siteTableExpanded = !siteTableExpanded;
-      syncSiteTableExpansion();
     });
   }
 

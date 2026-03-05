@@ -300,53 +300,23 @@
               </div>
             </div>
             <div id="cookiePartySplitVisual" class="cookies-party-visual"></div>
+            <p id="cookieSignalsDisclaimer" class="cookies-signals-disclaimer"></p>
           </div>
 
-          <div class="panel cookies-breakdown-card">
+          <div class="panel cookies-breakdown-card cookies-narrative-card">
             <div class="panel-header">
               <div>
-                <div class="panel-title">Top cookie-setting domains/vendors</div>
-                <div class="panel-subtitle">Ranked by observed cookie activity</div>
+                <div class="panel-title">Why this matters</div>
+                <div class="panel-subtitle">Guidance from observed cookie signals</div>
               </div>
             </div>
-            <div id="cookieTopActorsRank" class="cookies-actors-list"></div>
+            <div id="cookieWhyMattersPanel" class="cookies-narrative-panel"></div>
           </div>
         </section>
 
         <section id="cookiesEmptyState" class="panel cookies-empty-state hidden">
           <div class="panel-body">
             <p class="muted">No cookie activity observed for this scope.</p>
-          </div>
-        </section>
-
-        <section id="cookiesSiteTableSection" class="cookies-drilldown-row">
-          <div class="panel cookies-drilldown-card">
-            <div class="panel-header">
-              <div>
-                <div class="panel-title">Cookie activity by site</div>
-                <div id="cookiesActiveSiteLabel" class="panel-subtitle">Showing all sites</div>
-              </div>
-              <div class="cookies-table-actions">
-                <button id="cookiesClearSiteFilterBtn" class="btn-secondary hidden" type="button">Clear site filter</button>
-                <button id="cookiesToggleSiteTableBtn" class="btn-secondary" type="button" aria-expanded="false">
-                  Explore all sites table
-                </button>
-              </div>
-            </div>
-            <div id="cookiesSiteTableCollapsible" class="cookies-site-table-wrap hidden">
-              <table class="cookies-site-table">
-                <thead>
-                  <tr>
-                    <th>Site</th>
-                    <th>Total</th>
-                    <th>First-party</th>
-                    <th>Third-party</th>
-                    <th>Last seen</th>
-                  </tr>
-                </thead>
-                <tbody id="cookieSiteActivityBody"></tbody>
-              </table>
-            </div>
           </div>
         </section>
 

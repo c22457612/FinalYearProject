@@ -160,6 +160,12 @@
   height: 100%;
 }
 
+.cookies-signals-disclaimer {
+  margin: 0.65rem 0 0;
+  font-size: 0.76rem;
+  color: var(--color-text-muted);
+}
+
 .cookies-donut-block {
   display: grid;
   gap: 0.65rem;
@@ -301,6 +307,50 @@
 .cookies-empty-state {
   margin: var(--space-md) var(--space-lg) 0;
   min-height: auto;
+}
+
+.cookies-narrative-card {
+  min-height: auto;
+}
+
+.cookies-narrative-panel {
+  display: grid;
+  gap: 0.7rem;
+}
+
+.cookies-narrative-section {
+  border: 1px solid rgba(148, 163, 184, 0.2);
+  border-radius: var(--radius-sm);
+  padding: 0.65rem 0.72rem;
+}
+
+.cookies-narrative-section h4 {
+  margin: 0 0 0.35rem;
+  font-size: 0.82rem;
+}
+
+.cookies-narrative-section p {
+  margin: 0;
+  color: var(--color-text-muted);
+  font-size: 0.84rem;
+}
+
+.cookies-narrative-section ul {
+  margin: 0;
+  padding-left: 1rem;
+  display: grid;
+  gap: 0.28rem;
+  color: var(--color-text-muted);
+  font-size: 0.84rem;
+}
+
+.cookies-guidance-text {
+  margin-bottom: 0.55rem !important;
+}
+
+.cookies-guidance-action {
+  display: inline-flex;
+  text-decoration: none;
 }
 
 .cookies-drilldown-row {
