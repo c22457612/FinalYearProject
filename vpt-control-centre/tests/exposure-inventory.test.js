@@ -3,6 +3,8 @@ const os = require("os");
 const path = require("path");
 const test = require("node:test");
 const assert = require("node:assert/strict");
+const net = require("node:net");
+const { spawn } = require("node:child_process");
 
 const { initDb } = require("../db");
 const { deriveExposureInventory } = require("../exposure-inventory");
@@ -112,6 +114,149 @@ async function insertExposureEvent(dbCtx, { id, ts, site, vendor, requestUrl, mi
   );
 }
 
+const SITE_MODE_ROW_KEYS = [
+  "site",
+  "vendor_id",
+  "data_category",
+  "surface",
+  "first_seen",
+  "last_seen",
+  "count",
+  "confidence",
+  "example_key",
+  "evidence_event_ids",
+  "evidence_levels",
+].sort();
+
+function hasOwn(obj, key) {
+  return Object.prototype.hasOwnProperty.call(obj, key);
+}
+
+async function getEphemeralPort() {
+  return new Promise((resolve, reject) => {
+    const server = net.createServer();
+    server.unref();
+    server.on("error", reject);
+    server.listen(0, "127.0.0.1", () => {
+      const addr = server.address();
+      const port = addr && typeof addr === "object" ? addr.port : null;
+      server.close((err) => {
+        if (err) return reject(err);
+        if (!port) return reject(new Error("failed_to_allocate_port"));
+        resolve(port);
+      });
+    });
+  });
+}
+
+async function waitForServerReady(baseUrl, child, stdoutRef, stderrRef) {
+  const timeoutMs = 8_000;
+  const start = Date.now();
+
+  while (Date.now() - start < timeoutMs) {
+    if (child.exitCode != null) {
+      throw new Error(
+        `server_exited_before_ready (code=${child.exitCode})\nstdout:\n${stdoutRef()}\nstderr:\n${stderrRef()}`
+      );
+    }
+
+    try {
+      const response = await fetch(`${baseUrl}/api/sites?limit=1`);
+      if (response.ok) return;
+    } catch {
+      // Retry until timeout.
+    }
+
+    await new Promise((resolve) => setTimeout(resolve, 100));
+  }
+
+  throw new Error(`server_start_timeout\nstdout:\n${stdoutRef()}\nstderr:\n${stderrRef()}`);
+}
+
+async function stopServer(child) {
+  if (child.exitCode != null) return;
+
+  child.kill("SIGTERM");
+  await Promise.race([
+    new Promise((resolve) => child.once("exit", resolve)),
+    new Promise((resolve) =>
+      setTimeout(() => {
+        if (child.exitCode == null) child.kill("SIGKILL");
+        resolve();
+      }, 2_000)
+    ),
+  ]);
+}
+
+async function withTempApiServer(seed, run) {
+  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "vpt-exposure-api-"));
+  const dbPath = path.join(tempDir, "privacy.db");
+  const dbCtx = await initDb({ filename: dbPath });
+
+  try {
+    await seed(dbCtx);
+  } finally {
+    await dbCtx.close();
+  }
+
+  const port = await getEphemeralPort();
+  const baseUrl = `http://127.0.0.1:${port}`;
+  const serverCwd = path.join(__dirname, "..");
+  const server = spawn(process.execPath, ["server.js"], {
+    cwd: serverCwd,
+    env: {
+      ...process.env,
+      PORT: String(port),
+      VPT_DB_PATH: dbPath,
+    },
+    stdio: ["ignore", "pipe", "pipe"],
+  });
+
+  let stdout = "";
+  let stderr = "";
+  server.stdout.on("data", (chunk) => {
+    stdout += String(chunk);
+  });
+  server.stderr.on("data", (chunk) => {
+    stderr += String(chunk);
+  });
+
+  try {
+    await waitForServerReady(baseUrl, server, () => stdout, () => stderr);
+    return await run(baseUrl);
+  } finally {
+    await stopServer(server);
+    fs.rmSync(tempDir, { recursive: true, force: true });
+  }
+}
+
+async function getJson(url) {
+  const response = await fetch(url);
+  const text = await response.text();
+  assert.equal(response.status, 200, `Expected HTTP 200 from ${url}, got ${response.status}: ${text}`);
+  return JSON.parse(text);
+}
+
+async function seedGoogleExposureRows(dbCtx) {
+  const t0 = Date.UTC(2026, 2, 5, 9, 0, 0);
+  await insertExposureEvent(dbCtx, {
+    id: "exp-api-1",
+    ts: t0,
+    site: "alpha.local",
+    vendor: "google",
+    requestUrl: "https://collect.example/hit?gclid=one",
+    mitigationStatus: "observed_only",
+  });
+  await insertExposureEvent(dbCtx, {
+    id: "exp-api-2",
+    ts: t0 + 20_000,
+    site: "beta.local",
+    vendor: "google",
+    requestUrl: "https://collect.example/hit?gclid=two",
+    mitigationStatus: "blocked",
+  });
+}
+
 test("site+vendor mode keeps row shape unchanged", async () => {
   await withTempDb(async (dbCtx) => {
     const now = Date.UTC(2026, 2, 4, 10, 0, 0);
@@ -183,5 +328,42 @@ test("vendor-only mode aggregates rows across sites and exposes top_sites", asyn
       { site: "alpha.local", count: 1 },
       { site: "beta.local", count: 1 },
     ]);
+  });
+});
+
+test("api site-scoped contract keeps stable payload and row key sets", async () => {
+  await withTempApiServer(seedGoogleExposureRows, async (baseUrl) => {
+    const payload = await getJson(`${baseUrl}/api/exposure-inventory?site=alpha.local&vendor=google`);
+
+    assert.deepEqual(Object.keys(payload).sort(), ["rows", "site", "vendor"]);
+    assert.equal(payload.site, "alpha.local");
+    assert.equal(payload.vendor, "google");
+    assert.ok(Array.isArray(payload.rows));
+    assert.equal(payload.rows.length > 0, true);
+
+    for (const row of payload.rows) {
+      assert.deepEqual(Object.keys(row).sort(), SITE_MODE_ROW_KEYS);
+      assert.equal(hasOwn(row, "top_sites"), false);
+    }
+  });
+});
+
+test("api vendor-global mode allows top_sites and top_sites is excluded from site mode", async () => {
+  await withTempApiServer(seedGoogleExposureRows, async (baseUrl) => {
+    const sitePayload = await getJson(`${baseUrl}/api/exposure-inventory?site=alpha.local&vendor=google`);
+    const vendorPayload = await getJson(`${baseUrl}/api/exposure-inventory?vendor=google`);
+
+    assert.deepEqual(Object.keys(vendorPayload).sort(), ["rows", "site", "vendor"]);
+    assert.equal(vendorPayload.site, null);
+    assert.equal(vendorPayload.vendor, "google");
+    assert.ok(Array.isArray(vendorPayload.rows));
+    assert.equal(vendorPayload.rows.length > 0, true);
+
+    assert.equal(sitePayload.rows.some((row) => hasOwn(row, "top_sites")), false);
+    assert.equal(vendorPayload.rows.some((row) => hasOwn(row, "top_sites")), true);
+
+    for (const row of vendorPayload.rows) {
+      assert.ok(Array.isArray(row.top_sites));
+    }
   });
 });
