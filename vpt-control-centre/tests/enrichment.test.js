@@ -115,3 +115,88 @@ test("cookies.snapshot first-party only maps to baseline aggregate", () => {
   assert.equal(row.patternId, "cookies.snapshot.first_party_only");
   assert.equal(row.isThirdParty, 0);
 });
+
+test("api.canvas metadata maps to api/canvas fingerprinting semantics", () => {
+  const ev = {
+    id: "evt-api-canvas-1",
+    ts: 1700000004000,
+    site: "fp.example.com",
+    kind: "api.canvas.activity",
+    mode: "moderate",
+    source: "extension",
+    data: {
+      operation: "toDataURL",
+      contextType: "2d",
+      width: 300,
+      height: 150,
+      count: 4,
+      burstMs: 900,
+      sampleWindowMs: 1200,
+      surface: "api",
+      surfaceDetail: "canvas",
+      signalType: "fingerprinting_signal",
+      mitigationStatus: "observed_only",
+      privacyStatus: "signal_detected",
+      patternId: "api.canvas.toDataURL",
+      confidence: 0.94,
+    },
+  };
+
+  const row = buildEnrichmentRecord(ev, ev.site);
+  assert.equal(row.surface, "api");
+  assert.equal(row.surfaceDetail, "canvas");
+  assert.equal(row.privacyStatus, "signal_detected");
+  assert.equal(row.mitigationStatus, "observed_only");
+  assert.equal(row.signalType, "fingerprinting_signal");
+  assert.equal(row.patternId, "api.canvas.toDataURL");
+  assert.equal(row.confidence, 0.94);
+
+  const rawContext = JSON.parse(row.rawContext);
+  assert.equal(rawContext.operation, "toDataURL");
+  assert.equal(rawContext.burstCount, 4);
+  assert.equal(rawContext.burstMs, 900);
+});
+
+test("api.webrtc metadata maps to api/webrtc probe semantics without candidate strings", () => {
+  const ev = {
+    id: "evt-api-webrtc-1",
+    ts: 1700000005000,
+    site: "rtc.example.com",
+    kind: "api.webrtc.activity",
+    mode: "moderate",
+    source: "extension",
+    data: {
+      action: "ice_candidate_activity",
+      state: "candidate",
+      candidateType: "srflx",
+      stunTurnHostnames: ["stun.l.google.com"],
+      count: 3,
+      burstMs: 600,
+      sampleWindowMs: 1200,
+      surface: "api",
+      surfaceDetail: "webrtc",
+      signalType: "device_probe",
+      mitigationStatus: "observed_only",
+      privacyStatus: "signal_detected",
+      patternId: "api.webrtc.ice_candidate_activity",
+      confidence: 0.93,
+    },
+  };
+
+  const row = buildEnrichmentRecord(ev, ev.site);
+  assert.equal(row.surface, "api");
+  assert.equal(row.surfaceDetail, "webrtc");
+  assert.equal(row.privacyStatus, "signal_detected");
+  assert.equal(row.mitigationStatus, "observed_only");
+  assert.equal(row.signalType, "device_probe");
+  assert.equal(row.patternId, "api.webrtc.ice_candidate_activity");
+  assert.equal(row.confidence, 0.93);
+  assert.equal(row.requestDomain, "stun.l.google.com");
+  assert.equal(row.vendorId, "google");
+
+  const rawContext = JSON.parse(row.rawContext);
+  assert.equal(rawContext.candidateType, "srflx");
+  assert.equal(rawContext.burstCount, 3);
+  assert.equal(rawContext.stunTurnHostnames.includes("stun.l.google.com"), true);
+  assert.equal("candidate" in rawContext, false);
+});

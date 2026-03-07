@@ -19,4 +19,18 @@
   "http://127.0.0.1:4141/*"
   ],
   "background": { "service_worker": "background.js" }
+  ,
+  "content_scripts": [
+    {
+      "matches": ["<all_urls>"],
+      "js": ["api-signal-bridge.js"],
+      "run_at": "document_start"
+    },
+    {
+      "matches": ["<all_urls>"],
+      "js": ["api-signal-main.js"],
+      "run_at": "document_start",
+      "world": "MAIN"
+    }
+  ]
 }

@@ -102,6 +102,12 @@ function toConfidence(value) {
   return value;
 }
 
+function pickAllowedString(value, allowed, fallback) {
+  const next = String(value || "").trim();
+  if (!next) return fallback;
+  return allowed.has(next) ? next : fallback;
+}
+
 function classifyDomain(rawDomain) {
   const normalized = normalizeHost(rawDomain);
   if (!normalized) {
@@ -142,7 +148,7 @@ function deriveSurface(kind = "") {
   if (kind.startsWith("network.")) return "network";
   if (kind.startsWith("cookies.")) return "cookies";
   if (kind.startsWith("storage.")) return "storage";
-  if (kind.startsWith("browser_api.") || kind.startsWith("api.")) return "browser_api";
+  if (kind.startsWith("browser_api.") || kind.startsWith("api.")) return "api";
   if (kind.startsWith("script.")) return "script";
   return "unknown";
 }
@@ -372,6 +378,176 @@ function buildCookieOperationEnrichment(ev, site, data, kind) {
   };
 }
 
+const PRIVACY_STATUS_VALUES = new Set([
+  "baseline",
+  "signal_detected",
+  "high_risk",
+  "policy_blocked",
+  "policy_allowed",
+  "unknown",
+]);
+const MITIGATION_STATUS_VALUES = new Set([
+  "allowed",
+  "blocked",
+  "observed_only",
+  "modified",
+  "unknown",
+]);
+const SIGNAL_TYPE_VALUES = new Set([
+  "fingerprinting_signal",
+  "tracking_signal",
+  "device_probe",
+  "capability_probe",
+  "state_change",
+  "unknown",
+]);
+
+function deriveApiSurfaceDetail(kind, data = {}) {
+  const explicit = String(data.surfaceDetail || "").trim().toLowerCase();
+  if (explicit === "canvas" || explicit === "webrtc") return explicit;
+  if (kind.includes("canvas")) return "canvas";
+  if (kind.includes("webrtc")) return "webrtc";
+  return "unknown";
+}
+
+function inferApiSignalType(surfaceDetail, data = {}) {
+  if (surfaceDetail === "canvas") return "fingerprinting_signal";
+  if (surfaceDetail === "webrtc") {
+    const action = String(data.action || "").toLowerCase();
+    if (
+      action === "create_offer_called"
+      || action === "offer_created"
+      || action === "set_local_description_offer"
+      || action === "ice_gathering_state"
+      || action === "ice_candidate_activity"
+    ) {
+      return "device_probe";
+    }
+    return "capability_probe";
+  }
+  return "capability_probe";
+}
+
+function inferApiPatternId(kind, surfaceDetail, data = {}) {
+  if (data.patternId) return String(data.patternId);
+  if (surfaceDetail === "canvas") {
+    const operation = String(data.operation || "").trim();
+    if (operation) return `api.canvas.${operation}`;
+    return kind.includes("canvas") ? kind : "api.canvas.operation";
+  }
+  if (surfaceDetail === "webrtc") {
+    const action = String(data.action || "").trim();
+    if (action) return `api.webrtc.${action}`;
+    return kind.includes("webrtc") ? kind : "api.webrtc.action";
+  }
+  return kind.startsWith("api.") || kind.startsWith("browser_api.") ? kind : null;
+}
+
+function inferApiConfidence(surfaceDetail, data = {}) {
+  const fromData = toConfidence(data.confidence);
+  if (fromData !== null) return fromData;
+  if (surfaceDetail === "canvas") {
+    const operation = String(data.operation || "");
+    if (operation === "readPixels") return 0.97;
+    if (operation === "getImageData") return 0.95;
+    if (operation === "toDataURL" || operation === "toBlob") return 0.94;
+    return 0.9;
+  }
+  if (surfaceDetail === "webrtc") {
+    const action = String(data.action || "");
+    if (action === "set_local_description_offer") return 0.95;
+    if (action === "offer_created" || action === "ice_candidate_activity") return 0.93;
+    if (action === "create_offer_called" || action === "ice_gathering_state") return 0.9;
+    if (action === "peer_connection_created") return 0.84;
+    return 0.88;
+  }
+  return 0.75;
+}
+
+function buildApiEnrichment(ev, site, data, kind) {
+  const surfaceDetail = deriveApiSurfaceDetail(kind, data);
+  const signalType = pickAllowedString(
+    data.signalType,
+    SIGNAL_TYPE_VALUES,
+    inferApiSignalType(surfaceDetail, data)
+  );
+  const mitigationStatus = pickAllowedString(
+    data.mitigationStatus,
+    MITIGATION_STATUS_VALUES,
+    "observed_only"
+  );
+
+  const defaultPrivacyStatus = mitigationStatus === "blocked"
+    ? "policy_blocked"
+    : mitigationStatus === "allowed"
+      ? "policy_allowed"
+      : "signal_detected";
+
+  const privacyStatus = pickAllowedString(
+    data.privacyStatus,
+    PRIVACY_STATUS_VALUES,
+    defaultPrivacyStatus
+  );
+  const patternId = inferApiPatternId(kind, surfaceDetail, data);
+  const confidence = inferApiConfidence(surfaceDetail, data);
+  const stunHost = Array.isArray(data.stunTurnHostnames) ? data.stunTurnHostnames[0] : "";
+  const requestDomain = normalizeHost(data.domain || data.url || stunHost || "");
+  const vendor = requestDomain ? classifyDomain(requestDomain) : {
+    vendorId: null,
+    vendorName: null,
+    vendorFamily: null,
+  };
+  const burstCount = Math.max(1, Math.floor(toSafeNumber(data.count, 1)));
+  const burstMs = Math.max(0, Math.floor(toSafeNumber(data.burstMs, 0)));
+  const width = toSafeNumber(data.width, null);
+  const height = toSafeNumber(data.height, null);
+  const contextType = String(data.contextType || "").trim() || null;
+  const action = String(data.action || "").trim() || null;
+  const operation = String(data.operation || "").trim() || null;
+  const state = String(data.state || "").trim() || null;
+  const offerType = String(data.offerType || "").trim() || null;
+  const candidateType = String(data.candidateType || "").trim() || null;
+  const stunTurnHostnames = Array.isArray(data.stunTurnHostnames)
+    ? data.stunTurnHostnames.map((h) => normalizeHost(h)).filter(Boolean).slice(0, 8)
+    : [];
+
+  return {
+    enrichedTs: Number(ev?.ts) || Date.now(),
+    enrichmentVersion: "v2",
+    surface: "api",
+    surfaceDetail,
+    privacyStatus,
+    mitigationStatus,
+    signalType,
+    patternId,
+    confidence,
+    vendorId: data.vendorId || vendor.vendorId,
+    vendorName: data.vendorName || vendor.vendorName,
+    vendorFamily: data.vendorFamily || vendor.vendorFamily,
+    requestDomain: requestDomain || null,
+    requestUrl: data.url || null,
+    firstPartySite: site || null,
+    isThirdParty: typeof data.isThirdParty === "boolean" ? (data.isThirdParty ? 1 : 0) : null,
+    ruleId: data.ruleId != null ? String(data.ruleId) : null,
+    rawContext: JSON.stringify({
+      kind,
+      mode: ev?.mode || null,
+      source: ev?.source || null,
+      operation,
+      action,
+      contextType,
+      width: Number.isFinite(width) ? width : null,
+      height: Number.isFinite(height) ? height : null,
+      state,
+      offerType,
+      candidateType,
+      burstCount,
+      burstMs,
+      stunTurnHostnames,
+    }),
+  };
+}
+
 function buildGenericEnrichment(ev, site, data, kind) {
   const surface = deriveSurface(kind);
   const surfaceDetail = deriveSurfaceDetail(kind);
@@ -393,7 +569,7 @@ function buildGenericEnrichment(ev, site, data, kind) {
   let signalType = "unknown";
   if (surface === "storage") signalType = "state_change";
   else if (surface === "script") signalType = "capability_probe";
-  else if (surface === "browser_api") signalType = "capability_probe";
+  else if (surface === "api") signalType = "capability_probe";
 
   const requestDomain = normalizeHost(data.domain || data.url || "");
   const vendor = classifyDomain(requestDomain);
@@ -436,6 +612,9 @@ function buildEnrichmentRecord(ev, site) {
   }
   if (kind.startsWith("cookies.")) {
     return buildCookieOperationEnrichment(ev, site, data, kind);
+  }
+  if (kind.startsWith("api.") || kind.startsWith("browser_api.")) {
+    return buildApiEnrichment(ev, site, data, kind);
   }
 
   return buildGenericEnrichment(ev, site, data, kind);

@@ -197,6 +197,178 @@ function isThirdParty(initiator, requestUrl) {
   return a !== b;
 }
 
+const API_CANVAS_OPERATIONS = new Set(["getImageData", "toDataURL", "toBlob", "readPixels"]);
+const API_WEBRTC_ACTIONS = new Set([
+  "peer_connection_created",
+  "create_offer_called",
+  "offer_created",
+  "set_local_description_offer",
+  "ice_gathering_state",
+  "ice_candidate_activity",
+  "set_configuration",
+]);
+const API_CONTEXT_TYPES = new Set(["2d", "webgl", "webgl2", "bitmaprenderer", "webgpu", "unknown"]);
+const API_MAX_HOSTNAMES = 8;
+const API_MAX_COUNT = 5000;
+const API_MAX_BURST_MS = 60_000;
+const API_MAX_DIMENSION = 16_384;
+
+function asSafeInt(value, min, max) {
+  const n = Number(value);
+  if (!Number.isFinite(n)) return null;
+  const next = Math.floor(n);
+  if (next < min || next > max) return null;
+  return next;
+}
+
+function asSafeString(value, maxLen = 80) {
+  if (typeof value !== "string") return null;
+  const trimmed = value.trim();
+  if (!trimmed) return null;
+  return trimmed.slice(0, maxLen);
+}
+
+function isIpv4(host) {
+  return /^\d{1,3}(?:\.\d{1,3}){3}$/.test(host);
+}
+
+function isIpv6(host) {
+  return host.includes(":") && /^[0-9a-f:.]+$/i.test(host);
+}
+
+function sanitizeHostname(raw) {
+  const host = asSafeString(raw, 255);
+  if (!host) return null;
+  const normalized = host.toLowerCase();
+  if (isIpv4(normalized) || isIpv6(normalized)) return null;
+  if (!/^[a-z0-9.-]+$/.test(normalized)) return null;
+  return normalized;
+}
+
+function sanitizeHostnames(values) {
+  if (!Array.isArray(values)) return [];
+  const out = [];
+  const seen = new Set();
+  for (const raw of values) {
+    const host = sanitizeHostname(raw);
+    if (!host || seen.has(host)) continue;
+    seen.add(host);
+    out.push(host);
+    if (out.length >= API_MAX_HOSTNAMES) break;
+  }
+  return out;
+}
+
+function getCanvasDefaults(operation) {
+  const op = String(operation || "");
+  let confidence = 0.9;
+  if (op === "readPixels") confidence = 0.97;
+  else if (op === "getImageData") confidence = 0.95;
+  else if (op === "toDataURL" || op === "toBlob") confidence = 0.94;
+
+  return {
+    signalType: "fingerprinting_signal",
+    privacyStatus: "signal_detected",
+    mitigationStatus: "observed_only",
+    patternId: `api.canvas.${op || "operation"}`,
+    confidence,
+  };
+}
+
+function getWebrtcDefaults(action) {
+  const nextAction = String(action || "");
+  const deviceProbeActions = new Set([
+    "create_offer_called",
+    "offer_created",
+    "set_local_description_offer",
+    "ice_gathering_state",
+    "ice_candidate_activity",
+  ]);
+  const signalType = deviceProbeActions.has(nextAction) ? "device_probe" : "capability_probe";
+  const confidenceMap = {
+    peer_connection_created: 0.84,
+    create_offer_called: 0.9,
+    offer_created: 0.93,
+    set_local_description_offer: 0.95,
+    ice_gathering_state: 0.9,
+    ice_candidate_activity: 0.93,
+    set_configuration: 0.86,
+  };
+
+  return {
+    signalType,
+    privacyStatus: "signal_detected",
+    mitigationStatus: "observed_only",
+    patternId: `api.webrtc.${nextAction || "action"}`,
+    confidence: confidenceMap[nextAction] || 0.88,
+  };
+}
+
+function sanitizeCanvasSignal(data) {
+  if (!data || typeof data !== "object") return null;
+  const operation = asSafeString(data.operation, 32);
+  if (!operation || !API_CANVAS_OPERATIONS.has(operation)) return null;
+
+  const contextTypeRaw = asSafeString(data.contextType, 32) || "unknown";
+  const contextType = API_CONTEXT_TYPES.has(contextTypeRaw) ? contextTypeRaw : "unknown";
+
+  return {
+    surface: "api",
+    surfaceDetail: "canvas",
+    operation,
+    contextType,
+    width: asSafeInt(data.width, 1, API_MAX_DIMENSION),
+    height: asSafeInt(data.height, 1, API_MAX_DIMENSION),
+    count: asSafeInt(data.count, 1, API_MAX_COUNT) || 1,
+    burstMs: asSafeInt(data.burstMs, 0, API_MAX_BURST_MS) || 0,
+    sampleWindowMs: asSafeInt(data.sampleWindowMs, 100, API_MAX_BURST_MS) || 1200,
+    siteBase: asSafeString(data.siteBase, 128) || undefined,
+    ...getCanvasDefaults(operation),
+  };
+}
+
+function sanitizeWebrtcSignal(data) {
+  if (!data || typeof data !== "object") return null;
+  const action = asSafeString(data.action, 48);
+  if (!action || !API_WEBRTC_ACTIONS.has(action)) return null;
+
+  return {
+    surface: "api",
+    surfaceDetail: "webrtc",
+    action,
+    state: asSafeString(data.state, 48) || undefined,
+    offerType: asSafeString(data.offerType, 24) || undefined,
+    candidateType: asSafeString(data.candidateType, 24) || undefined,
+    stunTurnHostnames: sanitizeHostnames(data.stunTurnHostnames),
+    count: asSafeInt(data.count, 1, API_MAX_COUNT) || 1,
+    burstMs: asSafeInt(data.burstMs, 0, API_MAX_BURST_MS) || 0,
+    sampleWindowMs: asSafeInt(data.sampleWindowMs, 100, API_MAX_BURST_MS) || 1200,
+    siteBase: asSafeString(data.siteBase, 128) || undefined,
+    ...getWebrtcDefaults(action),
+  };
+}
+
+function sanitizeApiSignalPayload(payload) {
+  if (!payload || typeof payload !== "object") return null;
+  const kind = asSafeString(payload.kind, 64);
+  const data = payload.data && typeof payload.data === "object" ? payload.data : null;
+  if (!kind || !data) return null;
+
+  if (kind.startsWith("api.canvas.")) {
+    const cleanData = sanitizeCanvasSignal(data);
+    if (!cleanData) return null;
+    return { kind, data: cleanData };
+  }
+
+  if (kind.startsWith("api.webrtc.")) {
+    const cleanData = sanitizeWebrtcSignal(data);
+    if (!cleanData) return null;
+    return { kind, data: cleanData };
+  }
+
+  return null;
+}
+
 
 async function persistStats() {
   await chrome.storage.local.set({
@@ -428,6 +600,30 @@ chrome.storage.onChanged.addListener(async ch => {
 });
 
 chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
+  if (msg?.type === "api:signal") {
+    (async () => {
+      try {
+        const normalized = sanitizeApiSignalPayload(msg.payload);
+        if (!normalized) {
+          sendResponse({ ok: false, error: "invalid_api_signal" });
+          return;
+        }
+
+        const tabId =
+          sender.tab && typeof sender.tab.id === "number"
+            ? sender.tab.id
+            : null;
+
+        await logEvent(normalized.kind, normalized.data, tabId);
+        sendResponse({ ok: true });
+      } catch (e) {
+        console.error("api:signal failed", e);
+        sendResponse({ ok: false, error: e.message || String(e) });
+      }
+    })();
+    return true;
+  }
+
   if (msg?.type === "cookies:getSummary") {
     (async () => {
       try {

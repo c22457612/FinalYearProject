@@ -175,3 +175,128 @@ test("extension-like event POST persists to DB and is retrievable via events API
     }
   });
 });
+
+test("network/cookies paths remain intact when api canvas+webrtc events are ingested", async () => {
+  await withTempApiServer(async ({ baseUrl }) => {
+    const site = "api-mixed.example.com";
+    const ts = Date.UTC(2026, 2, 7, 12, 0, 0);
+    const events = [
+      {
+        id: "integ-mixed-network-1",
+        ts,
+        source: "test-extension",
+        site,
+        kind: "network.observed",
+        mode: "moderate",
+        data: {
+          url: "https://www.google-analytics.com/g/collect?cid=123",
+          domain: "www.google-analytics.com",
+          isThirdParty: true,
+          resourceType: "xmlhttprequest",
+        },
+      },
+      {
+        id: "integ-mixed-cookies-1",
+        ts: ts + 1000,
+        source: "test-extension",
+        site,
+        kind: "cookies.snapshot",
+        mode: "moderate",
+        data: {
+          url: "https://api-mixed.example.com/",
+          count: 2,
+          thirdPartyCount: 1,
+          cookies: [
+            { name: "sid", domain: ".api-mixed.example.com", isThirdParty: false },
+            { name: "id", domain: ".doubleclick.net", isThirdParty: true },
+          ],
+        },
+      },
+      {
+        id: "integ-mixed-canvas-1",
+        ts: ts + 2000,
+        source: "test-extension",
+        site,
+        kind: "api.canvas.activity",
+        mode: "moderate",
+        data: {
+          surface: "api",
+          surfaceDetail: "canvas",
+          operation: "toDataURL",
+          contextType: "2d",
+          width: 300,
+          height: 150,
+          count: 2,
+          burstMs: 300,
+          sampleWindowMs: 1200,
+          signalType: "fingerprinting_signal",
+          mitigationStatus: "observed_only",
+          privacyStatus: "signal_detected",
+          patternId: "api.canvas.toDataURL",
+          confidence: 0.94,
+        },
+      },
+      {
+        id: "integ-mixed-webrtc-1",
+        ts: ts + 3000,
+        source: "test-extension",
+        site,
+        kind: "api.webrtc.activity",
+        mode: "moderate",
+        data: {
+          surface: "api",
+          surfaceDetail: "webrtc",
+          action: "ice_candidate_activity",
+          state: "candidate",
+          candidateType: "srflx",
+          stunTurnHostnames: ["stun.l.google.com"],
+          count: 1,
+          burstMs: 0,
+          sampleWindowMs: 1200,
+          signalType: "device_probe",
+          mitigationStatus: "observed_only",
+          privacyStatus: "signal_detected",
+          patternId: "api.webrtc.ice_candidate_activity",
+          confidence: 0.93,
+        },
+      },
+    ];
+
+    const postResponse = await fetch(`${baseUrl}/api/events`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(events),
+    });
+    const postBodyText = await postResponse.text();
+    assert.equal(postResponse.status, 202, `Expected HTTP 202 from POST /api/events: ${postBodyText}`);
+    const postBody = JSON.parse(postBodyText);
+    assert.equal(postBody.ok, true);
+    assert.equal(postBody.count, 4);
+    assert.equal(postBody.inserted, 4);
+
+    const saved = await getJson(`${baseUrl}/api/events?site=${encodeURIComponent(site)}&limit=50`);
+    assert.equal(saved.length, 4);
+
+    const networkEv = saved.find((row) => row.id === "integ-mixed-network-1");
+    const cookiesEv = saved.find((row) => row.id === "integ-mixed-cookies-1");
+    const canvasEv = saved.find((row) => row.id === "integ-mixed-canvas-1");
+    const webrtcEv = saved.find((row) => row.id === "integ-mixed-webrtc-1");
+
+    assert.ok(networkEv);
+    assert.ok(cookiesEv);
+    assert.ok(canvasEv);
+    assert.ok(webrtcEv);
+
+    assert.equal(networkEv.enrichment.surface, "network");
+    assert.equal(networkEv.enrichment.surfaceDetail, "network_request");
+    assert.equal(cookiesEv.enrichment.surface, "cookies");
+    assert.equal(cookiesEv.enrichment.surfaceDetail, "cookie_snapshot");
+
+    assert.equal(canvasEv.enrichment.surface, "api");
+    assert.equal(canvasEv.enrichment.surfaceDetail, "canvas");
+    assert.equal(canvasEv.enrichment.signalType, "fingerprinting_signal");
+    assert.equal(webrtcEv.enrichment.surface, "api");
+    assert.equal(webrtcEv.enrichment.surfaceDetail, "webrtc");
+    assert.equal(webrtcEv.enrichment.signalType, "device_probe");
+  });
+});

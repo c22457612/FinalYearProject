@@ -63,8 +63,8 @@ const SCHEMA_SQL = `
     value TEXT NOT NULL
   );
 
-  INSERT OR IGNORE INTO meta(key, value) VALUES ('schema_version', '3');
-  UPDATE meta SET value = '3' WHERE key = 'schema_version';
+  INSERT OR IGNORE INTO meta(key, value) VALUES ('schema_version', '4');
+  UPDATE meta SET value = '4' WHERE key = 'schema_version';
 
   -- Event-sourcing: immutable privacy events
   CREATE TABLE IF NOT EXISTS events (
@@ -105,7 +105,7 @@ const SCHEMA_SQL = `
     event_id           TEXT NOT NULL UNIQUE,
     enriched_ts        INTEGER NOT NULL,
     enrichment_version TEXT NOT NULL DEFAULT 'v1',
-    surface            TEXT NOT NULL CHECK (surface IN ('network', 'cookies', 'storage', 'browser_api', 'script', 'unknown')),
+    surface            TEXT NOT NULL CHECK (surface IN ('network', 'cookies', 'storage', 'api', 'browser_api', 'script', 'unknown')),
     surface_detail     TEXT NOT NULL CHECK (
       surface_detail IN (
         'network_request',
@@ -187,6 +187,7 @@ const SCHEMA_SQL = `
     ('surface', 'network', 'Network request/response surface'),
     ('surface', 'cookies', 'Cookie collection and mutation surface'),
     ('surface', 'storage', 'Storage APIs (local/session/indexedDB/cache)'),
+    ('surface', 'api', 'Browser API privacy signal surface'),
     ('surface', 'browser_api', 'High-signal browser API surfaces'),
     ('surface', 'script', 'Script execution and capability checks'),
     ('surface', 'unknown', 'Not yet mapped to a semantic surface');

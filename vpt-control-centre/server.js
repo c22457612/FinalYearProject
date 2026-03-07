@@ -36,6 +36,147 @@ function makeId(prefix) {
   return `${prefix}-${Date.now()}-${Math.random().toString(16).slice(2, 8)}`;
 }
 
+function isLegacyApiSurfaceConstraintError(err) {
+  if (!err) return false;
+  const message = String(err.message || "").toLowerCase();
+  return message.includes("check constraint failed") && message.includes("surface");
+}
+
+async function insertEventEnrichmentRow(dbCtx, enrich, eventId) {
+  const params = [
+    enrich.enrichedTs,
+    enrich.enrichmentVersion,
+    enrich.surface,
+    enrich.surfaceDetail,
+    enrich.privacyStatus,
+    enrich.mitigationStatus,
+    enrich.signalType,
+    enrich.patternId,
+    enrich.confidence,
+    enrich.vendorId,
+    enrich.vendorName,
+    enrich.vendorFamily,
+    enrich.requestDomain,
+    enrich.requestUrl,
+    enrich.firstPartySite,
+    enrich.isThirdParty,
+    enrich.ruleId,
+    enrich.rawContext,
+    eventId,
+  ];
+
+  try {
+    await dbCtx.run(
+      `
+        INSERT OR IGNORE INTO event_enrichment (
+          event_pk,
+          event_id,
+          enriched_ts,
+          enrichment_version,
+          surface,
+          surface_detail,
+          privacy_status,
+          mitigation_status,
+          signal_type,
+          pattern_id,
+          confidence,
+          vendor_id,
+          vendor_name,
+          vendor_family,
+          request_domain,
+          request_url,
+          first_party_site,
+          is_third_party,
+          rule_id,
+          raw_context
+        )
+        SELECT
+          pk,
+          event_id,
+          ?,
+          ?,
+          ?,
+          ?,
+          ?,
+          ?,
+          ?,
+          ?,
+          ?,
+          ?,
+          ?,
+          ?,
+          ?,
+          ?,
+          ?,
+          ?,
+          ?,
+          ?
+        FROM events
+        WHERE event_id = ?
+      `,
+      params
+    );
+  } catch (err) {
+    if (enrich.surface === "api" && isLegacyApiSurfaceConstraintError(err)) {
+      const legacyParams = [...params];
+      // surface is third positional parameter in the VALUES list.
+      legacyParams[2] = "browser_api";
+      await dbCtx.run(
+        `
+          INSERT OR IGNORE INTO event_enrichment (
+            event_pk,
+            event_id,
+            enriched_ts,
+            enrichment_version,
+            surface,
+            surface_detail,
+            privacy_status,
+            mitigation_status,
+            signal_type,
+            pattern_id,
+            confidence,
+            vendor_id,
+            vendor_name,
+            vendor_family,
+            request_domain,
+            request_url,
+            first_party_site,
+            is_third_party,
+            rule_id,
+            raw_context
+          )
+          SELECT
+            pk,
+            event_id,
+            ?,
+            ?,
+            ?,
+            ?,
+            ?,
+            ?,
+            ?,
+            ?,
+            ?,
+            ?,
+            ?,
+            ?,
+            ?,
+            ?,
+            ?,
+            ?,
+            ?,
+            ?
+          FROM events
+          WHERE event_id = ?
+        `,
+        legacyParams
+      );
+      return;
+    }
+    throw err;
+  }
+}
+
 function updateSiteStatsFromEvent(ev) {
   const site = ev.site || "unknown";
   let s = siteStats.get(site);
@@ -121,76 +262,7 @@ app.post("/api/events", async (req, res) => {
       );
 
       const enrich = buildEnrichmentRecord(ev, site);
-      await dbCtx.run(
-        `
-          INSERT OR IGNORE INTO event_enrichment (
-            event_pk,
-            event_id,
-            enriched_ts,
-            enrichment_version,
-            surface,
-            surface_detail,
-            privacy_status,
-            mitigation_status,
-            signal_type,
-            pattern_id,
-            confidence,
-            vendor_id,
-            vendor_name,
-            vendor_family,
-            request_domain,
-            request_url,
-            first_party_site,
-            is_third_party,
-            rule_id,
-            raw_context
-          )
-          SELECT
-            pk,
-            event_id,
-            ?,
-            ?,
-            ?,
-            ?,
-            ?,
-            ?,
-            ?,
-            ?,
-            ?,
-            ?,
-            ?,
-            ?,
-            ?,
-            ?,
-            ?,
-            ?,
-            ?,
-            ?
-          FROM events
-          WHERE event_id = ?
-        `,
-        [
-          enrich.enrichedTs,
-          enrich.enrichmentVersion,
-          enrich.surface,
-          enrich.surfaceDetail,
-          enrich.privacyStatus,
-          enrich.mitigationStatus,
-          enrich.signalType,
-          enrich.patternId,
-          enrich.confidence,
-          enrich.vendorId,
-          enrich.vendorName,
-          enrich.vendorFamily,
-          enrich.requestDomain,
-          enrich.requestUrl,
-          enrich.firstPartySite,
-          enrich.isThirdParty,
-          enrich.ruleId,
-          enrich.rawContext,
-          ev.id,
-        ]
-      );
+      await insertEventEnrichmentRow(dbCtx, enrich, ev.id);
 
       inserted++;
 

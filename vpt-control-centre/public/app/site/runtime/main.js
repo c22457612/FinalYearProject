@@ -153,6 +153,7 @@ const SURFACE_LABELS = {
   network: "Network",
   cookies: "Cookies",
   storage: "Storage",
+  api: "API",
   browser_api: "Browser API",
   script: "Script",
   unknown: "Unknown",

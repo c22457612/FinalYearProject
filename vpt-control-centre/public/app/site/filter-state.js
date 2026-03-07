@@ -39,13 +39,16 @@ export function getPartyBucket(ev) {
 
 export function getSurfaceBucket(ev) {
   const enriched = String(ev?.enrichment?.surface || "").trim();
-  if (enriched) return enriched;
+  if (enriched) {
+    if (enriched === "browser_api") return "api";
+    return enriched;
+  }
 
   const kind = String(ev?.kind || "");
   if (kind.startsWith("network.")) return "network";
   if (kind.startsWith("cookies.")) return "cookies";
   if (kind.startsWith("storage.")) return "storage";
-  if (kind.startsWith("browser_api.") || kind.startsWith("api.")) return "browser_api";
+  if (kind.startsWith("browser_api.") || kind.startsWith("api.")) return "api";
   if (kind.startsWith("script.")) return "script";
   return "unknown";
 }
