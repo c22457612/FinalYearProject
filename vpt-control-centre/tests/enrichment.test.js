@@ -157,6 +157,33 @@ test("api.canvas metadata maps to api/canvas fingerprinting semantics", () => {
   assert.equal(rawContext.burstMs, 900);
 });
 
+test("api.canvas infers contract classification when raw event omits pattern and confidence fields", () => {
+  const ev = {
+    id: "evt-api-canvas-derived-1",
+    ts: 1700000004500,
+    site: "fp.example.com",
+    kind: "api.canvas.activity",
+    mode: "moderate",
+    source: "extension",
+    data: {
+      operation: "getImageData",
+      contextType: "2d",
+      width: 300,
+      height: 150,
+      count: 2,
+      burstMs: 250,
+      sampleWindowMs: 1200,
+    },
+  };
+
+  const row = buildEnrichmentRecord(ev, ev.site);
+  assert.equal(row.surface, "api");
+  assert.equal(row.surfaceDetail, "canvas");
+  assert.equal(row.signalType, "fingerprinting_signal");
+  assert.equal(row.patternId, "api.canvas.getImageData");
+  assert.equal(row.confidence, 0.95);
+});
+
 test("api.webrtc metadata maps to api/webrtc probe semantics without candidate strings", () => {
   const ev = {
     id: "evt-api-webrtc-1",
@@ -199,4 +226,32 @@ test("api.webrtc metadata maps to api/webrtc probe semantics without candidate s
   assert.equal(rawContext.burstCount, 3);
   assert.equal(rawContext.stunTurnHostnames.includes("stun.l.google.com"), true);
   assert.equal("candidate" in rawContext, false);
+});
+
+test("api.webrtc infers contract classification when raw event omits pattern and confidence fields", () => {
+  const ev = {
+    id: "evt-api-webrtc-derived-1",
+    ts: 1700000005500,
+    site: "rtc.example.com",
+    kind: "api.webrtc.activity",
+    mode: "moderate",
+    source: "extension",
+    data: {
+      action: "ice_candidate_activity",
+      state: "candidate",
+      candidateType: "srflx",
+      stunTurnHostnames: ["stun.l.google.com"],
+      count: 1,
+      burstMs: 0,
+      sampleWindowMs: 1200,
+    },
+  };
+
+  const row = buildEnrichmentRecord(ev, ev.site);
+  assert.equal(row.surface, "api");
+  assert.equal(row.surfaceDetail, "webrtc");
+  assert.equal(row.signalType, "device_probe");
+  assert.equal(row.patternId, "api.webrtc.ice_candidate_activity");
+  assert.equal(row.confidence, 0.93);
+  assert.equal(row.requestDomain, "stun.l.google.com");
 });

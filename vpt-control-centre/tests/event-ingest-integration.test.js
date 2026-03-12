@@ -229,11 +229,6 @@ test("network/cookies paths remain intact when api canvas+webrtc events are inge
           count: 2,
           burstMs: 300,
           sampleWindowMs: 1200,
-          signalType: "fingerprinting_signal",
-          mitigationStatus: "observed_only",
-          privacyStatus: "signal_detected",
-          patternId: "api.canvas.toDataURL",
-          confidence: 0.94,
         },
       },
       {
@@ -253,11 +248,6 @@ test("network/cookies paths remain intact when api canvas+webrtc events are inge
           count: 1,
           burstMs: 0,
           sampleWindowMs: 1200,
-          signalType: "device_probe",
-          mitigationStatus: "observed_only",
-          privacyStatus: "signal_detected",
-          patternId: "api.webrtc.ice_candidate_activity",
-          confidence: 0.93,
         },
       },
     ];
@@ -294,9 +284,23 @@ test("network/cookies paths remain intact when api canvas+webrtc events are inge
 
     assert.equal(canvasEv.enrichment.surface, "api");
     assert.equal(canvasEv.enrichment.surfaceDetail, "canvas");
+    assert.equal(canvasEv.enrichment.privacyStatus, "signal_detected");
+    assert.equal(canvasEv.enrichment.mitigationStatus, "observed_only");
     assert.equal(canvasEv.enrichment.signalType, "fingerprinting_signal");
+    assert.equal(canvasEv.enrichment.patternId, "api.canvas.toDataURL");
+    assert.equal(canvasEv.enrichment.confidence, 0.94);
+    assert.equal(canvasEv.data?.signalType, undefined);
+    assert.equal(canvasEv.data?.patternId, undefined);
+    assert.equal(canvasEv.data?.confidence, undefined);
     assert.equal(webrtcEv.enrichment.surface, "api");
     assert.equal(webrtcEv.enrichment.surfaceDetail, "webrtc");
+    assert.equal(webrtcEv.enrichment.privacyStatus, "signal_detected");
+    assert.equal(webrtcEv.enrichment.mitigationStatus, "observed_only");
     assert.equal(webrtcEv.enrichment.signalType, "device_probe");
+    assert.equal(webrtcEv.enrichment.patternId, "api.webrtc.ice_candidate_activity");
+    assert.equal(webrtcEv.enrichment.confidence, 0.93);
+    assert.equal(webrtcEv.data?.signalType, undefined);
+    assert.equal(webrtcEv.data?.patternId, undefined);
+    assert.equal(webrtcEv.data?.confidence, undefined);
   });
 });

@@ -306,7 +306,9 @@ app.get("/api/events", async (req, res) => {
           ee.surface_detail AS surfaceDetail,
           ee.privacy_status AS privacyStatus,
           ee.mitigation_status AS mitigationStatus,
-          ee.signal_type AS signalType
+          ee.signal_type AS signalType,
+          ee.pattern_id AS patternId,
+          ee.confidence AS confidence
         FROM events e
         LEFT JOIN event_enrichment ee ON ee.event_pk = e.pk
         WHERE (? IS NULL OR e.site = ?)
@@ -329,6 +331,8 @@ app.get("/api/events", async (req, res) => {
             privacyStatus: r.privacyStatus || "",
             mitigationStatus: r.mitigationStatus || "",
             signalType: r.signalType || "",
+            patternId: r.patternId || "",
+            confidence: typeof r.confidence === "number" ? r.confidence : null,
           };
           return ev;
         } catch {
