@@ -24,6 +24,7 @@
       <button class="nav-item" data-view="sites">Sites</button> 
       <button class="nav-item" data-view="cookies">Cookies</button>
       <a class="nav-item" data-page="vendor-vault" href="/vendor-vault.html?scope=all">Vendor Vault</a>
+      <button class="nav-item" data-view="api-signals">API Signals</button>
     </aside>
 
     <!-- Main content area (views switch inside here) -->
@@ -369,6 +370,131 @@
         </section>
       </main>
 
+      <!-- API SIGNALS VIEW -->
+      <main id="view-api-signals" class="api-signals-view hidden">
+        <section class="api-signals-stack">
+          <div class="panel api-signals-overview-panel">
+            <div class="panel-header">
+              <div>
+                <div class="panel-title">API Signals</div>
+                <div id="apiSignalsSubtitle" class="panel-subtitle">
+                  Metadata-only Canvas and WebRTC detections from the current Control Centre event window.
+                </div>
+              </div>
+            </div>
+            <p class="api-signals-lead">
+              This first API Signals view surfaces browser API activity that can indicate fingerprinting,
+              device probing, or capability probing, while keeping the stored evidence metadata-only.
+            </p>
+            <div class="summary api-signals-summary">
+              <div class="summary-card">
+                <h2>API signals</h2>
+                <div id="apiSignalsStatTotal" class="value">0</div>
+                <div class="hint">API-tagged events in the current window</div>
+              </div>
+              <div class="summary-card">
+                <h2>Matching filters</h2>
+                <div id="apiSignalsStatMatching" class="value">0</div>
+                <div class="hint">rows after client-side filtering</div>
+              </div>
+              <div class="summary-card">
+                <h2>Sites seen</h2>
+                <div id="apiSignalsStatSites" class="value">0</div>
+                <div class="hint">distinct sites in the filtered result</div>
+              </div>
+              <div class="summary-card">
+                <h2>Canonical patterns</h2>
+                <div id="apiSignalsStatPatterns" class="value">0</div>
+                <div class="hint">distinct backend pattern ids shown</div>
+              </div>
+            </div>
+          </div>
+
+          <div class="api-signals-top-grid">
+            <div class="panel api-signals-filters-panel">
+              <div class="panel-header">
+                <div>
+                  <div class="panel-title">Filters</div>
+                  <div class="panel-subtitle">Client-side filters on existing <code>/api/events</code> data.</div>
+                </div>
+              </div>
+              <div class="api-signals-filter-grid">
+                <div class="api-signals-filter">
+                  <label for="apiSignalsSurfaceFilter">surfaceDetail</label>
+                  <select id="apiSignalsSurfaceFilter">
+                    <option value="all">All surfaces</option>
+                  </select>
+                </div>
+                <div class="api-signals-filter">
+                  <label for="apiSignalsTypeFilter">signalType</label>
+                  <select id="apiSignalsTypeFilter">
+                    <option value="all">All signal types</option>
+                  </select>
+                </div>
+                <div class="api-signals-filter">
+                  <label for="apiSignalsConfidenceFilter">confidence</label>
+                  <select id="apiSignalsConfidenceFilter">
+                    <option value="all">All confidence levels</option>
+                    <option value="high">High (0.90+)</option>
+                    <option value="medium">Medium (0.80-0.89)</option>
+                    <option value="lower">Lower (&lt;0.80)</option>
+                    <option value="unknown">Unknown</option>
+                  </select>
+                </div>
+              </div>
+              <div id="apiSignalsFilterNote" class="api-signals-filter-note">
+                Filtering the current in-memory event window.
+              </div>
+            </div>
+
+            <div class="panel api-signals-privacy-panel">
+              <div class="panel-header">
+                <div>
+                  <div class="panel-title">What is and is not stored</div>
+                  <div class="panel-subtitle">Privacy model for this first API slice.</div>
+                </div>
+              </div>
+              <ul class="api-signals-privacy-list">
+                <li>Detection is metadata-only: operation/action, coarse context, counts, states, and safe hostnames where available.</li>
+                <li>No raw canvas output is stored.</li>
+                <li>No rendered text extraction is stored.</li>
+                <li>No SDP bodies are stored.</li>
+                <li>No ICE candidate strings are stored.</li>
+                <li>No IP addresses are stored.</li>
+              </ul>
+            </div>
+          </div>
+
+          <div class="panel api-signals-table-panel">
+            <div class="panel-header">
+              <div>
+                <div class="panel-title">API signal events</div>
+                <div id="apiSignalsResultsMeta" class="panel-subtitle">
+                  Waiting for API signal events from the local backend.
+                </div>
+              </div>
+            </div>
+            <div id="apiSignalsEmptyState" class="api-signals-empty hidden"></div>
+            <div class="scroll api-signals-table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Time</th>
+                    <th>Site</th>
+                    <th>surfaceDetail</th>
+                    <th>patternId</th>
+                    <th>signalType</th>
+                    <th>confidence</th>
+                    <th>Details</th>
+                  </tr>
+                </thead>
+                <tbody id="apiSignalsTableBody"></tbody>
+              </table>
+            </div>
+          </div>
+        </section>
+      </main>
+
 
 
       <footer>
@@ -385,6 +511,7 @@
   <script type="module" src="app/features/sites.js"></script>
   <script type="module" src="app/features/events.js"></script>
   <script type="module" src="app/features/cookies.js"></script>
+  <script type="module" src="app/features/api-signals.js"></script>
   <script src="app/state.js" defer></script>
   <script src="dashboard.js" defer></script>
 

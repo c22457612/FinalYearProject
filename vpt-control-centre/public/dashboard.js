@@ -124,6 +124,7 @@ async function fetchAndRender() {
     // refresh details panel so status + button reflect current trust state
     window.VPT?.features?.events?.renderEventDetails?.(selectedEvent, { trustedSites });
     window.VPT?.features?.cookies?.renderCookiesView?.(events); //modularised cookie render
+    window.VPT?.features?.apiSignals?.renderApiSignalsView?.(events);
   } catch (err) {
     console.error("fetch error", err);
     statusEl.textContent = "Backend unavailable – is server.js running?";
@@ -166,6 +167,9 @@ window.addEventListener("load", () => {
   window.VPT?.features?.cookies?.initCookiesFeature?.({
     getLatestEvents: () => latestEvents
   });
+  window.VPT?.features?.apiSignals?.initApiSignalsFeature?.({
+    getLatestEvents: () => latestEvents
+  });
 
 
   // set correct disabled state on page load
@@ -190,15 +194,17 @@ window.addEventListener("load", () => {
   const homeView = document.getElementById("view-home");
   const sitesView = document.getElementById("view-sites");
   const cookiesView = document.getElementById("view-cookies");
+  const apiSignalsView = document.getElementById("view-api-signals");
   const navItems = document.querySelectorAll(".nav-item[data-view]");
 
   function switchView(view) {
-    if (!homeView || !cookiesView || !sitesView) return;
+    if (!homeView || !cookiesView || !sitesView || !apiSignalsView) return;
 
     // hide all
     homeView.classList.add("hidden");
     cookiesView.classList.add("hidden");
     sitesView.classList.add("hidden");
+    apiSignalsView.classList.add("hidden");
 
     // show chosen view
     if (view === "cookies") {
@@ -206,6 +212,9 @@ window.addEventListener("load", () => {
       window.VPT?.features?.cookies?.renderCookiesView?.(latestEvents);
     } else if (view === "sites") {
       sitesView.classList.remove("hidden");
+    } else if (view === "api-signals") {
+      apiSignalsView.classList.remove("hidden");
+      window.VPT?.features?.apiSignals?.renderApiSignalsView?.(latestEvents);
     } else {
       homeView.classList.remove("hidden");
       view = "home";
@@ -227,7 +236,7 @@ window.addEventListener("load", () => {
   function resolveInitialView() {
     const params = new URLSearchParams(window.location.search);
     const requested = String(params.get("view") || "").trim().toLowerCase();
-    if (requested === "sites" || requested === "cookies" || requested === "home") {
+    if (requested === "sites" || requested === "cookies" || requested === "api-signals" || requested === "home") {
       return requested;
     }
     return "home";
