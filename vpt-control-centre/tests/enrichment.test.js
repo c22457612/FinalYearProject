@@ -116,7 +116,7 @@ test("cookies.snapshot first-party only maps to baseline aggregate", () => {
   assert.equal(row.isThirdParty, 0);
 });
 
-test("api.canvas metadata maps to api/canvas fingerprinting semantics", () => {
+test("api.canvas repeated readback uses canonical backend pattern even with provisional raw labels", () => {
   const ev = {
     id: "evt-api-canvas-1",
     ts: 1700000004000,
@@ -134,7 +134,7 @@ test("api.canvas metadata maps to api/canvas fingerprinting semantics", () => {
       sampleWindowMs: 1200,
       surface: "api",
       surfaceDetail: "canvas",
-      signalType: "fingerprinting_signal",
+      signalType: "capability_probe",
       mitigationStatus: "observed_only",
       privacyStatus: "signal_detected",
       patternId: "api.canvas.toDataURL",
@@ -148,8 +148,8 @@ test("api.canvas metadata maps to api/canvas fingerprinting semantics", () => {
   assert.equal(row.privacyStatus, "signal_detected");
   assert.equal(row.mitigationStatus, "observed_only");
   assert.equal(row.signalType, "fingerprinting_signal");
-  assert.equal(row.patternId, "api.canvas.toDataURL");
-  assert.equal(row.confidence, 0.94);
+  assert.equal(row.patternId, "api.canvas.repeated_readback");
+  assert.equal(row.confidence, 0.96);
 
   const rawContext = JSON.parse(row.rawContext);
   assert.equal(rawContext.operation, "toDataURL");
@@ -157,7 +157,7 @@ test("api.canvas metadata maps to api/canvas fingerprinting semantics", () => {
   assert.equal(rawContext.burstMs, 900);
 });
 
-test("api.canvas infers contract classification when raw event omits pattern and confidence fields", () => {
+test("api.canvas infers repeated readback from burst metadata when raw event omits classification fields", () => {
   const ev = {
     id: "evt-api-canvas-derived-1",
     ts: 1700000004500,
@@ -180,11 +180,87 @@ test("api.canvas infers contract classification when raw event omits pattern and
   assert.equal(row.surface, "api");
   assert.equal(row.surfaceDetail, "canvas");
   assert.equal(row.signalType, "fingerprinting_signal");
-  assert.equal(row.patternId, "api.canvas.getImageData");
+  assert.equal(row.patternId, "api.canvas.repeated_readback");
+  assert.equal(row.confidence, 0.96);
+});
+
+test("api.canvas infers single readback from metadata when no burst is present", () => {
+  const ev = {
+    id: "evt-api-canvas-derived-2",
+    ts: 1700000004750,
+    site: "fp.example.com",
+    kind: "api.canvas.activity",
+    mode: "moderate",
+    source: "extension",
+    data: {
+      operation: "getImageData",
+      contextType: "2d",
+      width: 300,
+      height: 150,
+      count: 1,
+      burstMs: 0,
+      sampleWindowMs: 1200,
+    },
+  };
+
+  const row = buildEnrichmentRecord(ev, ev.site);
+  assert.equal(row.surface, "api");
+  assert.equal(row.surfaceDetail, "canvas");
+  assert.equal(row.signalType, "fingerprinting_signal");
+  assert.equal(row.patternId, "api.canvas.readback");
   assert.equal(row.confidence, 0.95);
 });
 
-test("api.webrtc metadata maps to api/webrtc probe semantics without candidate strings", () => {
+test("api.webrtc peer connection setup stays a capability probe", () => {
+  const ev = {
+    id: "evt-api-webrtc-setup-1",
+    ts: 1700000004900,
+    site: "rtc.example.com",
+    kind: "api.webrtc.activity",
+    mode: "moderate",
+    source: "extension",
+    data: {
+      action: "peer_connection_created",
+      count: 1,
+      burstMs: 0,
+      sampleWindowMs: 1200,
+    },
+  };
+
+  const row = buildEnrichmentRecord(ev, ev.site);
+  assert.equal(row.surface, "api");
+  assert.equal(row.surfaceDetail, "webrtc");
+  assert.equal(row.signalType, "capability_probe");
+  assert.equal(row.patternId, "api.webrtc.peer_connection_setup");
+  assert.equal(row.confidence, 0.84);
+});
+
+test("api.webrtc offer flow maps to offer probe without ICE metadata", () => {
+  const ev = {
+    id: "evt-api-webrtc-offer-1",
+    ts: 1700000004950,
+    site: "rtc.example.com",
+    kind: "api.webrtc.activity",
+    mode: "moderate",
+    source: "extension",
+    data: {
+      action: "set_local_description_offer",
+      offerType: "offer",
+      count: 1,
+      burstMs: 50,
+      sampleWindowMs: 1200,
+    },
+  };
+
+  const row = buildEnrichmentRecord(ev, ev.site);
+  assert.equal(row.surface, "api");
+  assert.equal(row.surfaceDetail, "webrtc");
+  assert.equal(row.signalType, "device_probe");
+  assert.equal(row.patternId, "api.webrtc.offer_probe");
+  assert.equal(row.confidence, 0.95);
+});
+
+test("api.webrtc metadata maps to canonical STUN/TURN-assisted probe semantics without candidate strings", () => {
   const ev = {
     id: "evt-api-webrtc-1",
     ts: 1700000005000,
@@ -202,7 +278,7 @@ test("api.webrtc metadata maps to api/webrtc probe semantics without candidate s
       sampleWindowMs: 1200,
       surface: "api",
       surfaceDetail: "webrtc",
-      signalType: "device_probe",
+      signalType: "capability_probe",
       mitigationStatus: "observed_only",
       privacyStatus: "signal_detected",
       patternId: "api.webrtc.ice_candidate_activity",
@@ -216,8 +292,8 @@ test("api.webrtc metadata maps to api/webrtc probe semantics without candidate s
   assert.equal(row.privacyStatus, "signal_detected");
   assert.equal(row.mitigationStatus, "observed_only");
   assert.equal(row.signalType, "device_probe");
-  assert.equal(row.patternId, "api.webrtc.ice_candidate_activity");
-  assert.equal(row.confidence, 0.93);
+  assert.equal(row.patternId, "api.webrtc.stun_turn_assisted_probe");
+  assert.equal(row.confidence, 0.96);
   assert.equal(row.requestDomain, "stun.l.google.com");
   assert.equal(row.vendorId, "google");
 
@@ -228,7 +304,7 @@ test("api.webrtc metadata maps to api/webrtc probe semantics without candidate s
   assert.equal("candidate" in rawContext, false);
 });
 
-test("api.webrtc infers contract classification when raw event omits pattern and confidence fields", () => {
+test("api.webrtc infers ICE probe classification from metadata when safe hostnames are absent", () => {
   const ev = {
     id: "evt-api-webrtc-derived-1",
     ts: 1700000005500,
@@ -240,7 +316,6 @@ test("api.webrtc infers contract classification when raw event omits pattern and
       action: "ice_candidate_activity",
       state: "candidate",
       candidateType: "srflx",
-      stunTurnHostnames: ["stun.l.google.com"],
       count: 1,
       burstMs: 0,
       sampleWindowMs: 1200,
@@ -251,7 +326,7 @@ test("api.webrtc infers contract classification when raw event omits pattern and
   assert.equal(row.surface, "api");
   assert.equal(row.surfaceDetail, "webrtc");
   assert.equal(row.signalType, "device_probe");
-  assert.equal(row.patternId, "api.webrtc.ice_candidate_activity");
+  assert.equal(row.patternId, "api.webrtc.ice_probe");
   assert.equal(row.confidence, 0.93);
-  assert.equal(row.requestDomain, "stun.l.google.com");
+  assert.equal(row.requestDomain, null);
 });

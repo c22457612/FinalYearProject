@@ -410,67 +410,115 @@ function deriveApiSurfaceDetail(kind, data = {}) {
   return "unknown";
 }
 
-function inferApiSignalType(surfaceDetail, data = {}) {
-  if (surfaceDetail === "canvas") return "fingerprinting_signal";
-  if (surfaceDetail === "webrtc") {
-    const action = String(data.action || "").toLowerCase();
-    if (
-      action === "create_offer_called"
-      || action === "offer_created"
-      || action === "set_local_description_offer"
-      || action === "ice_gathering_state"
-      || action === "ice_candidate_activity"
-    ) {
-      return "device_probe";
+const WEBRTC_SETUP_ACTIONS = new Set([
+  "peer_connection_created",
+  "set_configuration",
+]);
+
+const WEBRTC_OFFER_ACTIONS = new Set([
+  "create_offer_called",
+  "offer_created",
+  "set_local_description_offer",
+]);
+
+const WEBRTC_ICE_ACTIONS = new Set([
+  "ice_gathering_state",
+  "ice_candidate_activity",
+]);
+
+function normalizeApiToken(value) {
+  return String(value || "").trim().toLowerCase();
+}
+
+function deriveApiClassification(kind, surfaceDetail, data = {}, stunTurnHostnames = []) {
+  if (surfaceDetail === "canvas") {
+    const operation = normalizeApiToken(data.operation);
+    const burstCount = Math.max(1, Math.floor(toSafeNumber(data.count, 1)));
+    const repeatedReadback = burstCount >= 2;
+
+    let confidence = 0.91;
+    if (operation === "readpixels") confidence = 0.97;
+    else if (operation === "getimagedata") confidence = 0.95;
+    else if (operation === "todataurl" || operation === "toblob") confidence = 0.94;
+
+    if (repeatedReadback) {
+      confidence = Math.max(confidence, 0.96);
     }
-    return "capability_probe";
-  }
-  return "capability_probe";
-}
 
-function inferApiPatternId(kind, surfaceDetail, data = {}) {
-  if (data.patternId) return String(data.patternId);
-  if (surfaceDetail === "canvas") {
-    const operation = String(data.operation || "").trim();
-    if (operation) return `api.canvas.${operation}`;
-    return kind.includes("canvas") ? kind : "api.canvas.operation";
+    return {
+      signalType: "fingerprinting_signal",
+      patternId: repeatedReadback
+        ? "api.canvas.repeated_readback"
+        : "api.canvas.readback",
+      confidence,
+    };
   }
-  if (surfaceDetail === "webrtc") {
-    const action = String(data.action || "").trim();
-    if (action) return `api.webrtc.${action}`;
-    return kind.includes("webrtc") ? kind : "api.webrtc.action";
-  }
-  return kind.startsWith("api.") || kind.startsWith("browser_api.") ? kind : null;
-}
 
-function inferApiConfidence(surfaceDetail, data = {}) {
-  const fromData = toConfidence(data.confidence);
-  if (fromData !== null) return fromData;
-  if (surfaceDetail === "canvas") {
-    const operation = String(data.operation || "");
-    if (operation === "readPixels") return 0.97;
-    if (operation === "getImageData") return 0.95;
-    if (operation === "toDataURL" || operation === "toBlob") return 0.94;
-    return 0.9;
-  }
   if (surfaceDetail === "webrtc") {
-    const action = String(data.action || "");
-    if (action === "set_local_description_offer") return 0.95;
-    if (action === "offer_created" || action === "ice_candidate_activity") return 0.93;
-    if (action === "create_offer_called" || action === "ice_gathering_state") return 0.9;
-    if (action === "peer_connection_created") return 0.84;
-    return 0.88;
+    const action = normalizeApiToken(data.action);
+    const offerType = normalizeApiToken(data.offerType);
+    const state = normalizeApiToken(data.state);
+    const candidateType = normalizeApiToken(data.candidateType);
+    const hasStunTurnAssist = stunTurnHostnames.length > 0;
+    const looksLikeOfferProbe = WEBRTC_OFFER_ACTIONS.has(action) || offerType === "offer";
+    const looksLikeIceProbe = WEBRTC_ICE_ACTIONS.has(action)
+      || state === "gathering"
+      || state === "complete"
+      || state === "candidate"
+      || Boolean(candidateType);
+
+    if (hasStunTurnAssist && (looksLikeOfferProbe || looksLikeIceProbe)) {
+      return {
+        signalType: "device_probe",
+        patternId: "api.webrtc.stun_turn_assisted_probe",
+        confidence: looksLikeIceProbe ? 0.96 : 0.95,
+      };
+    }
+
+    if (looksLikeIceProbe) {
+      return {
+        signalType: "device_probe",
+        patternId: "api.webrtc.ice_probe",
+        confidence: action === "ice_candidate_activity" ? 0.93 : 0.9,
+      };
+    }
+
+    if (looksLikeOfferProbe) {
+      let confidence = 0.9;
+      if (action === "set_local_description_offer") confidence = 0.95;
+      else if (action === "offer_created") confidence = 0.93;
+
+      return {
+        signalType: "device_probe",
+        patternId: "api.webrtc.offer_probe",
+        confidence,
+      };
+    }
+
+    if (WEBRTC_SETUP_ACTIONS.has(action)) {
+      return {
+        signalType: "capability_probe",
+        patternId: "api.webrtc.peer_connection_setup",
+        confidence: action === "set_configuration" ? 0.86 : 0.84,
+      };
+    }
+
+    return {
+      signalType: "capability_probe",
+      patternId: "api.webrtc.peer_connection_setup",
+      confidence: 0.82,
+    };
   }
-  return 0.75;
+
+  return {
+    signalType: "capability_probe",
+    patternId: kind.startsWith("api.") || kind.startsWith("browser_api.") ? kind : null,
+    confidence: 0.75,
+  };
 }
 
 function buildApiEnrichment(ev, site, data, kind) {
   const surfaceDetail = deriveApiSurfaceDetail(kind, data);
-  const signalType = pickAllowedString(
-    data.signalType,
-    SIGNAL_TYPE_VALUES,
-    inferApiSignalType(surfaceDetail, data)
-  );
   const mitigationStatus = pickAllowedString(
     data.mitigationStatus,
     MITIGATION_STATUS_VALUES,
@@ -488,8 +536,6 @@ function buildApiEnrichment(ev, site, data, kind) {
     PRIVACY_STATUS_VALUES,
     defaultPrivacyStatus
   );
-  const patternId = inferApiPatternId(kind, surfaceDetail, data);
-  const confidence = inferApiConfidence(surfaceDetail, data);
   const stunHost = Array.isArray(data.stunTurnHostnames) ? data.stunTurnHostnames[0] : "";
   const requestDomain = normalizeHost(data.domain || data.url || stunHost || "");
   const vendor = requestDomain ? classifyDomain(requestDomain) : {
@@ -510,6 +556,12 @@ function buildApiEnrichment(ev, site, data, kind) {
   const stunTurnHostnames = Array.isArray(data.stunTurnHostnames)
     ? data.stunTurnHostnames.map((h) => normalizeHost(h)).filter(Boolean).slice(0, 8)
     : [];
+  const { signalType, patternId, confidence } = deriveApiClassification(
+    kind,
+    surfaceDetail,
+    data,
+    stunTurnHostnames
+  );
 
   return {
     enrichedTs: Number(ev?.ts) || Date.now(),
