@@ -3,6 +3,12 @@
 const { initDb } = require("../db");
 const { buildEnrichmentRecord } = require("../enrichment");
 
+function isLegacyApiSurfaceConstraintError(err) {
+  if (!err) return false;
+  const message = String(err.message || "").toLowerCase();
+  return message.includes("check constraint failed") && message.includes("surface");
+}
+
 function parseArgs(argv) {
   const args = {
     force: false,
@@ -37,6 +43,89 @@ function toEventShape(row) {
   if (!ev.site) ev.site = row.site || ev.data?.siteBase || "unknown";
 
   return ev;
+}
+
+async function upsertEnrichmentRow(dbCtx, row, enrich) {
+  const params = [
+    row.pk,
+    row.event_id,
+    enrich.enrichedTs,
+    enrich.enrichmentVersion,
+    enrich.surface,
+    enrich.surfaceDetail,
+    enrich.privacyStatus,
+    enrich.mitigationStatus,
+    enrich.signalType,
+    enrich.patternId,
+    enrich.confidence,
+    enrich.vendorId,
+    enrich.vendorName,
+    enrich.vendorFamily,
+    enrich.requestDomain,
+    enrich.requestUrl,
+    enrich.firstPartySite,
+    enrich.isThirdParty,
+    enrich.ruleId,
+    enrich.rawContext,
+  ];
+
+  const sql = `
+    INSERT INTO event_enrichment (
+      event_pk,
+      event_id,
+      enriched_ts,
+      enrichment_version,
+      surface,
+      surface_detail,
+      privacy_status,
+      mitigation_status,
+      signal_type,
+      pattern_id,
+      confidence,
+      vendor_id,
+      vendor_name,
+      vendor_family,
+      request_domain,
+      request_url,
+      first_party_site,
+      is_third_party,
+      rule_id,
+      raw_context
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ON CONFLICT(event_pk) DO UPDATE SET
+      event_id = excluded.event_id,
+      enriched_ts = excluded.enriched_ts,
+      enrichment_version = excluded.enrichment_version,
+      surface = excluded.surface,
+      surface_detail = excluded.surface_detail,
+      privacy_status = excluded.privacy_status,
+      mitigation_status = excluded.mitigation_status,
+      signal_type = excluded.signal_type,
+      pattern_id = excluded.pattern_id,
+      confidence = excluded.confidence,
+      vendor_id = excluded.vendor_id,
+      vendor_name = excluded.vendor_name,
+      vendor_family = excluded.vendor_family,
+      request_domain = excluded.request_domain,
+      request_url = excluded.request_url,
+      first_party_site = excluded.first_party_site,
+      is_third_party = excluded.is_third_party,
+      rule_id = excluded.rule_id,
+      raw_context = excluded.raw_context
+  `;
+
+  try {
+    await dbCtx.run(sql, params);
+  } catch (err) {
+    if (!(enrich.surface === "api" && isLegacyApiSurfaceConstraintError(err))) {
+      throw err;
+    }
+
+    const legacyParams = [...params];
+    // surface is the fifth parameter in the insert values list.
+    legacyParams[4] = "browser_api";
+    await dbCtx.run(sql, legacyParams);
+  }
 }
 
 async function run() {
@@ -88,74 +177,7 @@ async function run() {
       }
 
       if (!args.dryRun) {
-        await dbCtx.run(
-          `
-            INSERT INTO event_enrichment (
-              event_pk,
-              event_id,
-              enriched_ts,
-              enrichment_version,
-              surface,
-              surface_detail,
-              privacy_status,
-              mitigation_status,
-              signal_type,
-              pattern_id,
-              confidence,
-              vendor_id,
-              vendor_name,
-              vendor_family,
-              request_domain,
-              request_url,
-              first_party_site,
-              is_third_party,
-              rule_id,
-              raw_context
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            ON CONFLICT(event_pk) DO UPDATE SET
-              event_id = excluded.event_id,
-              enriched_ts = excluded.enriched_ts,
-              enrichment_version = excluded.enrichment_version,
-              surface = excluded.surface,
-              surface_detail = excluded.surface_detail,
-              privacy_status = excluded.privacy_status,
-              mitigation_status = excluded.mitigation_status,
-              signal_type = excluded.signal_type,
-              pattern_id = excluded.pattern_id,
-              confidence = excluded.confidence,
-              vendor_id = excluded.vendor_id,
-              vendor_name = excluded.vendor_name,
-              vendor_family = excluded.vendor_family,
-              request_domain = excluded.request_domain,
-              request_url = excluded.request_url,
-              first_party_site = excluded.first_party_site,
-              is_third_party = excluded.is_third_party,
-              rule_id = excluded.rule_id,
-              raw_context = excluded.raw_context
-          `,
-          [
-            row.pk,
-            row.event_id,
-            enrich.enrichedTs,
-            enrich.enrichmentVersion,
-            enrich.surface,
-            enrich.surfaceDetail,
-            enrich.privacyStatus,
-            enrich.mitigationStatus,
-            enrich.signalType,
-            enrich.patternId,
-            enrich.confidence,
-            enrich.vendorId,
-            enrich.vendorName,
-            enrich.vendorFamily,
-            enrich.requestDomain,
-            enrich.requestUrl,
-            enrich.firstPartySite,
-            enrich.isThirdParty,
-            enrich.ruleId,
-            enrich.rawContext,
-          ]
-        );
+        await upsertEnrichmentRow(dbCtx, row, enrich);
       }
 
       upserted += 1;
@@ -181,7 +203,15 @@ async function run() {
   }
 }
 
-run().catch((err) => {
-  console.error("Backfill failed:", err);
-  process.exit(1);
-});
+if (require.main === module) {
+  run().catch((err) => {
+    console.error("Backfill failed:", err);
+    process.exit(1);
+  });
+}
+
+module.exports = {
+  isLegacyApiSurfaceConstraintError,
+  parseArgs,
+  upsertEnrichmentRow,
+};
