@@ -198,6 +198,8 @@ function isThirdParty(initiator, requestUrl) {
 }
 
 const API_CANVAS_OPERATIONS = new Set(["getImageData", "toDataURL", "toBlob", "readPixels"]);
+const API_GATE_ACTIONS = new Set(["observe", "warn", "block", "allow_trusted"]);
+const API_CANVAS_GATE_OUTCOMES = new Set(["observed", "warned", "blocked", "trusted_allowed"]);
 const API_WEBRTC_ACTIONS = new Set([
   "peer_connection_created",
   "create_offer_called",
@@ -226,6 +228,18 @@ function asSafeString(value, maxLen = 80) {
   const trimmed = value.trim();
   if (!trimmed) return null;
   return trimmed.slice(0, maxLen);
+}
+
+function normalizeApiGateAction(value) {
+  const next = asSafeString(value, 32);
+  return next && API_GATE_ACTIONS.has(next) ? next : "observe";
+}
+
+function sanitizeApiGatePolicy(policy) {
+  const source = policy && typeof policy === "object" ? policy : {};
+  return {
+    canvas: normalizeApiGateAction(source.canvas),
+  };
 }
 
 function isIpv4(host) {
@@ -259,17 +273,27 @@ function sanitizeHostnames(values) {
   return out;
 }
 
-function getCanvasDefaults(operation) {
+function getCanvasDefaults(operation, gateOutcome = "observed") {
   const op = String(operation || "");
   let confidence = 0.9;
   if (op === "readPixels") confidence = 0.97;
   else if (op === "getImageData") confidence = 0.95;
   else if (op === "toDataURL" || op === "toBlob") confidence = 0.94;
 
+  let privacyStatus = "signal_detected";
+  let mitigationStatus = "observed_only";
+  if (gateOutcome === "blocked") {
+    privacyStatus = "policy_blocked";
+    mitigationStatus = "blocked";
+  } else if (gateOutcome === "trusted_allowed") {
+    privacyStatus = "policy_allowed";
+    mitigationStatus = "allowed";
+  }
+
   return {
     signalType: "fingerprinting_signal",
-    privacyStatus: "signal_detected",
-    mitigationStatus: "observed_only",
+    privacyStatus,
+    mitigationStatus,
     patternId: `api.canvas.${op || "operation"}`,
     confidence,
   };
@@ -308,6 +332,10 @@ function sanitizeCanvasSignal(data) {
   if (!data || typeof data !== "object") return null;
   const operation = asSafeString(data.operation, 32);
   if (!operation || !API_CANVAS_OPERATIONS.has(operation)) return null;
+  const gateOutcomeRaw = asSafeString(data.gateOutcome, 32);
+  const gateOutcome = gateOutcomeRaw && API_CANVAS_GATE_OUTCOMES.has(gateOutcomeRaw)
+    ? gateOutcomeRaw
+    : "observed";
 
   const contextTypeRaw = asSafeString(data.contextType, 32) || "unknown";
   const contextType = API_CONTEXT_TYPES.has(contextTypeRaw) ? contextTypeRaw : "unknown";
@@ -322,8 +350,12 @@ function sanitizeCanvasSignal(data) {
     count: asSafeInt(data.count, 1, API_MAX_COUNT) || 1,
     burstMs: asSafeInt(data.burstMs, 0, API_MAX_BURST_MS) || 0,
     sampleWindowMs: asSafeInt(data.sampleWindowMs, 100, API_MAX_BURST_MS) || 1200,
+    gateOutcome,
+    gateAction: normalizeApiGateAction(data.gateAction),
+    trustedSite: typeof data.trustedSite === "boolean" ? data.trustedSite : undefined,
+    frameScope: asSafeString(data.frameScope, 32) === "top_frame" ? "top_frame" : "top_frame",
     siteBase: asSafeString(data.siteBase, 128) || undefined,
-    ...getCanvasDefaults(operation),
+    ...getCanvasDefaults(operation, gateOutcome),
   };
 }
 
@@ -444,6 +476,11 @@ async function loadCustomFilters() {
   customFilters = Array.isArray(stored) ? stored : [];
 }
 
+async function loadApiGatePolicy() {
+  const { apiGatePolicy } = await chrome.storage.local.get("apiGatePolicy");
+  await chrome.storage.local.set({ apiGatePolicy: sanitizeApiGatePolicy(apiGatePolicy) });
+}
+
 async function applyPolicy(policy) {
   if (!policy || typeof policy !== "object") return;
   const { op, payload = {} } = policy;
@@ -476,6 +513,18 @@ async function applyPolicy(policy) {
       const set = new Set(stored);
       set.add(domain);
       await chrome.storage.local.set({ customFilters: [...set] });
+      break;
+    }
+
+    case "set_api_policy":
+    case "set_api_surface_policy": {
+      const surface = asSafeString(payload.surface, 32);
+      if (surface !== "canvas") break;
+      const action = normalizeApiGateAction(payload.action);
+      const { apiGatePolicy } = await chrome.storage.local.get("apiGatePolicy");
+      const nextPolicy = sanitizeApiGatePolicy(apiGatePolicy);
+      nextPolicy.canvas = action;
+      await chrome.storage.local.set({ apiGatePolicy: nextPolicy });
       break;
     }
 
@@ -562,6 +611,7 @@ async function endPreview() {
 async function init() {
   await loadTrustAndPromptFlag();
   await loadCustomFilters(); 
+  await loadApiGatePolicy();
   setInterval(pollPolicies, 10000); // poll every 10s
   const { privacyMode, notifyEnabled: storedNotify } = await chrome.storage.local.get([
     "privacyMode",

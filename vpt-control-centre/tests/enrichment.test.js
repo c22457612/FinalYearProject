@@ -211,6 +211,97 @@ test("api.canvas infers single readback from metadata when no burst is present",
   assert.equal(row.confidence, 0.95);
 });
 
+test("api.canvas warned outcome stays observed_only but preserves raw gate metadata", () => {
+  const ev = {
+    id: "evt-api-canvas-warn-1",
+    ts: 1700000004800,
+    site: "fp.example.com",
+    kind: "api.canvas.activity",
+    mode: "moderate",
+    source: "extension",
+    data: {
+      operation: "toDataURL",
+      contextType: "2d",
+      width: 300,
+      height: 150,
+      count: 1,
+      burstMs: 0,
+      sampleWindowMs: 1200,
+      gateOutcome: "warned",
+      gateAction: "warn",
+      trustedSite: false,
+      frameScope: "top_frame",
+    },
+  };
+
+  const row = buildEnrichmentRecord(ev, ev.site);
+  assert.equal(row.privacyStatus, "signal_detected");
+  assert.equal(row.mitigationStatus, "observed_only");
+  assert.equal(row.patternId, "api.canvas.readback");
+
+  const rawContext = JSON.parse(row.rawContext);
+  assert.equal(rawContext.gateOutcome, "warned");
+  assert.equal(rawContext.gateAction, "warn");
+  assert.equal(rawContext.trustedSite, false);
+  assert.equal(rawContext.frameScope, "top_frame");
+});
+
+test("api.canvas blocked outcome maps to policy_blocked", () => {
+  const ev = {
+    id: "evt-api-canvas-block-1",
+    ts: 1700000004850,
+    site: "fp.example.com",
+    kind: "api.canvas.activity",
+    mode: "moderate",
+    source: "extension",
+    data: {
+      operation: "getImageData",
+      contextType: "2d",
+      width: 300,
+      height: 150,
+      count: 1,
+      burstMs: 0,
+      sampleWindowMs: 1200,
+      gateOutcome: "blocked",
+      gateAction: "block",
+      trustedSite: false,
+      frameScope: "top_frame",
+    },
+  };
+
+  const row = buildEnrichmentRecord(ev, ev.site);
+  assert.equal(row.privacyStatus, "policy_blocked");
+  assert.equal(row.mitigationStatus, "blocked");
+});
+
+test("api.canvas trusted-site allowed outcome maps to policy_allowed", () => {
+  const ev = {
+    id: "evt-api-canvas-trusted-1",
+    ts: 1700000004875,
+    site: "fp.example.com",
+    kind: "api.canvas.activity",
+    mode: "moderate",
+    source: "extension",
+    data: {
+      operation: "toBlob",
+      contextType: "2d",
+      width: 300,
+      height: 150,
+      count: 1,
+      burstMs: 0,
+      sampleWindowMs: 1200,
+      gateOutcome: "trusted_allowed",
+      gateAction: "allow_trusted",
+      trustedSite: true,
+      frameScope: "top_frame",
+    },
+  };
+
+  const row = buildEnrichmentRecord(ev, ev.site);
+  assert.equal(row.privacyStatus, "policy_allowed");
+  assert.equal(row.mitigationStatus, "allowed");
+});
+
 test("api.webrtc peer connection setup stays a capability probe", () => {
   const ev = {
     id: "evt-api-webrtc-setup-1",

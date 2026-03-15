@@ -310,3 +310,134 @@ test("network/cookies paths remain intact when api canvas+webrtc events are inge
     assert.equal(webrtcEv.data?.confidence, 0.93);
   });
 });
+
+test("canvas gate outcomes round-trip through events API with stable enrichment mapping", async () => {
+  await withTempApiServer(async ({ baseUrl }) => {
+    const site = "canvas-gate.example.com";
+    const ts = Date.UTC(2026, 2, 15, 10, 0, 0);
+    const events = [
+      {
+        id: "canvas-gate-observed-1",
+        ts,
+        source: "test-extension",
+        site,
+        kind: "api.canvas.activity",
+        mode: "moderate",
+        data: {
+          surface: "api",
+          surfaceDetail: "canvas",
+          operation: "getImageData",
+          contextType: "2d",
+          width: 300,
+          height: 150,
+          count: 1,
+          burstMs: 0,
+          sampleWindowMs: 1200,
+          gateOutcome: "observed",
+          gateAction: "observe",
+          trustedSite: false,
+          frameScope: "top_frame",
+        },
+      },
+      {
+        id: "canvas-gate-warned-1",
+        ts: ts + 1000,
+        source: "test-extension",
+        site,
+        kind: "api.canvas.activity",
+        mode: "moderate",
+        data: {
+          surface: "api",
+          surfaceDetail: "canvas",
+          operation: "toDataURL",
+          contextType: "2d",
+          width: 300,
+          height: 150,
+          count: 1,
+          burstMs: 0,
+          sampleWindowMs: 1200,
+          gateOutcome: "warned",
+          gateAction: "warn",
+          trustedSite: false,
+          frameScope: "top_frame",
+        },
+      },
+      {
+        id: "canvas-gate-blocked-1",
+        ts: ts + 2000,
+        source: "test-extension",
+        site,
+        kind: "api.canvas.activity",
+        mode: "moderate",
+        data: {
+          surface: "api",
+          surfaceDetail: "canvas",
+          operation: "readPixels",
+          contextType: "webgl",
+          width: 256,
+          height: 256,
+          count: 1,
+          burstMs: 0,
+          sampleWindowMs: 1200,
+          gateOutcome: "blocked",
+          gateAction: "block",
+          trustedSite: false,
+          frameScope: "top_frame",
+        },
+      },
+      {
+        id: "canvas-gate-trusted-1",
+        ts: ts + 3000,
+        source: "test-extension",
+        site,
+        kind: "api.canvas.activity",
+        mode: "moderate",
+        data: {
+          surface: "api",
+          surfaceDetail: "canvas",
+          operation: "toBlob",
+          contextType: "2d",
+          width: 300,
+          height: 150,
+          count: 1,
+          burstMs: 0,
+          sampleWindowMs: 1200,
+          gateOutcome: "trusted_allowed",
+          gateAction: "allow_trusted",
+          trustedSite: true,
+          frameScope: "top_frame",
+        },
+      },
+    ];
+
+    const postResponse = await fetch(`${baseUrl}/api/events`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(events),
+    });
+    const postBodyText = await postResponse.text();
+    assert.equal(postResponse.status, 202, `Expected HTTP 202 from POST /api/events: ${postBodyText}`);
+
+    const saved = await getJson(`${baseUrl}/api/events?site=${encodeURIComponent(site)}&limit=50`);
+    assert.equal(saved.length, 4);
+
+    const byId = new Map(saved.map((event) => [event.id, event]));
+
+    assert.equal(byId.get("canvas-gate-observed-1")?.data?.gateOutcome, "observed");
+    assert.equal(byId.get("canvas-gate-observed-1")?.enrichment?.mitigationStatus, "observed_only");
+    assert.equal(byId.get("canvas-gate-observed-1")?.enrichment?.privacyStatus, "signal_detected");
+
+    assert.equal(byId.get("canvas-gate-warned-1")?.data?.gateOutcome, "warned");
+    assert.equal(byId.get("canvas-gate-warned-1")?.enrichment?.mitigationStatus, "observed_only");
+    assert.equal(byId.get("canvas-gate-warned-1")?.enrichment?.privacyStatus, "signal_detected");
+
+    assert.equal(byId.get("canvas-gate-blocked-1")?.data?.gateOutcome, "blocked");
+    assert.equal(byId.get("canvas-gate-blocked-1")?.enrichment?.mitigationStatus, "blocked");
+    assert.equal(byId.get("canvas-gate-blocked-1")?.enrichment?.privacyStatus, "policy_blocked");
+
+    assert.equal(byId.get("canvas-gate-trusted-1")?.data?.gateOutcome, "trusted_allowed");
+    assert.equal(byId.get("canvas-gate-trusted-1")?.enrichment?.mitigationStatus, "allowed");
+    assert.equal(byId.get("canvas-gate-trusted-1")?.enrichment?.privacyStatus, "policy_allowed");
+    assert.equal(byId.get("canvas-gate-trusted-1")?.data?.frameScope, "top_frame");
+  });
+});

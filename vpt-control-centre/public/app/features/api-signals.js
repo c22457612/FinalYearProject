@@ -46,6 +46,13 @@ const SIGNAL_TYPE_LABELS = Object.freeze({
   unknown: "Unknown signal type",
 });
 
+const GATE_OUTCOME_LABELS = Object.freeze({
+  observed: "Observed",
+  warned: "Warned",
+  blocked: "Blocked",
+  trusted_allowed: "Trusted-site allowed",
+});
+
 const SURFACE_LABELS = Object.freeze({
   canvas: "Canvas",
   webrtc: "WebRTC",
@@ -115,6 +122,16 @@ function labelForSurface(value) {
 function labelForSignalType(value) {
   const key = normalizeValue(value, "unknown");
   return SIGNAL_TYPE_LABELS[key] || titleCaseToken(key);
+}
+
+function normalizeGateOutcome(value) {
+  const next = normalizeOptional(value);
+  return next || "observed";
+}
+
+function labelForGateOutcome(value) {
+  const key = normalizeGateOutcome(value);
+  return GATE_OUTCOME_LABELS[key] || titleCaseToken(key);
 }
 
 function friendlyPatternFallback(patternId) {
@@ -426,6 +443,14 @@ function createTypeBadge(value) {
   return span;
 }
 
+function createOutcomeBadge(value) {
+  const key = normalizeGateOutcome(value);
+  const span = document.createElement("span");
+  span.className = `api-signals-outcome-badge ${key}`;
+  span.textContent = labelForGateOutcome(key);
+  return span;
+}
+
 function createDetailBlock(label, value) {
   const block = document.createElement("div");
   block.className = "api-signals-event-block";
@@ -489,6 +514,7 @@ function renderEvents(filteredEvents) {
     const presentation = getPatternPresentation(event);
     const surfaceDetail = normalizeValue(event?.enrichment?.surfaceDetail || event?.data?.surfaceDetail, "unknown");
     const signalType = normalizeValue(event?.enrichment?.signalType, "unknown");
+    const gateOutcome = normalizeGateOutcome(event?.data?.gateOutcome);
     const site = normalizeValue(event.site, "unknown");
 
     const card = document.createElement("article");
@@ -529,6 +555,7 @@ function renderEvents(filteredEvents) {
     meta.appendChild(siteNode);
 
     meta.appendChild(createTypeBadge(signalType));
+    meta.appendChild(createOutcomeBadge(gateOutcome));
 
     const timeNode = document.createElement("span");
     timeNode.className = "api-signals-event-time";
@@ -548,6 +575,9 @@ function renderEvents(filteredEvents) {
     secondaryGrid.appendChild(createSecondaryField("Canonical pattern", createCodeCell(presentation.canonicalId)));
     secondaryGrid.appendChild(
       createSecondaryField("Backend signal type", createCodeCell(normalizeOptional(event?.enrichment?.signalType) || "unknown"))
+    );
+    secondaryGrid.appendChild(
+      createSecondaryField("Gate outcome", createCodeCell(gateOutcome))
     );
 
     if (!presentation.classified) {

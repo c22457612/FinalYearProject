@@ -2,7 +2,9 @@
   if (window.__vptApiSignalBridgeInstalled) return;
   window.__vptApiSignalBridgeInstalled = true;
 
+  const gateShared = globalThis.__VPTApiGateShared || null;
   const SOURCE_TAG = "vpt_api_signal";
+  const GATE_SOURCE_TAG = gateShared?.CONFIG_SOURCE_TAG || "vpt_api_gate";
   const CANVAS_OPS = new Set(["getImageData", "toDataURL", "toBlob", "readPixels"]);
   const WEBRTC_ACTIONS = new Set([
     "peer_connection_created",
@@ -18,6 +20,8 @@
   const MAX_BURST_MS = 60_000;
   const MAX_DIMENSION = 16_384;
   const MAX_HOSTNAMES = 8;
+  const CANVAS_GATE_OUTCOMES = new Set(gateShared?.CANVAS_GATE_OUTCOMES || ["observed", "warned", "blocked", "trusted_allowed"]);
+  const FRAME_SCOPES = new Set(["top_frame"]);
 
   function asSafeInt(value, min, max) {
     const n = Number(value);
@@ -52,10 +56,47 @@
   }
 
   function toBaseDomain(host) {
+    if (gateShared?.toBaseDomain) {
+      return gateShared.toBaseDomain(host) || null;
+    }
     const parts = String(host || "").toLowerCase().split(".").filter(Boolean);
     if (!parts.length) return null;
     if (parts.length <= 2) return parts.join(".");
     return parts.slice(-2).join(".");
+  }
+
+  function normalizeCanvasGateAction(value) {
+    if (gateShared?.normalizeCanvasGateAction) {
+      return gateShared.normalizeCanvasGateAction(value);
+    }
+    const next = asSafeString(value, 32);
+    return next === "warn" || next === "block" || next === "allow_trusted" ? next : "observe";
+  }
+
+  function postCanvasGateState(snapshot) {
+    if (!gateShared?.buildCanvasGateState) return;
+    const payload = gateShared.buildCanvasGateState({
+      apiGatePolicy: snapshot?.apiGatePolicy,
+      trusted: snapshot?.trusted,
+      hostname: window.location.hostname,
+    });
+    window.postMessage(
+      {
+        source: GATE_SOURCE_TAG,
+        type: "canvas_gate_state",
+        payload,
+      },
+      "*"
+    );
+  }
+
+  async function syncCanvasGateState() {
+    try {
+      const snapshot = await chrome.storage.local.get(["trusted", "apiGatePolicy"]);
+      postCanvasGateState(snapshot);
+    } catch {
+      // Ignore bridge sync failures; Canvas defaults remain observe-only.
+    }
   }
 
   function sanitizeCanvasSignal(payload) {
@@ -81,6 +122,14 @@
       count,
       burstMs,
       sampleWindowMs,
+      gateOutcome: CANVAS_GATE_OUTCOMES.has(asSafeString(payload.gateOutcome, 32) || "")
+        ? asSafeString(payload.gateOutcome, 32)
+        : "observed",
+      gateAction: normalizeCanvasGateAction(payload.gateAction),
+      trustedSite: typeof payload.trustedSite === "boolean" ? payload.trustedSite : undefined,
+      frameScope: FRAME_SCOPES.has(asSafeString(payload.frameScope, 32) || "")
+        ? asSafeString(payload.frameScope, 32)
+        : "top_frame",
       siteBase: toBaseDomain(window.location.hostname) || undefined,
     };
   }
@@ -127,6 +176,10 @@
     if (event.source !== window) return;
     const data = event.data;
     if (!data || typeof data !== "object") return;
+    if (data.source === GATE_SOURCE_TAG && data.type === "canvas_gate_state_request") {
+      syncCanvasGateState().catch(() => {});
+      return;
+    }
     if (data.source !== SOURCE_TAG) return;
 
     const kind = asSafeString(data.kind, 64);
@@ -138,4 +191,14 @@
       payload: { kind, data: payload },
     }).catch(() => {});
   });
+
+  if (chrome?.storage?.onChanged) {
+    chrome.storage.onChanged.addListener((changes, areaName) => {
+      if (areaName && areaName !== "local") return;
+      if (!changes || (!("trusted" in changes) && !("apiGatePolicy" in changes))) return;
+      syncCanvasGateState().catch(() => {});
+    });
+  }
+
+  syncCanvasGateState().catch(() => {});
 })();

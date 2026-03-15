@@ -253,6 +253,32 @@
   color: #fbcfe8;
 }
 
+.api-signals-outcome-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.18rem 0.5rem;
+  border-radius: 999px;
+  font-size: 0.75rem;
+  background: rgba(148, 163, 184, 0.14);
+  color: var(--color-text-main);
+}
+
+.api-signals-outcome-badge.observed,
+.api-signals-outcome-badge.warned {
+  background: rgba(245, 158, 11, 0.16);
+  color: #fde68a;
+}
+
+.api-signals-outcome-badge.blocked {
+  background: rgba(239, 68, 68, 0.18);
+  color: #fecaca;
+}
+
+.api-signals-outcome-badge.trusted_allowed {
+  background: rgba(16, 185, 129, 0.18);
+  color: #a7f3d0;
+}
+
 .api-signals-events-list {
   display: grid;
   gap: var(--space-sm);

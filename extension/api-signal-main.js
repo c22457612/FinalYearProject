@@ -2,15 +2,26 @@
   if (window.__vptApiSignalMainInstalled) return;
   window.__vptApiSignalMainInstalled = true;
 
+  const gateShared = globalThis.__VPTApiGateShared || null;
   const SOURCE_TAG = "vpt_api_signal";
+  const GATE_SOURCE_TAG = gateShared?.CONFIG_SOURCE_TAG || "vpt_api_gate";
   const BURST_WINDOW_MS = 1200;
   const BURST_FLUSH_COUNT = 10;
   const PATCHED_FLAG = "__vpt_api_patched";
   const MAX_HOSTNAMES = 8;
+  const WARN_THROTTLE_MS = 5000;
 
   const burstMap = new Map(); // key -> { kind, payload, count, firstTs, lastTs, timerId }
   const canvasContextByElement = new WeakMap(); // canvas -> context type
   const webrtcMeta = new WeakMap(); // pc -> { stunTurnHostnames:Set<string> }
+  const canvasWarnMap = new Map(); // key -> lastWarnTs
+  const canvasGateState = {
+    canvasAction: "observe",
+    trustedSite: false,
+    siteBase: "",
+    frameScope: "top_frame",
+    ready: false,
+  };
 
   function postSignal(kind, payload) {
     window.postMessage(
@@ -39,6 +50,55 @@
     if (value === "bitmaprenderer") return "bitmaprenderer";
     if (value === "webgpu") return "webgpu";
     return "unknown";
+  }
+
+  function normalizeCanvasGateAction(value) {
+    if (gateShared?.normalizeCanvasGateAction) {
+      return gateShared.normalizeCanvasGateAction(value);
+    }
+    const next = String(value || "").trim().toLowerCase();
+    return next === "warn" || next === "block" || next === "allow_trusted" ? next : "observe";
+  }
+
+  function getCanvasGateDecision() {
+    if (gateShared?.deriveCanvasGateDecision) {
+      return gateShared.deriveCanvasGateDecision(
+        canvasGateState.canvasAction,
+        canvasGateState.trustedSite
+      );
+    }
+    const policyAction = normalizeCanvasGateAction(canvasGateState.canvasAction);
+    if (policyAction === "warn") {
+      return { policyAction, gateOutcome: "warned", shouldBlock: false };
+    }
+    if (policyAction === "block") {
+      return { policyAction, gateOutcome: "blocked", shouldBlock: true };
+    }
+    if (policyAction === "allow_trusted") {
+      return canvasGateState.trustedSite
+        ? { policyAction, gateOutcome: "trusted_allowed", shouldBlock: false }
+        : { policyAction, gateOutcome: "blocked", shouldBlock: true };
+    }
+    return { policyAction, gateOutcome: "observed", shouldBlock: false };
+  }
+
+  function applyCanvasGateState(payload) {
+    if (!payload || typeof payload !== "object") return;
+    canvasGateState.canvasAction = normalizeCanvasGateAction(payload.canvasAction);
+    canvasGateState.trustedSite = payload.trustedSite === true;
+    canvasGateState.siteBase = String(payload.siteBase || "").trim().toLowerCase();
+    canvasGateState.frameScope = payload.frameScope === "top_frame" ? "top_frame" : "top_frame";
+    canvasGateState.ready = true;
+  }
+
+  function requestCanvasGateState() {
+    window.postMessage(
+      {
+        source: GATE_SOURCE_TAG,
+        type: "canvas_gate_state_request",
+      },
+      "*"
+    );
   }
 
   function isIpv4(host) {
@@ -155,20 +215,94 @@
   }
 
   function recordCanvasSignal(operation, contextType, width, height) {
+    const decision = getCanvasGateDecision();
     const payload = {
       operation,
       contextType,
       width: toPositiveInt(width),
       height: toPositiveInt(height),
+      gateOutcome: decision.gateOutcome,
+      gateAction: decision.policyAction,
+      trustedSite: canvasGateState.trustedSite,
+      frameScope: canvasGateState.frameScope,
+      siteBase: canvasGateState.siteBase || undefined,
     };
     const key = buildBurstKey("api.canvas.activity", [
       operation,
       contextType,
       String(payload.width || 0),
       String(payload.height || 0),
+      decision.policyAction,
+      decision.gateOutcome,
     ]);
     recordBurst("api.canvas.activity", payload, key);
   }
+
+  function maybeWarnCanvasReadback(operation, contextType, width, height) {
+    const decision = getCanvasGateDecision();
+    if (decision.gateOutcome !== "warned") return;
+
+    const key = buildBurstKey("api.canvas.warn", [
+      operation,
+      contextType,
+      String(width || 0),
+      String(height || 0),
+    ]);
+    const now = Date.now();
+    const lastWarnTs = canvasWarnMap.get(key) || 0;
+    if ((now - lastWarnTs) < WARN_THROTTLE_MS) return;
+
+    canvasWarnMap.set(key, now);
+    console.warn("[VPT] Canvas readback allowed with warning", {
+      operation,
+      contextType,
+      width: toPositiveInt(width),
+      height: toPositiveInt(height),
+      site: canvasGateState.siteBase || window.location.hostname || "",
+    });
+  }
+
+  function createBlankImageData(ctx, width, height) {
+    const safeWidth = Math.max(1, toPositiveInt(width, toPositiveInt(ctx?.canvas?.width, 1)) || 1);
+    const safeHeight = Math.max(1, toPositiveInt(height, toPositiveInt(ctx?.canvas?.height, 1)) || 1);
+
+    if (typeof window.ImageData === "function") {
+      return new window.ImageData(safeWidth, safeHeight);
+    }
+    if (ctx && typeof ctx.createImageData === "function") {
+      return ctx.createImageData(safeWidth, safeHeight);
+    }
+    return {
+      data: new Uint8ClampedArray(safeWidth * safeHeight * 4),
+      width: safeWidth,
+      height: safeHeight,
+    };
+  }
+
+  function clearReadPixelsTarget(args) {
+    for (let index = args.length - 1; index >= 0; index -= 1) {
+      const candidate = args[index];
+      if (!ArrayBuffer.isView(candidate)) continue;
+      if (typeof candidate.fill === "function") {
+        candidate.fill(0);
+        return;
+      }
+      try {
+        new Uint8Array(candidate.buffer, candidate.byteOffset, candidate.byteLength).fill(0);
+      } catch {
+        // Best effort only.
+      }
+      return;
+    }
+  }
+
+  window.addEventListener("message", (event) => {
+    if (event.source !== window) return;
+    const data = event.data;
+    if (!data || typeof data !== "object") return;
+    if (data.source !== GATE_SOURCE_TAG || data.type !== "canvas_gate_state") return;
+    applyCanvasGateState(data.payload);
+  });
 
   function getPcMeta(pc) {
     if (!pc || typeof pc !== "object") return { stunTurnHostnames: [] };
@@ -240,10 +374,21 @@
     });
 
     patchMethod(window.CanvasRenderingContext2D && window.CanvasRenderingContext2D.prototype, "getImageData", function wrapGetImageData(original, args) {
+      const width = toPositiveInt(args[2], toPositiveInt(this?.canvas?.width));
+      const height = toPositiveInt(args[3], toPositiveInt(this?.canvas?.height));
+      const decision = getCanvasGateDecision();
+      if (decision.shouldBlock) {
+        try {
+          recordCanvasSignal("getImageData", "2d", width, height);
+        } catch {
+          // Ignore instrumentation failures.
+        }
+        return createBlankImageData(this, width, height);
+      }
+
       const result = original.apply(this, args);
       try {
-        const width = toPositiveInt(args[2], toPositiveInt(this?.canvas?.width));
-        const height = toPositiveInt(args[3], toPositiveInt(this?.canvas?.height));
+        maybeWarnCanvasReadback("getImageData", "2d", width, height);
         recordCanvasSignal("getImageData", "2d", width, height);
       } catch {
         // Ignore instrumentation failures.
@@ -252,14 +397,27 @@
     });
 
     patchMethod(window.HTMLCanvasElement && window.HTMLCanvasElement.prototype, "toDataURL", function wrapToDataUrl(original, args) {
+      const contextType = normalizeContextType(canvasContextByElement.get(this));
+      const width = toPositiveInt(this?.width);
+      const height = toPositiveInt(this?.height);
+      const decision = getCanvasGateDecision();
+      if (decision.shouldBlock) {
+        try {
+          recordCanvasSignal("toDataURL", contextType, width, height);
+        } catch {
+          // Ignore instrumentation failures.
+        }
+        return "data:,";
+      }
+
       const result = original.apply(this, args);
       try {
-        const contextType = normalizeContextType(canvasContextByElement.get(this));
+        maybeWarnCanvasReadback("toDataURL", contextType, width, height);
         recordCanvasSignal(
           "toDataURL",
           contextType,
-          toPositiveInt(this?.width),
-          toPositiveInt(this?.height)
+          width,
+          height
         );
       } catch {
         // Ignore instrumentation failures.
@@ -268,14 +426,37 @@
     });
 
     patchMethod(window.HTMLCanvasElement && window.HTMLCanvasElement.prototype, "toBlob", function wrapToBlob(original, args) {
+      const contextType = normalizeContextType(canvasContextByElement.get(this));
+      const width = toPositiveInt(this?.width);
+      const height = toPositiveInt(this?.height);
+      const decision = getCanvasGateDecision();
+      if (decision.shouldBlock) {
+        try {
+          recordCanvasSignal("toBlob", contextType, width, height);
+        } catch {
+          // Ignore instrumentation failures.
+        }
+        const callback = typeof args[0] === "function" ? args[0] : null;
+        if (callback) {
+          setTimeout(() => {
+            try {
+              callback(null);
+            } catch {
+              // Ignore callback failures.
+            }
+          }, 0);
+        }
+        return undefined;
+      }
+
       const result = original.apply(this, args);
       try {
-        const contextType = normalizeContextType(canvasContextByElement.get(this));
+        maybeWarnCanvasReadback("toBlob", contextType, width, height);
         recordCanvasSignal(
           "toBlob",
           contextType,
-          toPositiveInt(this?.width),
-          toPositiveInt(this?.height)
+          width,
+          height
         );
       } catch {
         // Ignore instrumentation failures.
@@ -284,10 +465,22 @@
     });
 
     const wrapReadPixels = function wrapReadPixels(original, args, contextType) {
+      const width = toPositiveInt(args[2], toPositiveInt(this?.drawingBufferWidth));
+      const height = toPositiveInt(args[3], toPositiveInt(this?.drawingBufferHeight));
+      const decision = getCanvasGateDecision();
+      if (decision.shouldBlock) {
+        try {
+          clearReadPixelsTarget(args);
+          recordCanvasSignal("readPixels", contextType, width, height);
+        } catch {
+          // Ignore instrumentation failures.
+        }
+        return undefined;
+      }
+
       const result = original.apply(this, args);
       try {
-        const width = toPositiveInt(args[2], toPositiveInt(this?.drawingBufferWidth));
-        const height = toPositiveInt(args[3], toPositiveInt(this?.drawingBufferHeight));
+        maybeWarnCanvasReadback("readPixels", contextType, width, height);
         recordCanvasSignal("readPixels", contextType, width, height);
       } catch {
         // Ignore instrumentation failures.
@@ -410,6 +603,7 @@
   }
 
   try {
+    requestCanvasGateState();
     patchCanvasApis();
     patchWebrtcApis();
   } catch {

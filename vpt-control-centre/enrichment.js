@@ -401,6 +401,18 @@ const SIGNAL_TYPE_VALUES = new Set([
   "state_change",
   "unknown",
 ]);
+const API_GATE_OUTCOME_VALUES = new Set([
+  "observed",
+  "warned",
+  "blocked",
+  "trusted_allowed",
+]);
+const API_GATE_ACTION_VALUES = new Set([
+  "observe",
+  "warn",
+  "block",
+  "allow_trusted",
+]);
 
 function deriveApiSurfaceDetail(kind, data = {}) {
   const explicit = String(data.surfaceDetail || "").trim().toLowerCase();
@@ -519,17 +531,37 @@ function deriveApiClassification(kind, surfaceDetail, data = {}, stunTurnHostnam
 
 function buildApiEnrichment(ev, site, data, kind) {
   const surfaceDetail = deriveApiSurfaceDetail(kind, data);
-  const mitigationStatus = pickAllowedString(
-    data.mitigationStatus,
-    MITIGATION_STATUS_VALUES,
-    "observed_only"
+  const gateOutcome = pickAllowedString(
+    data.gateOutcome,
+    API_GATE_OUTCOME_VALUES,
+    ""
+  );
+  const gateAction = pickAllowedString(
+    data.gateAction,
+    API_GATE_ACTION_VALUES,
+    ""
   );
 
-  const defaultPrivacyStatus = mitigationStatus === "blocked"
+  let mitigationStatus = "observed_only";
+  if (gateOutcome === "blocked") mitigationStatus = "blocked";
+  else if (gateOutcome === "trusted_allowed") mitigationStatus = "allowed";
+  else {
+    mitigationStatus = pickAllowedString(
+      data.mitigationStatus,
+      MITIGATION_STATUS_VALUES,
+      "observed_only"
+    );
+  }
+
+  const defaultPrivacyStatus = gateOutcome === "blocked"
     ? "policy_blocked"
-    : mitigationStatus === "allowed"
+    : gateOutcome === "trusted_allowed"
       ? "policy_allowed"
-      : "signal_detected";
+      : mitigationStatus === "blocked"
+        ? "policy_blocked"
+        : mitigationStatus === "allowed"
+          ? "policy_allowed"
+          : "signal_detected";
 
   const privacyStatus = pickAllowedString(
     data.privacyStatus,
@@ -556,6 +588,8 @@ function buildApiEnrichment(ev, site, data, kind) {
   const stunTurnHostnames = Array.isArray(data.stunTurnHostnames)
     ? data.stunTurnHostnames.map((h) => normalizeHost(h)).filter(Boolean).slice(0, 8)
     : [];
+  const trustedSite = typeof data.trustedSite === "boolean" ? data.trustedSite : null;
+  const frameScope = String(data.frameScope || "").trim() === "top_frame" ? "top_frame" : null;
   const { signalType, patternId, confidence } = deriveApiClassification(
     kind,
     surfaceDetail,
@@ -595,6 +629,10 @@ function buildApiEnrichment(ev, site, data, kind) {
       candidateType,
       burstCount,
       burstMs,
+      gateOutcome: gateOutcome || null,
+      gateAction: gateAction || null,
+      trustedSite,
+      frameScope,
       stunTurnHostnames,
     }),
   };
