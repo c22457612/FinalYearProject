@@ -21,6 +21,209 @@
   gap: 1rem;
 }
 
+.trusted-sites-view {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.trusted-sites-stack {
+  display: grid;
+  gap: var(--space-md);
+}
+
+.trusted-sites-hero-panel,
+.trusted-sites-add-panel,
+.trusted-sites-list-panel,
+.trusted-sites-recent-panel {
+  min-height: auto;
+}
+
+.trusted-sites-lead {
+  margin: 0;
+  max-width: 72ch;
+  color: #dbe4f0;
+}
+
+.trusted-sites-summary {
+  margin: 0;
+}
+
+.trusted-sites-main-grid {
+  display: grid;
+  grid-template-columns: minmax(300px, 0.8fr) minmax(0, 1.2fr);
+  gap: var(--space-md);
+}
+
+.trusted-sites-form {
+  display: grid;
+  gap: 0.7rem;
+}
+
+.trusted-sites-form-label {
+  font-size: 0.76rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--color-text-faint);
+}
+
+.trusted-sites-form-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 0.7rem;
+}
+
+.trusted-sites-input {
+  width: 100%;
+  background: var(--color-bg-card);
+  border: 1px solid rgba(148, 163, 184, 0.25);
+  color: var(--color-text-main);
+  padding: 0.6rem 0.7rem;
+  border-radius: 0.75rem;
+  font-size: 0.92rem;
+}
+
+.trusted-sites-submit-btn {
+  min-width: 8rem;
+}
+
+.trusted-sites-form-hint {
+  font-size: 0.8rem;
+  color: #cbd5e1;
+}
+
+.trusted-sites-form-status {
+  min-height: 1.1rem;
+  font-size: 0.8rem;
+  color: #cbd5e1;
+}
+
+.trusted-sites-form-status.pending {
+  color: #fde68a;
+}
+
+.trusted-sites-form-status.success {
+  color: #a7f3d0;
+}
+
+.trusted-sites-form-status.error {
+  color: #fecaca;
+}
+
+.trusted-sites-empty {
+  border: 1px dashed rgba(148, 163, 184, 0.28);
+  border-radius: var(--radius-sm);
+  padding: 0.95rem;
+  color: #dbe4f0;
+}
+
+.trusted-sites-empty-title {
+  font-size: 0.96rem;
+  font-weight: 600;
+  color: var(--color-text-main);
+}
+
+.trusted-sites-empty-copy {
+  margin: 0.4rem 0 0;
+  font-size: 0.84rem;
+  color: #cbd5e1;
+}
+
+.trusted-sites-list {
+  display: grid;
+  gap: 0.8rem;
+}
+
+.trusted-sites-row {
+  border: 1px solid rgba(148, 163, 184, 0.2);
+  border-radius: var(--radius-sm);
+  background: var(--color-bg-card);
+  padding: 0.9rem;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 0.9rem;
+  align-items: flex-start;
+}
+
+.trusted-sites-row-main {
+  display: grid;
+  gap: 0.75rem;
+}
+
+.trusted-sites-row-head {
+  display: flex;
+  gap: 0.65rem;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.trusted-sites-domain {
+  font-family: var(--font-mono);
+  font-size: 1rem;
+  color: var(--color-text-main);
+  overflow-wrap: anywhere;
+}
+
+.trusted-sites-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.18rem 0.5rem;
+  border-radius: 999px;
+  font-size: 0.74rem;
+  background: rgba(16, 185, 129, 0.18);
+  color: #a7f3d0;
+}
+
+.trusted-sites-badge-muted {
+  background: rgba(59, 130, 246, 0.18);
+  color: #bfdbfe;
+}
+
+.trusted-sites-context-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.7rem;
+}
+
+.trusted-sites-context-item {
+  display: grid;
+  gap: 0.18rem;
+  padding: 0.68rem 0.72rem;
+  border-radius: var(--radius-sm);
+  border: 1px solid rgba(148, 163, 184, 0.16);
+  background: rgba(15, 23, 42, 0.42);
+}
+
+.trusted-sites-context-label {
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: #dbe4f0;
+}
+
+.trusted-sites-context-value {
+  color: var(--color-text-main);
+}
+
+.trusted-sites-context-empty {
+  font-size: 0.84rem;
+  color: #cbd5e1;
+}
+
+.trusted-sites-row-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 0.55rem;
+  min-width: 10rem;
+}
+
+.trusted-sites-view-link,
+.trusted-sites-untrust-btn,
+.api-policy-manage-link {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  text-decoration: none;
+}
+
 .api-signals-view {
   grid-template-columns: minmax(0, 1fr);
 }
@@ -445,6 +648,11 @@
 .api-policy-trusted-note {
   font-size: 0.82rem;
   color: #cbd5e1;
+}
+
+.api-policy-manage-link {
+  display: inline-flex;
+  margin-top: 0.75rem;
 }
 
 .api-policy-limits-list {
@@ -1288,6 +1496,16 @@
 }
 
 @media (max-width: 1100px) {
+  .trusted-sites-main-grid,
+  .trusted-sites-row,
+  .trusted-sites-context-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .trusted-sites-row-actions {
+    min-width: 0;
+  }
+
   .api-signals-glance-grid {
     grid-template-columns: minmax(0, 1fr);
   }
@@ -1341,6 +1559,10 @@
 }
 
 @media (max-width: 700px) {
+  .trusted-sites-form-row {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
   .api-signals-subnav {
     width: 100%;
   }

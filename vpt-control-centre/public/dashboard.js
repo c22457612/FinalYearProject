@@ -42,6 +42,21 @@ function recomputePolicyState(policiesResponse) {
   trustedSites = trusted;
 }
 
+function appendPoliciesToCache(created) {
+  const createdItems = Array.isArray(created) ? created.filter(Boolean) : [created].filter(Boolean);
+  if (!createdItems.length) return;
+
+  latestPoliciesCache = {
+    latestTs: Math.max(
+      Number(latestPoliciesCache.latestTs) || 0,
+      ...createdItems.map((item) => Number(item?.ts) || 0)
+    ),
+    items: (Array.isArray(latestPoliciesCache.items) ? latestPoliciesCache.items : []).concat(createdItems),
+  };
+
+  recomputePolicyState(latestPoliciesCache);
+}
+
 function renderSummary(events, sites) {
   const total = events.length;
   const siteCount = sites.length;
@@ -128,6 +143,7 @@ async function fetchAndRender() {
     // refresh details panel so status + button reflect current trust state
     window.VPT?.features?.events?.renderEventDetails?.(selectedEvent, { trustedSites });
     window.VPT?.features?.cookies?.renderCookiesView?.(events); //modularised cookie render
+    window.VPT?.features?.trustedSites?.renderTrustedSitesView?.(sites, { policies: latestPoliciesCache });
     window.VPT?.features?.apiSignals?.renderApiSignalsView?.(events, { policies: latestPoliciesCache });
   } catch (err) {
     console.error("fetch error", err);
@@ -171,6 +187,15 @@ window.addEventListener("load", () => {
   window.VPT?.features?.cookies?.initCookiesFeature?.({
     getLatestEvents: () => latestEvents
   });
+  window.VPT?.features?.trustedSites?.initTrustedSitesFeature?.({
+    getLatestSites: () => latestSitesCache,
+    getLatestPolicies: () => latestPoliciesCache,
+    onPoliciesMutated: (created) => {
+      appendPoliciesToCache(created);
+      window.VPT?.features?.events?.renderEventDetails?.(selectedEvent, { trustedSites });
+      window.VPT?.features?.apiSignals?.renderApiSignalsView?.(latestEvents, { policies: latestPoliciesCache });
+    }
+  });
   window.VPT?.features?.apiSignals?.initApiSignalsFeature?.({
     getLatestEvents: () => latestEvents
   });
@@ -198,16 +223,18 @@ window.addEventListener("load", () => {
   const homeView = document.getElementById("view-home");
   const sitesView = document.getElementById("view-sites");
   const cookiesView = document.getElementById("view-cookies");
+  const trustedSitesView = document.getElementById("view-trusted-sites");
   const apiSignalsView = document.getElementById("view-api-signals");
   const navItems = document.querySelectorAll(".nav-item[data-view]");
 
   function switchView(view) {
-    if (!homeView || !cookiesView || !sitesView || !apiSignalsView) return;
+    if (!homeView || !cookiesView || !sitesView || !trustedSitesView || !apiSignalsView) return;
 
     // hide all
     homeView.classList.add("hidden");
     cookiesView.classList.add("hidden");
     sitesView.classList.add("hidden");
+    trustedSitesView.classList.add("hidden");
     apiSignalsView.classList.add("hidden");
 
     // show chosen view
@@ -216,6 +243,9 @@ window.addEventListener("load", () => {
       window.VPT?.features?.cookies?.renderCookiesView?.(latestEvents);
     } else if (view === "sites") {
       sitesView.classList.remove("hidden");
+    } else if (view === "trusted-sites") {
+      trustedSitesView.classList.remove("hidden");
+      window.VPT?.features?.trustedSites?.renderTrustedSitesView?.(latestSitesCache, { policies: latestPoliciesCache });
     } else if (view === "api-signals") {
       apiSignalsView.classList.remove("hidden");
       window.VPT?.features?.apiSignals?.renderApiSignalsView?.(latestEvents, { policies: latestPoliciesCache });
@@ -240,7 +270,7 @@ window.addEventListener("load", () => {
   function resolveInitialView() {
     const params = new URLSearchParams(window.location.search);
     const requested = String(params.get("view") || "").trim().toLowerCase();
-    if (requested === "sites" || requested === "cookies" || requested === "api-signals" || requested === "home") {
+    if (requested === "sites" || requested === "cookies" || requested === "trusted-sites" || requested === "api-signals" || requested === "home") {
       return requested;
     }
     return "home";
@@ -264,16 +294,11 @@ window.addEventListener("load", () => {
         : `Trusting ${site}…`;
 
       try {
-        await api.postPolicy(op, { site }); // will throw automatically if HTTP not OK (if using fetchJson)
-
-        const next = new Set(trustedSites);
-        if (op === "trust_site") {
-          next.add(site);
-        } else {
-          next.delete(site);
-        }
-        trustedSites = next;
+        const created = await api.postPolicy(op, { site }); // will throw automatically if HTTP not OK (if using fetchJson)
+        appendPoliciesToCache(created);
         window.VPT?.features?.events?.renderEventDetails?.(selectedEvent, { trustedSites });
+        window.VPT?.features?.trustedSites?.renderTrustedSitesView?.(latestSitesCache, { policies: latestPoliciesCache });
+        window.VPT?.features?.apiSignals?.renderApiSignalsView?.(latestEvents, { policies: latestPoliciesCache });
 
         trustBtn.textContent = op === "trust_site"
           ? `Sent: trust ${site}`

@@ -210,6 +210,7 @@ export function createInsightSheet(deps) {
     box.innerHTML = "";
 
     const list = Array.isArray(actions) ? actions : [];
+    const hasTrustAction = list.some((action) => action?.type === "trust_site");
     for (const action of list) {
       const btn = document.createElement("button");
       btn.type = "button";
@@ -238,6 +239,14 @@ export function createInsightSheet(deps) {
         await run();
       });
       box.appendChild(btn);
+    }
+
+    if (hasTrustAction) {
+      const manageLink = document.createElement("a");
+      manageLink.className = "insight-action-btn";
+      manageLink.href = "/?view=trusted-sites";
+      manageLink.textContent = "Manage trusted sites";
+      box.appendChild(manageLink);
     }
   }
 

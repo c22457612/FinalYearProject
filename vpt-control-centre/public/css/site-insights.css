@@ -641,6 +641,8 @@
 }
 
 .insight-action-btn {
+  display: inline-flex;
+  align-items: center;
   background: var(--color-bg-card);
   border: 1px solid rgba(148, 163, 184, 0.28);
   color: var(--color-text-main);
@@ -648,6 +650,7 @@
   border-radius: 0.5rem;
   cursor: pointer;
   font-size: 0.78rem;
+  text-decoration: none;
 }
 
 .insight-action-btn:hover {

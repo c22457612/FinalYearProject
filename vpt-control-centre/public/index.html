@@ -23,6 +23,7 @@
       <button class="nav-item active" data-view="home">Home</button>
       <button class="nav-item" data-view="sites">Sites</button> 
       <button class="nav-item" data-view="cookies">Cookies</button>
+      <button class="nav-item" data-view="trusted-sites">Trusted Sites</button>
       <a class="nav-item" data-page="vendor-vault" href="/vendor-vault.html?scope=all">Vendor Vault</a>
       <button class="nav-item" data-view="api-signals">Browser API</button>
     </aside>
@@ -370,6 +371,101 @@
         </section>
       </main>
 
+      <!-- TRUSTED SITES VIEW -->
+      <main id="view-trusted-sites" class="trusted-sites-view hidden">
+        <section class="trusted-sites-stack">
+          <div class="panel trusted-sites-hero-panel">
+            <div class="panel-header">
+              <div>
+                <div class="panel-title">Trusted Sites</div>
+                <div id="trustedSitesHeroSubtitle" class="panel-subtitle">
+                  The primary place to manage sites you have explicitly trusted.
+                </div>
+              </div>
+            </div>
+            <p class="trusted-sites-lead">
+              Trusted sites allow certain protections to be relaxed where you have explicitly chosen to trust the site.
+              Trust does not mean a site is universally safe, and you can remove trust at any time.
+            </p>
+          </div>
+
+          <section class="summary trusted-sites-summary">
+            <div class="summary-card">
+              <h2>Trusted sites</h2>
+              <div id="trustedSitesStatCount" class="value">0</div>
+              <div class="hint">current trusted domains</div>
+            </div>
+            <div class="summary-card">
+              <h2>Trusted active (24h)</h2>
+              <div id="trustedSitesStatRecent" class="value">0</div>
+              <div class="hint">trusted sites seen in captured activity</div>
+            </div>
+            <div class="summary-card">
+              <h2>Last trust change</h2>
+              <div id="trustedSitesStatLastChanged" class="value">-</div>
+              <div class="hint">from the current policy history</div>
+            </div>
+          </section>
+
+          <section class="trusted-sites-main-grid">
+            <div class="panel trusted-sites-add-panel">
+              <div class="panel-header">
+                <div>
+                  <div class="panel-title">Trust a new site</div>
+                  <div class="panel-subtitle">Send a lightweight trust command through the existing policy flow.</div>
+                </div>
+              </div>
+              <form id="trustedSitesAddForm" class="trusted-sites-form">
+                <label for="trustedSitesInput" class="trusted-sites-form-label">Domain</label>
+                <div class="trusted-sites-form-row">
+                  <input
+                    id="trustedSitesInput"
+                    class="trusted-sites-input"
+                    type="text"
+                    placeholder="example.com"
+                    inputmode="url"
+                    autocomplete="off"
+                  />
+                  <button id="trustedSitesSubmitBtn" class="btn-secondary trusted-sites-submit-btn" type="submit">
+                    Trust site
+                  </button>
+                </div>
+                <div class="trusted-sites-form-hint">
+                  Enter a base domain such as <code>example.com</code>. If you paste a full URL, only the hostname is used.
+                </div>
+                <div id="trustedSitesFormStatus" class="trusted-sites-form-status" aria-live="polite"></div>
+              </form>
+            </div>
+
+            <div class="panel trusted-sites-list-panel">
+              <div class="panel-header">
+                <div>
+                  <div class="panel-title">Current trusted sites</div>
+                  <div id="trustedSitesListMeta" class="panel-subtitle">
+                    Review current trusted domains, remove trust, or open Site Insights.
+                  </div>
+                </div>
+              </div>
+              <div id="trustedSitesEmptyState" class="trusted-sites-empty hidden"></div>
+              <div id="trustedSitesList" class="trusted-sites-list"></div>
+            </div>
+          </section>
+
+          <div class="panel trusted-sites-recent-panel">
+            <div class="panel-header">
+              <div>
+                <div class="panel-title">Recent site activity</div>
+                <div id="trustedSitesRecentMeta" class="panel-subtitle">
+                  Recent VPT-observed site activity. This is based on captured events, not full browser history.
+                </div>
+              </div>
+            </div>
+            <div id="trustedSitesRecentEmptyState" class="trusted-sites-empty hidden"></div>
+            <div id="trustedSitesRecentList" class="trusted-sites-list"></div>
+          </div>
+        </section>
+      </main>
+
       <!-- API SIGNALS VIEW -->
       <main id="view-api-signals" class="api-signals-view hidden">
         <section class="api-signals-stack">
@@ -550,6 +646,7 @@
                 <div id="apiPolicyTrustedSitesNote" class="api-policy-trusted-note">
                   Trusted sites currently configured: 0
                 </div>
+                <a class="btn-secondary api-policy-manage-link" href="/?view=trusted-sites">Manage trusted sites</a>
               </div>
               <div class="panel api-policy-limits-panel">
                 <div class="panel-header">
@@ -588,6 +685,7 @@
   <script type="module" src="app/features/sites.js"></script>
   <script type="module" src="app/features/events.js"></script>
   <script type="module" src="app/features/cookies.js"></script>
+  <script type="module" src="app/features/trusted-sites.js"></script>
   <script type="module" src="app/features/api-signals.js"></script>
   <script src="app/state.js" defer></script>
   <script src="dashboard.js" defer></script>
