@@ -214,7 +214,7 @@ function trustedSiteRowHtml(entry, summary) {
     `
     : `
       <div class="trusted-sites-context-empty">
-        No recent site summary is available yet for this domain, but trust is still active in the current policy history.
+        VPT has not recently observed privacy-related activity for this domain, but trust is still active in the current policy history.
       </div>
     `;
 
@@ -254,7 +254,7 @@ function recentSiteRowHtml(site, isTrusted) {
       <div class="trusted-sites-row-main">
         <div class="trusted-sites-row-head">
           <div class="trusted-sites-domain">${escape(site?.site || "unknown")}</div>
-          ${isTrusted ? '<span class="trusted-sites-badge">Trusted</span>' : '<span class="trusted-sites-badge trusted-sites-badge-muted">Observed</span>'}
+          ${isTrusted ? '<span class="trusted-sites-badge">Trusted</span>' : '<span class="trusted-sites-badge trusted-sites-badge-muted">Observed by VPT</span>'}
         </div>
         <div class="trusted-sites-context-grid">
           <div class="trusted-sites-context-item">
@@ -305,12 +305,12 @@ function renderTrustedSitesList(snapshot, siteIndex) {
   if (!meta || !empty || !list) return;
 
   if (!snapshot.length) {
-    meta.textContent = "No trusted sites are currently configured.";
+    meta.textContent = "No trusted sites are currently configured yet.";
     empty.classList.remove("hidden");
     empty.innerHTML = `
       <div class="trusted-sites-empty-title">No trusted sites yet</div>
       <p class="trusted-sites-empty-copy">
-        Trust a site here, or from an existing contextual action, to make it appear in this primary management page.
+        Trust a domain manually to make it appear here. You do not need to wait for VPT to observe an event for that site first.
       </p>
     `;
     list.innerHTML = "";
@@ -318,7 +318,7 @@ function renderTrustedSitesList(snapshot, siteIndex) {
   }
 
   const withContext = snapshot.filter((entry) => siteIndex.has(entry.site)).length;
-  meta.textContent = `${snapshot.length} trusted site${snapshot.length === 1 ? "" : "s"} configured. ${withContext} currently have site summary context available.`;
+  meta.textContent = `${snapshot.length} trusted site${snapshot.length === 1 ? "" : "s"} configured. ${withContext} currently also have observed VPT context available.`;
   empty.classList.add("hidden");
   list.innerHTML = sortedTrustedSites(snapshot, siteIndex)
     .map((entry) => trustedSiteRowHtml(entry, siteIndex.get(entry.site)))
@@ -337,19 +337,19 @@ function renderRecentSites(snapshot, siteIndex) {
     .slice(0, 6);
 
   if (!rows.length) {
-    meta.textContent = "No recent VPT-observed site activity is available yet.";
+    meta.textContent = "No recently observed privacy-event sites are available yet.";
     empty.classList.remove("hidden");
     empty.innerHTML = `
-      <div class="trusted-sites-empty-title">No recent site activity yet</div>
+      <div class="trusted-sites-empty-title">No observed privacy-event sites yet</div>
       <p class="trusted-sites-empty-copy">
-        This area is populated from captured VPT events, not raw browser history. A site appears here only after VPT records activity for it.
+        This area is populated only from captured VPT events, not raw browser history. A site you visited may not appear here if VPT did not record privacy-related activity for it. You can still trust any domain manually above.
       </p>
     `;
     list.innerHTML = "";
     return;
   }
 
-  meta.textContent = `Showing ${rows.length} recently observed site${rows.length === 1 ? "" : "s"} from captured VPT activity.`;
+  meta.textContent = `Showing ${rows.length} site${rows.length === 1 ? "" : "s"} with recently observed privacy-related VPT activity. This is a convenience list, not a full visit history.`;
   empty.classList.add("hidden");
   const trustedSet = new Set(snapshot.map((entry) => entry.site));
   list.innerHTML = rows

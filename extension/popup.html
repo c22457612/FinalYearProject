@@ -86,12 +86,45 @@
 
       #clearCookiesBtn,
       #cookieSnapshotBtn,
-      #toggleTrustedBtn {
+      #toggleTrustedBtn,
+      #currentSiteTrustBtn,
+      #openTrustedSitesBtn {
         width: 100%;
         margin-top: 0.25rem;
       }
 
-      #debugSection {
+      .popup-section {
+        margin-top: 0.35rem;
+        padding-top: 0.65rem;
+        border-top: 1px solid var(--color-border);
+        display: grid;
+        gap: 0.45rem;
+      }
+
+      .popup-section-title {
+        font-size: 0.7rem;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        color: var(--color-text-muted);
+      }
+
+      .popup-site-name {
+        font-size: 0.88rem;
+        font-weight: 600;
+        color: var(--color-text-main);
+        word-break: break-word;
+      }
+
+      .popup-section-copy {
+        margin: 0;
+      }
+
+      .popup-button-stack {
+        display: grid;
+        gap: 0.35rem;
+      }
+
+      #trustedSitesSection {
         margin-top: 0.5rem;
       }
 
@@ -140,7 +173,18 @@
         <input type="checkbox" id="notify" />
       </div>
 
-      <div id="debugSection">
+      <div id="currentSiteTrustSection" class="popup-section">
+        <div class="popup-section-title">Current site trust</div>
+        <div id="currentSiteTrustSite" class="popup-site-name">Checking current site...</div>
+        <p id="currentSiteTrustStatus" class="muted popup-section-copy"></p>
+        <div class="popup-button-stack">
+          <button id="currentSiteTrustBtn">Trust current site</button>
+          <button id="openTrustedSitesBtn">Open Trusted Sites manager</button>
+        </div>
+      </div>
+
+      <div id="trustedSitesSection" class="popup-section">
+        <div class="popup-section-title">Trusted sites behavior</div>
         <button id="toggleTrustedBtn">Trusted sites: On</button>
         <div
           id="toggleTrustedStatus"

@@ -112,6 +112,54 @@ function base(host) {
 }
 function hostFromUrl(u) { try { return new URL(u).hostname; } catch { return ""; } }
 function hostFromOrigin(o) { try { return new URL(o).hostname; } catch { return ""; } }
+function siteBaseFromUrl(url) {
+  if (!url || !/^https?:/i.test(url)) return "";
+  return base(hostFromUrl(url));
+}
+
+function buildTrustedSiteState(site) {
+  const normalizedSite = String(site || "");
+  return {
+    ok: true,
+    supported: !!normalizedSite,
+    site: normalizedSite,
+    isTrusted: !!normalizedSite && trustedDomains.includes(normalizedSite),
+    enabled: trustedSitesEnabled,
+    trustedCount: trustedDomains.length,
+  };
+}
+
+async function postPolicies(commands) {
+  const items = Array.isArray(commands) ? commands.filter(Boolean) : [commands].filter(Boolean);
+  if (!items.length) return [];
+
+  const res = await fetch(`${BACKEND_URL}/api/policies`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(items),
+  });
+
+  if (!res.ok) {
+    throw new Error(`Policy request failed (${res.status})`);
+  }
+
+  const created = await res.json();
+  return Array.isArray(created) ? created : [created];
+}
+
+async function applyCreatedPolicies(created) {
+  const items = Array.isArray(created) ? created : [created];
+  for (const item of items) {
+    replayBackendPolicyState(item);
+    await applyPolicy(item);
+    if (typeof item?.ts === "number" && item.ts > lastPolicyTs) {
+      lastPolicyTs = item.ts;
+    }
+  }
+
+  await loadTrustAndPromptFlag();
+  await applyRules(currentMode);
+}
 
 async function getCookieSummaryForUrl(url) {
   if (!url || !/^https?:/i.test(url)) {
@@ -578,18 +626,10 @@ async function syncLocalTrustedSitesToBackend() {
   if (!missing.length) return;
 
   try {
-    const res = await fetch(`${BACKEND_URL}/api/policies`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(missing.map((site) => ({
-        op: "trust_site",
-        payload: { site },
-      }))),
-    });
-
-    if (!res.ok) return;
-    const created = await res.json();
-    const items = Array.isArray(created) ? created : [created];
+    const items = await postPolicies(missing.map((site) => ({
+      op: "trust_site",
+      payload: { site },
+    })));
     for (const item of items) {
       replayBackendPolicyState(item);
       if (typeof item?.ts === "number" && item.ts > lastPolicyTs) {
@@ -827,6 +867,51 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     })();
 
     return true; // keep the message channel open for async sendResponse
+  }
+
+  if (msg?.type === "trustedSites:getCurrentSiteState") {
+    (async () => {
+      try {
+        const site = siteBaseFromUrl(msg.url);
+        sendResponse(buildTrustedSiteState(site));
+      } catch (e) {
+        console.error("trustedSites:getCurrentSiteState failed", e);
+        sendResponse({ ok: false, error: e.message || String(e) });
+      }
+    })();
+
+    return true;
+  }
+
+  if (msg?.type === "trustedSites:setCurrentSiteTrust") {
+    (async () => {
+      try {
+        const site = siteBaseFromUrl(msg.url);
+        if (!site) {
+          sendResponse({ ok: false, error: "Current-site trust is available only on normal websites." });
+          return;
+        }
+
+        const shouldTrust = !!msg.trusted;
+        const alreadyTrusted = trustedDomains.includes(site);
+        if (shouldTrust === alreadyTrusted) {
+          sendResponse(buildTrustedSiteState(site));
+          return;
+        }
+
+        const created = await postPolicies({
+          op: shouldTrust ? "trust_site" : "untrust_site",
+          payload: { site },
+        });
+        await applyCreatedPolicies(created);
+        sendResponse(buildTrustedSiteState(site));
+      } catch (e) {
+        console.error("trustedSites:setCurrentSiteTrust failed", e);
+        sendResponse({ ok: false, error: e.message || String(e) });
+      }
+    })();
+
+    return true;
   }
 });
 
