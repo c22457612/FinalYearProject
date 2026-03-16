@@ -1,41 +1,40 @@
 // public/app/features/api-signals.js
 
-const filterState = {
-  surfaceDetail: "all",
-  signalType: "all",
-  confidence: "all",
+const filterState = { surfaceDetail: "all", signalType: "all", confidence: "all" };
+const viewState = {
+  subview: "insights",
+  latestEvents: [],
+  latestPolicies: { latestTs: 0, items: [] },
+  saves: {
+    canvas: { pending: false, tone: "", message: "" },
+    webrtc: { pending: false, tone: "", message: "" },
+  },
 };
 
 const PATTERN_PRESENTATION = Object.freeze({
   "api.canvas.readback": {
     label: "Canvas readback",
-    explanation:
-      "The page read image or pixel data back from a canvas. That matters because readback can be used to inspect rendered output for fingerprinting or verification.",
+    explanation: "The page read image or pixel data back from a canvas. Readback can support fingerprinting or verification.",
   },
   "api.canvas.repeated_readback": {
     label: "Repeated canvas readback",
-    explanation:
-      "The page read canvas output repeatedly in a short burst. Repetition makes this signal more notable than a one-off read.",
+    explanation: "The page read canvas output repeatedly in a short burst. Repetition makes the signal more notable.",
   },
   "api.webrtc.peer_connection_setup": {
     label: "WebRTC peer connection setup",
-    explanation:
-      "The page initialized a WebRTC peer connection. Setup alone is not proof of fingerprinting, but it is the starting point for later network-capability probing.",
+    explanation: "The page initialized a WebRTC peer connection. This is the starting point for later network-capability probing.",
   },
   "api.webrtc.offer_probe": {
     label: "WebRTC offer probe",
-    explanation:
-      "The page started WebRTC offer flow. Creating an offer can be part of probing browser and device communication capabilities.",
+    explanation: "The page started WebRTC offer flow. Creating an offer can be part of browser and device capability probing.",
   },
   "api.webrtc.ice_probe": {
     label: "WebRTC ICE probing",
-    explanation:
-      "The page triggered ICE gathering or candidate activity. ICE probing can reveal network-path and device characteristics even when no visible call starts.",
+    explanation: "The page triggered ICE gathering or candidate activity. That can reveal network-path and device characteristics.",
   },
   "api.webrtc.stun_turn_assisted_probe": {
     label: "WebRTC STUN/TURN-assisted probing",
-    explanation:
-      "The page combined WebRTC probing with STUN or TURN infrastructure metadata. That strengthens the indication that it was actively probing network capabilities.",
+    explanation: "The page combined WebRTC probing with STUN or TURN metadata, which strengthens the capability-probing signal.",
   },
 });
 
@@ -46,41 +45,50 @@ const SIGNAL_TYPE_LABELS = Object.freeze({
   unknown: "Unknown signal type",
 });
 
-const GATE_OUTCOME_LABELS = Object.freeze({
-  observed: "Observed",
-  warned: "Warned",
-  blocked: "Blocked",
-  trusted_allowed: "Trusted-site allowed",
-});
-
 const SURFACE_LABELS = Object.freeze({
   canvas: "Canvas",
   webrtc: "WebRTC",
   unknown: "Unknown surface",
 });
 
+const OUTCOME_LABELS = Object.freeze({
+  observed: "Observed",
+  warned: "Warned",
+  blocked: "Blocked",
+  trusted_allowed: "Trusted-site allowed",
+});
+
+const POLICY_ACTIONS = Object.freeze([
+  ["observe", "Observe", "Allow the implemented API calls and record them in Browser API insights."],
+  ["warn", "Warn", "Allow the call, but mark it as a warned outcome so it stands out in insights."],
+  ["block", "Block", "Prevent the current implemented enforcement point and log a blocked outcome."],
+  ["allow_trusted", "Allow on trusted sites", "Allow this surface only on sites you have already trusted. Untrusted sites are blocked."],
+]);
+
+const POLICY_SURFACES = Object.freeze([
+  {
+    key: "canvas",
+    title: "Canvas",
+    kicker: "Readback gating",
+    summary: "Control the implemented Canvas readback points without affecting general drawing.",
+    note: "Current Canvas enforcement covers getImageData, toDataURL, toBlob, and readPixels only.",
+  },
+  {
+    key: "webrtc",
+    title: "WebRTC",
+    kicker: "Peer connection gating",
+    summary: "Control the current WebRTC peer connection enforcement point while keeping metadata-only evidence.",
+    note: "Current WebRTC enforcement is tied to top-frame RTCPeerConnection creation/setup only.",
+  },
+]);
+
 let filtersBound = false;
+let subviewBound = false;
+let controlsBound = false;
 let getLatestEventsCb = null;
 
-function getUtils() {
+function utils() {
   return window.VPT?.utils || {};
-}
-
-function getLatestEvents() {
-  return typeof getLatestEventsCb === "function" ? getLatestEventsCb() || [] : [];
-}
-
-function isApiSignalEvent(event) {
-  if (!event || typeof event !== "object") return false;
-
-  const kind = String(event.kind || "").toLowerCase();
-  const surface = String(event.enrichment?.surface || "").toLowerCase();
-  return (
-    surface === "api" ||
-    surface === "browser_api" ||
-    kind.startsWith("api.") ||
-    kind.startsWith("browser_api.")
-  );
 }
 
 function normalizeOptional(value) {
@@ -88,8 +96,12 @@ function normalizeOptional(value) {
 }
 
 function normalizeValue(value, fallback = "unknown") {
-  const text = normalizeOptional(value);
-  return text || fallback;
+  return normalizeOptional(value) || fallback;
+}
+
+function normalizePolicyAction(value) {
+  const next = normalizeOptional(value);
+  return next === "warn" || next === "block" || next === "allow_trusted" ? next : "observe";
 }
 
 function confidenceBand(value) {
@@ -99,720 +111,410 @@ function confidenceBand(value) {
   return "lower";
 }
 
-function confidenceLabel(band) {
-  if (band === "high") return "High confidence";
-  if (band === "medium") return "Medium confidence";
-  if (band === "lower") return "Lower confidence";
-  return "Unknown confidence";
+function isApiSignalEvent(event) {
+  const kind = String(event?.kind || "").toLowerCase();
+  const surface = String(event?.enrichment?.surface || "").toLowerCase();
+  return surface === "api" || surface === "browser_api" || kind.startsWith("api.") || kind.startsWith("browser_api.");
 }
 
-function titleCaseToken(value) {
-  return String(value || "")
-    .split(/[_\s.-]+/)
-    .filter(Boolean)
-    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
-    .join(" ");
-}
-
-function labelForSurface(value) {
-  const key = normalizeValue(value, "unknown");
-  return SURFACE_LABELS[key] || titleCaseToken(key);
-}
-
-function labelForSignalType(value) {
-  const key = normalizeValue(value, "unknown");
-  return SIGNAL_TYPE_LABELS[key] || titleCaseToken(key);
-}
-
-function normalizeGateOutcome(value) {
-  const next = normalizeOptional(value);
-  return next || "observed";
-}
-
-function labelForGateOutcome(value) {
-  const key = normalizeGateOutcome(value);
-  return GATE_OUTCOME_LABELS[key] || titleCaseToken(key);
-}
-
-function friendlyPatternFallback(patternId) {
-  const lastToken = normalizeOptional(patternId).split(".").filter(Boolean).pop();
-  return lastToken ? titleCaseToken(lastToken) : "Unclassified API activity";
-}
-
-function getPatternPresentation(event) {
+function patternPresentation(event) {
   const patternId = normalizeOptional(event?.enrichment?.patternId);
-  const surfaceDetail = normalizeValue(event?.enrichment?.surfaceDetail || event?.data?.surfaceDetail, "unknown");
-
+  const surfaceDetail = normalizeValue(event?.enrichment?.surfaceDetail || event?.data?.surfaceDetail);
   if (patternId && PATTERN_PRESENTATION[patternId]) {
-    return {
-      label: PATTERN_PRESENTATION[patternId].label,
-      explanation: PATTERN_PRESENTATION[patternId].explanation,
-      canonicalId: patternId,
-      classified: true,
-    };
+    return { ...PATTERN_PRESENTATION[patternId], canonicalId: patternId, classified: true };
   }
-
   if (patternId) {
     return {
-      label: friendlyPatternFallback(patternId),
-      explanation:
-        "This row has a canonical backend pattern id, but this UI does not yet have custom explanatory copy for it.",
+      label: patternId.split(".").filter(Boolean).pop().replaceAll("_", " "),
+      explanation: "This row has a canonical backend pattern id, but this UI does not yet have custom explanatory copy for it.",
       canonicalId: patternId,
       classified: true,
     };
   }
-
   if (surfaceDetail === "canvas") {
-    return {
-      label: "Unclassified canvas activity",
-      explanation:
-        "Canvas API metadata was observed, but this row does not currently have a canonical backend pattern classification.",
-      canonicalId: "",
-      classified: false,
-    };
+    return { label: "Unclassified canvas activity", explanation: "Canvas metadata was observed without a canonical backend pattern yet.", canonicalId: "", classified: false };
   }
-
   if (surfaceDetail === "webrtc") {
-    return {
-      label: "Unclassified WebRTC activity",
-      explanation:
-        "WebRTC metadata was observed, but this row does not currently have a canonical backend pattern classification.",
-      canonicalId: "",
-      classified: false,
-    };
+    return { label: "Unclassified WebRTC activity", explanation: "WebRTC metadata was observed without a canonical backend pattern yet.", canonicalId: "", classified: false };
   }
-
-  return {
-    label: "Unclassified API activity",
-    explanation:
-      "API activity was observed, but this row does not currently have a canonical backend pattern classification.",
-    canonicalId: "",
-    classified: false,
-  };
-}
-
-function summarizeCanvasEvent(event) {
-  const data = event?.data || {};
-  const operation = normalizeValue(data.operation, "activity");
-  const context = normalizeOptional(data.contextType || data.context || data.renderingContext);
-  const width = Number(data.width);
-  const height = Number(data.height);
-  const callCount = Number(data.callCount || data.burstCount || data.count || 0);
-
-  const parts = [`Observed ${operation}`];
-  if (context) parts.push(`${context} canvas`);
-  if (Number.isFinite(width) && width > 0 && Number.isFinite(height) && height > 0) {
-    parts.push(`${width}x${height}`);
-  }
-  if (callCount > 1) {
-    parts.push(`${callCount} calls in one burst`);
-  }
-
-  return parts.join(" | ");
-}
-
-function summarizeWebrtcEvent(event) {
-  const data = event?.data || {};
-  const action = normalizeValue(data.action, "activity");
-  const gatheringState = normalizeOptional(data.iceGatheringState || data.iceState);
-  const peerState = normalizeOptional(data.peerConnectionState || data.connectionState);
-  const hostnames = Array.isArray(data.stunTurnHostnames)
-    ? data.stunTurnHostnames.filter(Boolean)
-    : [];
-
-  const parts = [`Observed ${action}`];
-  if (gatheringState) parts.push(`ICE ${gatheringState}`);
-  if (peerState) parts.push(`peer ${peerState}`);
-  if (hostnames.length) {
-    parts.push(`${hostnames.length} safe STUN/TURN hostname${hostnames.length === 1 ? "" : "s"}`);
-  }
-
-  return parts.join(" | ");
+  return { label: "Unclassified API activity", explanation: "API activity was observed without a canonical backend pattern yet.", canonicalId: "", classified: false };
 }
 
 function summarizeEvent(event) {
-  const surfaceDetail = normalizeValue(event?.enrichment?.surfaceDetail || event?.data?.surfaceDetail, "api");
-
-  if (surfaceDetail === "canvas") return summarizeCanvasEvent(event);
-  if (surfaceDetail === "webrtc") return summarizeWebrtcEvent(event);
-
+  const data = event?.data || {};
+  const surface = normalizeValue(event?.enrichment?.surfaceDetail || data.surfaceDetail);
+  if (surface === "canvas") {
+    const size = data.width && data.height ? ` | ${data.width}x${data.height}` : "";
+    const burst = Number(data.count || 0) > 1 ? ` | ${data.count} calls in one burst` : "";
+    return `Observed ${normalizeValue(data.operation, "activity")}${data.contextType ? ` | ${data.contextType} canvas` : ""}${size}${burst}`;
+  }
+  if (surface === "webrtc") {
+    const hostCount = Array.isArray(data.stunTurnHostnames) ? data.stunTurnHostnames.filter(Boolean).length : 0;
+    const hostText = hostCount ? ` | ${hostCount} safe STUN/TURN hostname${hostCount === 1 ? "" : "s"}` : "";
+    return `Observed ${normalizeValue(data.action, "activity")}${data.state ? ` | ${data.state}` : ""}${hostText}`;
+  }
   return `Observed ${normalizeValue(event?.kind, "api.event")}`;
 }
 
-function buildOptionMap(events, selector) {
-  const counts = new Map();
-  for (const event of events) {
-    const key = selector(event);
-    counts.set(key, (counts.get(key) || 0) + 1);
-  }
-  return counts;
+function escape(value) {
+  return utils().escapeHtml ? utils().escapeHtml(String(value ?? "")) : String(value ?? "");
 }
 
-function syncSelectOptions(selectId, counts, labelForValue) {
-  const select = document.getElementById(selectId);
-  if (!select) return "all";
-
-  const currentValue = String(select.value || "all");
-  const nextValues = Array.from(counts.keys()).sort((a, b) => a.localeCompare(b));
-  const hasCurrent = currentValue === "all" || nextValues.includes(currentValue);
-
-  const options = [];
-  if (selectId === "apiSignalsSurfaceFilter") {
-    options.push({ value: "all", label: "All surfaces" });
-  } else if (selectId === "apiSignalsTypeFilter") {
-    options.push({ value: "all", label: "All signal types" });
-  }
-
-  for (const value of nextValues) {
-    const count = counts.get(value) || 0;
-    options.push({ value, label: `${labelForValue(value)} (${count})` });
-  }
-
-  select.innerHTML = "";
-  for (const option of options) {
-    const node = document.createElement("option");
-    node.value = option.value;
-    node.textContent = option.label;
-    select.appendChild(node);
-  }
-
-  const nextValue = hasCurrent ? currentValue : "all";
-  select.value = nextValue;
-  return nextValue;
-}
-
-function passesFilters(event) {
-  const surfaceDetail = normalizeValue(event?.enrichment?.surfaceDetail || event?.data?.surfaceDetail, "unknown");
-  const signalType = normalizeValue(event?.enrichment?.signalType, "unknown");
-  const band = confidenceBand(event?.enrichment?.confidence);
-
-  if (filterState.surfaceDetail !== "all" && surfaceDetail !== filterState.surfaceDetail) return false;
-  if (filterState.signalType !== "all" && signalType !== filterState.signalType) return false;
-  if (filterState.confidence !== "all" && band !== filterState.confidence) return false;
-  return true;
-}
-
-function setSummaryValue(id, value) {
-  const element = document.getElementById(id);
-  if (element) element.textContent = String(value);
-}
-
-function setText(id, text) {
-  const element = document.getElementById(id);
-  if (element) element.textContent = text;
-}
-
-function filtersAreActive() {
-  return (
-    filterState.surfaceDetail !== "all" ||
-    filterState.signalType !== "all" ||
-    filterState.confidence !== "all"
-  );
-}
-
-function syncClearFiltersState() {
-  const button = document.getElementById("apiSignalsClearFiltersBtn");
-  if (button) button.disabled = !filtersAreActive();
-}
-
-function resetFilters() {
-  filterState.surfaceDetail = "all";
-  filterState.signalType = "all";
-  filterState.confidence = "all";
-
-  const surfaceSelect = document.getElementById("apiSignalsSurfaceFilter");
-  const typeSelect = document.getElementById("apiSignalsTypeFilter");
-  const confidenceSelect = document.getElementById("apiSignalsConfidenceFilter");
-
-  if (surfaceSelect) surfaceSelect.value = "all";
-  if (typeSelect) typeSelect.value = "all";
-  if (confidenceSelect) confidenceSelect.value = "all";
-
-  syncClearFiltersState();
-  rerenderFromState();
-}
-
-function renderSummary(filteredEvents) {
-  const sites = new Set(filteredEvents.map((event) => normalizeValue(event.site, "unknown")));
-  const patterns = new Set(
-    filteredEvents
-      .map((event) => normalizeOptional(event?.enrichment?.patternId))
-      .filter(Boolean)
-  );
-  const highConfidence = filteredEvents.filter(
-    (event) => confidenceBand(event?.enrichment?.confidence) === "high"
-  ).length;
-
-  setSummaryValue("apiSignalsStatTotal", filteredEvents.length);
-  setSummaryValue("apiSignalsStatHighConfidence", highConfidence);
-  setSummaryValue("apiSignalsStatSites", sites.size);
-  setSummaryValue("apiSignalsStatPatterns", patterns.size);
-}
-
-function createEmptyState(title, body, detail) {
-  const wrapper = document.createElement("div");
-
-  const titleNode = document.createElement("div");
-  titleNode.className = "api-signals-empty-title";
-  titleNode.textContent = title;
-  wrapper.appendChild(titleNode);
-
-  const bodyNode = document.createElement("p");
-  bodyNode.className = "api-signals-empty-copy";
-  bodyNode.textContent = body;
-  wrapper.appendChild(bodyNode);
-
-  if (detail) {
-    const detailNode = document.createElement("p");
-    detailNode.className = "api-signals-empty-detail";
-    detailNode.textContent = detail;
-    wrapper.appendChild(detailNode);
-  }
-
-  return wrapper;
-}
-
-function renderEmptyState(allApiEvents, filteredEvents) {
-  const empty = document.getElementById("apiSignalsEmptyState");
-  const eventsList = document.getElementById("apiSignalsEventsList");
-  if (!empty || !eventsList) return false;
-
-  empty.innerHTML = "";
-  eventsList.innerHTML = "";
-
-  if (!allApiEvents.length) {
-    empty.appendChild(
-      createEmptyState(
-        "No API signals captured in this window",
-        "Browse a site with Canvas or WebRTC activity while capture is enabled, then revisit this page.",
-        "This view reflects the current /api/events dashboard window only."
-      )
-    );
-    empty.classList.remove("hidden");
-    return true;
-  }
-
-  if (!filteredEvents.length) {
-    const filterSummary = describeActiveFilters();
-    empty.appendChild(
-      createEmptyState(
-        "No signals match the current filters",
-        `The current filters exclude all ${allApiEvents.length} captured API signal${allApiEvents.length === 1 ? "" : "s"} in this dashboard window.`,
-        filterSummary ? `${filterSummary} Use Clear filters above to inspect the full set again.` : ""
-      )
-    );
-    empty.classList.remove("hidden");
-    return true;
-  }
-
-  empty.classList.add("hidden");
-  return false;
-}
-
-function createCodeCell(text) {
-  const span = document.createElement("span");
-  span.className = "api-signals-code";
-  span.textContent = text || "Not classified";
-  return span;
-}
-
-function createConfidenceBadge(value) {
-  const band = confidenceBand(value);
-  const span = document.createElement("span");
-  span.className = `api-signals-confidence ${band}`;
-  if (typeof value === "number" && !Number.isNaN(value)) {
-    span.textContent = `${confidenceLabel(band)} ${value.toFixed(2)}`;
-  } else {
-    span.textContent = "Unknown confidence";
-  }
-  return span;
-}
-
-function createSurfacePill(value) {
-  const key = normalizeValue(value, "unknown");
-  const span = document.createElement("span");
-  span.className = `api-signals-surface-pill ${key}`;
-  span.textContent = labelForSurface(key);
-  return span;
-}
-
-function createTypeBadge(value) {
-  const span = document.createElement("span");
-  span.className = "api-signals-type-badge";
-  span.textContent = labelForSignalType(value);
-  return span;
-}
-
-function createOutcomeBadge(value) {
-  const key = normalizeGateOutcome(value);
-  const span = document.createElement("span");
-  span.className = `api-signals-outcome-badge ${key}`;
-  span.textContent = labelForGateOutcome(key);
-  return span;
-}
-
-function createDetailBlock(label, value) {
-  const block = document.createElement("div");
-  block.className = "api-signals-event-block";
-
-  const labelNode = document.createElement("div");
-  labelNode.className = "api-signals-event-block-label";
-  labelNode.textContent = label;
-  block.appendChild(labelNode);
-
-  const valueNode = document.createElement("p");
-  valueNode.className = "api-signals-event-block-value";
-  valueNode.textContent = value;
-  block.appendChild(valueNode);
-
-  return block;
-}
-
-function createSecondaryField(label, valueNode) {
-  const field = document.createElement("div");
-  field.className = "api-signals-secondary-field";
-
-  const labelNode = document.createElement("div");
-  labelNode.className = "api-signals-secondary-label";
-  labelNode.textContent = label;
-  field.appendChild(labelNode);
-
-  if (typeof valueNode === "string") {
-    const valueText = document.createElement("div");
-    valueText.className = "api-signals-secondary-value";
-    valueText.textContent = valueNode;
-    field.appendChild(valueText);
-  } else if (valueNode) {
-    valueNode.classList.add("api-signals-secondary-value");
-    field.appendChild(valueNode);
-  }
-
-  return field;
-}
-
-function formatEventTime(ts, friendlyTime) {
-  if (typeof friendlyTime === "function") {
-    const friendly = friendlyTime(ts);
-    if (friendly && friendly !== "-") return friendly;
-  }
-  if (!ts) return "-";
-  const date = new Date(ts);
-  if (Number.isNaN(date.getTime())) return "-";
-  return date.toLocaleString();
-}
-
-function renderEvents(filteredEvents) {
-  const eventsList = document.getElementById("apiSignalsEventsList");
-  const { friendlyTime } = getUtils();
-  if (!eventsList) return;
-
-  eventsList.innerHTML = "";
-
-  const sorted = filteredEvents.slice().sort((a, b) => (b.ts || 0) - (a.ts || 0));
-
-  for (const event of sorted) {
-    const presentation = getPatternPresentation(event);
-    const surfaceDetail = normalizeValue(event?.enrichment?.surfaceDetail || event?.data?.surfaceDetail, "unknown");
-    const signalType = normalizeValue(event?.enrichment?.signalType, "unknown");
-    const gateOutcome = normalizeGateOutcome(event?.data?.gateOutcome);
-    const site = normalizeValue(event.site, "unknown");
-
-    const card = document.createElement("article");
-    card.className = "api-signals-event-card";
-
-    const head = document.createElement("div");
-    head.className = "api-signals-event-head";
-
-    const titleWrap = document.createElement("div");
-    titleWrap.className = "api-signals-event-title-wrap";
-
-    const kicker = document.createElement("div");
-    kicker.className = "api-signals-event-kicker";
-    kicker.textContent = `${labelForSurface(surfaceDetail)} signal`;
-    titleWrap.appendChild(kicker);
-
-    const title = document.createElement("div");
-    title.className = "api-signals-event-title";
-    title.textContent = presentation.label;
-    titleWrap.appendChild(title);
-
-    head.appendChild(titleWrap);
-
-    const badges = document.createElement("div");
-    badges.className = "api-signals-event-badges";
-    badges.appendChild(createConfidenceBadge(event?.enrichment?.confidence));
-    badges.appendChild(createSurfacePill(surfaceDetail));
-    head.appendChild(badges);
-
-    card.appendChild(head);
-
-    const meta = document.createElement("div");
-    meta.className = "api-signals-event-meta";
-
-    const siteNode = document.createElement("span");
-    siteNode.className = "api-signals-event-site";
-    siteNode.textContent = site;
-    meta.appendChild(siteNode);
-
-    meta.appendChild(createTypeBadge(signalType));
-    meta.appendChild(createOutcomeBadge(gateOutcome));
-
-    const timeNode = document.createElement("span");
-    timeNode.className = "api-signals-event-time";
-    timeNode.textContent = formatEventTime(event.ts, friendlyTime);
-    meta.appendChild(timeNode);
-
-    card.appendChild(meta);
-
-    const summaryGrid = document.createElement("div");
-    summaryGrid.className = "api-signals-event-summary-grid";
-    summaryGrid.appendChild(createDetailBlock("Why it was flagged", presentation.explanation));
-    summaryGrid.appendChild(createDetailBlock("Observed details", summarizeEvent(event)));
-    card.appendChild(summaryGrid);
-
-    const secondaryGrid = document.createElement("div");
-    secondaryGrid.className = "api-signals-secondary-grid";
-    secondaryGrid.appendChild(createSecondaryField("Canonical pattern", createCodeCell(presentation.canonicalId)));
-    secondaryGrid.appendChild(
-      createSecondaryField("Backend signal type", createCodeCell(normalizeOptional(event?.enrichment?.signalType) || "unknown"))
-    );
-    secondaryGrid.appendChild(
-      createSecondaryField("Gate outcome", createCodeCell(gateOutcome))
-    );
-
-    if (!presentation.classified) {
-      secondaryGrid.appendChild(createSecondaryField("Classification status", "Legacy or unclassified row"));
-    }
-
-    card.appendChild(secondaryGrid);
-    eventsList.appendChild(card);
-  }
+function labelFor(map, value, fallback = "Unknown") {
+  const key = normalizeValue(value);
+  return map[key] || fallback;
 }
 
 function describeActiveFilters() {
-  const labels = [];
-
-  if (filterState.surfaceDetail !== "all") {
-    labels.push(`Surface: ${labelForSurface(filterState.surfaceDetail)}`);
-  }
-  if (filterState.signalType !== "all") {
-    labels.push(`Signal type: ${labelForSignalType(filterState.signalType)}`);
-  }
-  if (filterState.confidence !== "all") {
-    labels.push(`Confidence: ${confidenceLabel(filterState.confidence)}`);
-  }
-
-  return labels.length ? `Active filters: ${labels.join(" | ")}.` : "";
+  const parts = [];
+  if (filterState.surfaceDetail !== "all") parts.push(`Surface: ${labelFor(SURFACE_LABELS, filterState.surfaceDetail)}`);
+  if (filterState.signalType !== "all") parts.push(`Signal type: ${labelFor(SIGNAL_TYPE_LABELS, filterState.signalType, filterState.signalType)}`);
+  if (filterState.confidence !== "all") parts.push(`Confidence: ${filterState.confidence}`);
+  return parts.length ? `Active filters: ${parts.join(" | ")}.` : "";
 }
 
-function updateFilterNote(allApiEvents, filteredEvents) {
-  if (!allApiEvents.length) {
-    setText("apiSignalsFilterNote", "Waiting for Canvas or WebRTC signals from the existing /api/events feed.");
-    return;
-  }
-
-  const base = `Showing ${filteredEvents.length} of ${allApiEvents.length} API signal${allApiEvents.length === 1 ? "" : "s"} from the current in-memory dashboard window.`;
-  const filterSummary = describeActiveFilters();
-  setText("apiSignalsFilterNote", filterSummary ? `${base} ${filterSummary}` : base);
-}
-
-function updateResultsMeta(allApiEvents, filteredEvents) {
-  if (!allApiEvents.length) {
-    setText("apiSignalsResultsMeta", "No API signal detections are available in the current poll window yet.");
-    return;
-  }
-
-  if (!filteredEvents.length) {
-    setText(
-      "apiSignalsResultsMeta",
-      `No current rows match the filters. ${allApiEvents.length} API signal${allApiEvents.length === 1 ? "" : "s"} exist in the wider dashboard window.`
-    );
-    return;
-  }
-
-  setText(
-    "apiSignalsResultsMeta",
-    "Latest first. Each card shows the human-readable signal label first and keeps the canonical backend fields visible as secondary detail."
-  );
-}
-
-function sortEntries(entries) {
-  return entries.sort((a, b) => b.count - a.count || a.label.localeCompare(b.label));
-}
-
-function buildTopPatternEntries(events) {
-  const counts = new Map();
-
-  for (const event of events) {
-    const presentation = getPatternPresentation(event);
-    const key = presentation.canonicalId || `unclassified:${presentation.label}`;
-    if (!counts.has(key)) {
-      counts.set(key, {
-        label: presentation.label,
-        detail: presentation.canonicalId || "No canonical pattern id",
-        count: 0,
-      });
-    }
-    counts.get(key).count += 1;
-  }
-
-  return sortEntries(Array.from(counts.values())).slice(0, 3);
-}
-
-function buildTopSiteEntries(events) {
-  const counts = new Map();
-
-  for (const event of events) {
-    const key = normalizeValue(event.site, "unknown");
-    if (!counts.has(key)) {
-      counts.set(key, { label: key, detail: "", count: 0 });
-    }
-    counts.get(key).count += 1;
-  }
-
-  return sortEntries(Array.from(counts.values())).slice(0, 3);
-}
-
-function buildTopSignalTypeEntries(events) {
-  const counts = new Map();
-
-  for (const event of events) {
-    const key = normalizeValue(event?.enrichment?.signalType, "unknown");
-    if (!counts.has(key)) {
-      counts.set(key, {
-        label: labelForSignalType(key),
-        detail: key,
-        count: 0,
-      });
-    }
-    counts.get(key).count += 1;
-  }
-
-  return sortEntries(Array.from(counts.values())).slice(0, 3);
-}
-
-function renderGlanceList(id, entries, emptyText, useCodeDetail = false) {
-  const root = document.getElementById(id);
-  if (!root) return;
-
-  root.innerHTML = "";
-
-  if (!entries.length) {
-    const empty = document.createElement("div");
-    empty.className = "api-signals-glance-empty";
-    empty.textContent = emptyText;
-    root.appendChild(empty);
-    return;
-  }
-
-  for (const entry of entries) {
-    const item = document.createElement("div");
-    item.className = "api-signals-glance-item";
-
-    const topRow = document.createElement("div");
-    topRow.className = "api-signals-glance-row";
-
-    const label = document.createElement("div");
-    label.className = "api-signals-glance-label";
-    label.textContent = entry.label;
-    topRow.appendChild(label);
-
-    const count = document.createElement("div");
-    count.className = "api-signals-glance-count";
-    count.textContent = String(entry.count);
-    topRow.appendChild(count);
-
-    item.appendChild(topRow);
-
-    if (entry.detail) {
-      const detail = useCodeDetail ? createCodeCell(entry.detail) : document.createElement("div");
-      if (useCodeDetail) {
-        detail.classList.add("api-signals-glance-detail");
-      } else {
-        detail.className = "api-signals-glance-detail";
-        detail.textContent = entry.detail;
-      }
-      item.appendChild(detail);
-    }
-
-    root.appendChild(item);
-  }
-}
-
-function renderAtAGlance(filteredEvents, allApiEvents) {
-  const emptyText = allApiEvents.length
-    ? "No matching signals in this filtered view."
-    : "No API signals yet.";
-
-  renderGlanceList("apiSignalsTopPatterns", buildTopPatternEntries(filteredEvents), emptyText, true);
-  renderGlanceList("apiSignalsTopSites", buildTopSiteEntries(filteredEvents), emptyText, false);
-  renderGlanceList("apiSignalsTopTypes", buildTopSignalTypeEntries(filteredEvents), emptyText, true);
-}
-
-function syncFilters(allApiEvents) {
-  const surfaceCounts = buildOptionMap(
-    allApiEvents,
-    (event) => normalizeValue(event?.enrichment?.surfaceDetail || event?.data?.surfaceDetail, "unknown")
-  );
-  const signalTypeCounts = buildOptionMap(
-    allApiEvents,
-    (event) => normalizeValue(event?.enrichment?.signalType, "unknown")
-  );
-
-  const nextSurfaceValue = syncSelectOptions("apiSignalsSurfaceFilter", surfaceCounts, labelForSurface);
-  const nextSignalTypeValue = syncSelectOptions("apiSignalsTypeFilter", signalTypeCounts, labelForSignalType);
-
-  filterState.surfaceDetail = nextSurfaceValue || "all";
-  filterState.signalType = nextSignalTypeValue || "all";
-}
-
-export function renderApiSignalsView(events) {
-  const allApiEvents = (Array.isArray(events) ? events : []).filter(isApiSignalEvent);
-  syncFilters(allApiEvents);
-
-  const filteredEvents = allApiEvents.filter(passesFilters);
-
-  renderSummary(filteredEvents);
-  renderAtAGlance(filteredEvents, allApiEvents);
-  updateFilterNote(allApiEvents, filteredEvents);
-  updateResultsMeta(allApiEvents, filteredEvents);
-  syncClearFiltersState();
-
-  if (renderEmptyState(allApiEvents, filteredEvents)) return;
-  renderEvents(filteredEvents);
-}
-
-function rerenderFromState() {
-  renderApiSignalsView(getLatestEvents());
-}
-
-function bindFilter(selectId, key) {
-  const select = document.getElementById(selectId);
-  if (!select) return;
-
-  select.addEventListener("change", () => {
-    filterState[key] = String(select.value || "all");
-    syncClearFiltersState();
-    rerenderFromState();
+function syncSubview() {
+  const insights = document.getElementById("apiSignalsInsightsSubviewPanel");
+  const controls = document.getElementById("apiSignalsControlsSubviewPanel");
+  const buttons = document.querySelectorAll("[data-api-subview]");
+  insights?.classList.toggle("hidden", viewState.subview !== "insights");
+  controls?.classList.toggle("hidden", viewState.subview !== "controls");
+  buttons.forEach((button) => {
+    const active = button.dataset.apiSubview === viewState.subview;
+    button.classList.toggle("active", active);
+    button.setAttribute("aria-selected", active ? "true" : "false");
   });
 }
 
-export function initApiSignalsFeature({ getLatestEvents: nextGetLatestEvents } = {}) {
-  getLatestEventsCb = typeof nextGetLatestEvents === "function" ? nextGetLatestEvents : null;
-  if (filtersBound) return;
+function syncSelect(selectId, values, labeler, allLabel) {
+  const select = document.getElementById(selectId);
+  if (!select) return "all";
+  const current = String(select.value || "all");
+  const options = [`<option value="all">${allLabel}</option>`].concat(
+    values.map(([value, count]) => `<option value="${escape(value)}">${escape(labeler(value))} (${count})</option>`)
+  );
+  select.innerHTML = options.join("");
+  select.value = values.some(([value]) => value === current) ? current : "all";
+  return select.value;
+}
 
-  bindFilter("apiSignalsSurfaceFilter", "surfaceDetail");
-  bindFilter("apiSignalsTypeFilter", "signalType");
-  bindFilter("apiSignalsConfidenceFilter", "confidence");
+function renderInsights(events) {
+  const allEvents = (Array.isArray(events) ? events : []).filter(isApiSignalEvent);
+  const surfaceCounts = [...allEvents.reduce((map, event) => map.set(normalizeValue(event?.enrichment?.surfaceDetail || event?.data?.surfaceDetail), (map.get(normalizeValue(event?.enrichment?.surfaceDetail || event?.data?.surfaceDetail)) || 0) + 1), new Map())].sort();
+  const typeCounts = [...allEvents.reduce((map, event) => map.set(normalizeValue(event?.enrichment?.signalType), (map.get(normalizeValue(event?.enrichment?.signalType)) || 0) + 1), new Map())].sort();
+  filterState.surfaceDetail = syncSelect("apiSignalsSurfaceFilter", surfaceCounts, (value) => labelFor(SURFACE_LABELS, value, value), "All surfaces");
+  filterState.signalType = syncSelect("apiSignalsTypeFilter", typeCounts, (value) => labelFor(SIGNAL_TYPE_LABELS, value, value), "All signal types");
 
-  const clearButton = document.getElementById("apiSignalsClearFiltersBtn");
-  if (clearButton) {
-    clearButton.addEventListener("click", resetFilters);
+  const filtered = allEvents.filter((event) => {
+    const surface = normalizeValue(event?.enrichment?.surfaceDetail || event?.data?.surfaceDetail);
+    const signalType = normalizeValue(event?.enrichment?.signalType);
+    const band = confidenceBand(event?.enrichment?.confidence);
+    return (filterState.surfaceDetail === "all" || surface === filterState.surfaceDetail)
+      && (filterState.signalType === "all" || signalType === filterState.signalType)
+      && (filterState.confidence === "all" || band === filterState.confidence);
+  });
+
+  const sites = new Set(filtered.map((event) => normalizeValue(event.site)));
+  const patterns = new Set(filtered.map((event) => normalizeOptional(event?.enrichment?.patternId)).filter(Boolean));
+  const highConfidence = filtered.filter((event) => confidenceBand(event?.enrichment?.confidence) === "high").length;
+  const filterNote = !allEvents.length
+    ? "Waiting for Canvas or WebRTC signals from the existing /api/events feed."
+    : `Showing ${filtered.length} of ${allEvents.length} API signal${allEvents.length === 1 ? "" : "s"} from the current in-memory dashboard window.${describeActiveFilters() ? ` ${describeActiveFilters()}` : ""}`;
+
+  const resultsMeta = !allEvents.length
+    ? "No API signal detections are available in the current poll window yet."
+    : !filtered.length
+      ? `No current rows match the filters. ${allEvents.length} API signal${allEvents.length === 1 ? "" : "s"} exist in the wider dashboard window.`
+      : "Latest first. Each card shows the human-readable signal label first and keeps the canonical backend fields visible as secondary detail.";
+
+  document.getElementById("apiSignalsStatTotal").textContent = String(filtered.length);
+  document.getElementById("apiSignalsStatHighConfidence").textContent = String(highConfidence);
+  document.getElementById("apiSignalsStatSites").textContent = String(sites.size);
+  document.getElementById("apiSignalsStatPatterns").textContent = String(patterns.size);
+  document.getElementById("apiSignalsFilterNote").textContent = filterNote;
+  document.getElementById("apiSignalsResultsMeta").textContent = resultsMeta;
+  document.getElementById("apiSignalsClearFiltersBtn").disabled = filterState.surfaceDetail === "all" && filterState.signalType === "all" && filterState.confidence === "all";
+
+  const topPatterns = document.getElementById("apiSignalsTopPatterns");
+  const topSites = document.getElementById("apiSignalsTopSites");
+  const topTypes = document.getElementById("apiSignalsTopTypes");
+  const emptyText = allEvents.length ? "No matching signals in this filtered view." : "No API signals yet.";
+  topPatterns.innerHTML = glanceHtml(topEntries(filtered, (event) => {
+    const presentation = patternPresentation(event);
+    return { label: presentation.label, detail: presentation.canonicalId || "No canonical pattern id" };
+  }), emptyText, true);
+  topSites.innerHTML = glanceHtml(topEntries(filtered, (event) => ({ label: normalizeValue(event.site), detail: "" })), emptyText, false);
+  topTypes.innerHTML = glanceHtml(topEntries(filtered, (event) => {
+    const key = normalizeValue(event?.enrichment?.signalType);
+    return { label: labelFor(SIGNAL_TYPE_LABELS, key, key), detail: key };
+  }), emptyText, true);
+
+  const empty = document.getElementById("apiSignalsEmptyState");
+  const list = document.getElementById("apiSignalsEventsList");
+  if (!allEvents.length) {
+    empty.classList.remove("hidden");
+    empty.innerHTML = emptyStateHtml("No API signals captured in this window", "Browse a site with Canvas or WebRTC activity while capture is enabled, then revisit this page.", "This view reflects the current /api/events dashboard window only.");
+    list.innerHTML = "";
+    return;
+  }
+  if (!filtered.length) {
+    empty.classList.remove("hidden");
+    empty.innerHTML = emptyStateHtml("No signals match the current filters", `The current filters exclude all ${allEvents.length} captured API signal${allEvents.length === 1 ? "" : "s"} in this dashboard window.`, describeActiveFilters() ? `${describeActiveFilters()} Use Clear filters above to inspect the full set again.` : "");
+    list.innerHTML = "";
+    return;
   }
 
+  empty.classList.add("hidden");
+  list.innerHTML = filtered
+    .slice()
+    .sort((a, b) => (b.ts || 0) - (a.ts || 0))
+    .map((event) => eventCardHtml(event))
+    .join("");
+}
+
+function topEntries(events, mapper) {
+  const counts = new Map();
+  events.forEach((event) => {
+    const item = mapper(event);
+    const key = `${item.label}__${item.detail}`;
+    const existing = counts.get(key) || { ...item, count: 0 };
+    existing.count += 1;
+    counts.set(key, existing);
+  });
+  return [...counts.values()].sort((a, b) => b.count - a.count || a.label.localeCompare(b.label)).slice(0, 3);
+}
+
+function glanceHtml(entries, emptyText, useCode) {
+  if (!entries.length) return `<div class="api-signals-glance-empty">${escape(emptyText)}</div>`;
+  return entries.map((entry) => `
+    <div class="api-signals-glance-item">
+      <div class="api-signals-glance-row">
+        <div class="api-signals-glance-label">${escape(entry.label)}</div>
+        <div class="api-signals-glance-count">${entry.count}</div>
+      </div>
+      ${entry.detail ? `<div class="api-signals-glance-detail${useCode ? " api-signals-code" : ""}">${escape(entry.detail)}</div>` : ""}
+    </div>
+  `).join("");
+}
+
+function emptyStateHtml(title, body, detail) {
+  return `
+    <div class="api-signals-empty-title">${escape(title)}</div>
+    <p class="api-signals-empty-copy">${escape(body)}</p>
+    ${detail ? `<p class="api-signals-empty-detail">${escape(detail)}</p>` : ""}
+  `;
+}
+
+function eventCardHtml(event) {
+  const { friendlyTime } = utils();
+  const presentation = patternPresentation(event);
+  const surface = normalizeValue(event?.enrichment?.surfaceDetail || event?.data?.surfaceDetail);
+  const signalType = normalizeValue(event?.enrichment?.signalType);
+  const gateOutcome = normalizeValue(event?.data?.gateOutcome, "observed");
+  const confidence = event?.enrichment?.confidence;
+  const confidenceText = typeof confidence === "number" && !Number.isNaN(confidence) ? `${confidenceBand(confidence)} ${confidence.toFixed(2)}` : "unknown";
+  const timeText = typeof friendlyTime === "function" ? friendlyTime(event.ts) : new Date(event.ts || 0).toLocaleString();
+  return `
+    <article class="api-signals-event-card">
+      <div class="api-signals-event-head">
+        <div class="api-signals-event-title-wrap">
+          <div class="api-signals-event-kicker">${escape(labelFor(SURFACE_LABELS, surface, surface))} signal</div>
+          <div class="api-signals-event-title">${escape(presentation.label)}</div>
+        </div>
+        <div class="api-signals-event-badges">
+          <span class="api-signals-confidence ${escape(confidenceBand(confidence))}">${escape(confidenceText)}</span>
+          <span class="api-signals-surface-pill ${escape(surface)}">${escape(labelFor(SURFACE_LABELS, surface, surface))}</span>
+        </div>
+      </div>
+      <div class="api-signals-event-meta">
+        <span class="api-signals-event-site">${escape(normalizeValue(event.site))}</span>
+        <span class="api-signals-type-badge">${escape(labelFor(SIGNAL_TYPE_LABELS, signalType, signalType))}</span>
+        <span class="api-signals-outcome-badge ${escape(gateOutcome)}">${escape(labelFor(OUTCOME_LABELS, gateOutcome, gateOutcome))}</span>
+        <span class="api-signals-event-time">${escape(timeText || "-")}</span>
+      </div>
+      <div class="api-signals-event-summary-grid">
+        <div class="api-signals-event-block">
+          <div class="api-signals-event-block-label">Why it was flagged</div>
+          <p class="api-signals-event-block-value">${escape(presentation.explanation)}</p>
+        </div>
+        <div class="api-signals-event-block">
+          <div class="api-signals-event-block-label">Observed details</div>
+          <p class="api-signals-event-block-value">${escape(summarizeEvent(event))}</p>
+        </div>
+      </div>
+      <div class="api-signals-secondary-grid">
+        <div class="api-signals-secondary-field">
+          <div class="api-signals-secondary-label">Canonical pattern</div>
+          <div class="api-signals-secondary-value api-signals-code">${escape(presentation.canonicalId || "Not classified")}</div>
+        </div>
+        <div class="api-signals-secondary-field">
+          <div class="api-signals-secondary-label">Backend signal type</div>
+          <div class="api-signals-secondary-value api-signals-code">${escape(signalType)}</div>
+        </div>
+        <div class="api-signals-secondary-field">
+          <div class="api-signals-secondary-label">Gate outcome</div>
+          <div class="api-signals-secondary-value api-signals-code">${escape(gateOutcome)}</div>
+        </div>
+        ${presentation.classified ? "" : `
+        <div class="api-signals-secondary-field">
+          <div class="api-signals-secondary-label">Classification status</div>
+          <div class="api-signals-secondary-value">Legacy or unclassified row</div>
+        </div>`}
+      </div>
+    </article>
+  `;
+}
+
+function derivePolicySnapshot(policiesResponse) {
+  const snapshot = { trustedSites: new Set(), surfaces: { canvas: "observe", webrtc: "observe" } };
+  const items = Array.isArray(policiesResponse?.items) ? policiesResponse.items : [];
+  items.forEach((item) => {
+    const op = normalizeOptional(item?.op);
+    const payload = item?.payload && typeof item.payload === "object" ? item.payload : {};
+    if (op === "trust_site" && payload.site) snapshot.trustedSites.add(String(payload.site));
+    if (op === "untrust_site" && payload.site) snapshot.trustedSites.delete(String(payload.site));
+    if ((op === "set_api_policy" || op === "set_api_surface_policy") && (payload.surface === "canvas" || payload.surface === "webrtc")) {
+      snapshot.surfaces[payload.surface] = normalizePolicyAction(payload.action);
+    }
+  });
+  return snapshot;
+}
+
+function renderControls() {
+  const root = document.getElementById("apiPolicyCards");
+  if (!root) return;
+  const snapshot = derivePolicySnapshot(viewState.latestPolicies);
+  const trustedNote = document.getElementById("apiPolicyTrustedSitesNote");
+  if (trustedNote) {
+    trustedNote.textContent = snapshot.trustedSites.size
+      ? `Trusted sites currently configured: ${snapshot.trustedSites.size}. "Allow on trusted sites" allows these surfaces there and blocks them elsewhere.`
+      : 'Trusted sites currently configured: 0. "Allow on trusted sites" currently behaves like block until you trust at least one site.';
+  }
+  root.innerHTML = POLICY_SURFACES.map((surface) => controlCardHtml(surface, snapshot.surfaces[surface.key], viewState.saves[surface.key])).join("");
+}
+
+function controlCardHtml(surface, currentAction, saveState) {
+  const status = saveState.message || (saveState.pending
+    ? "Saving policy change through the live backend policy feed..."
+    : "Shared actions: Observe, Warn, Block, and Allow on trusted sites.");
+  const tone = saveState.tone || (saveState.pending ? "pending" : "");
+  return `
+    <article class="panel api-policy-card">
+      <div class="api-policy-card-header">
+        <div class="api-policy-card-title-wrap">
+          <div class="api-policy-kicker">${escape(surface.kicker)}</div>
+          <div class="api-policy-card-title">${escape(surface.title)}</div>
+        </div>
+        <span class="api-policy-mode-pill ${escape(currentAction)}">Current mode: ${escape(POLICY_ACTIONS.find(([value]) => value === currentAction)?.[1] || "Observe")}</span>
+      </div>
+      <p class="api-policy-card-copy">${escape(surface.summary)}</p>
+      <fieldset class="api-policy-options" ${saveState.pending ? "disabled" : ""}>
+        <div class="api-policy-options-grid">
+          ${POLICY_ACTIONS.map(([value, label, description]) => `
+            <label class="api-policy-option${currentAction === value ? " selected" : ""}">
+              <input type="radio" name="api-policy-${escape(surface.key)}" value="${escape(value)}" data-surface="${escape(surface.key)}" ${currentAction === value ? "checked" : ""} ${saveState.pending ? "disabled" : ""} />
+              <div class="api-policy-option-copy">
+                <div class="api-policy-option-title">${escape(label)}</div>
+                <div class="api-policy-option-text">${escape(description)}</div>
+              </div>
+            </label>
+          `).join("")}
+        </div>
+      </fieldset>
+      <p class="api-policy-surface-note">${escape(surface.note)}</p>
+      <div class="api-policy-status${tone ? ` ${escape(tone)}` : ""}">${escape(status)}</div>
+    </article>
+  `;
+}
+
+async function submitSurfacePolicy(surface, action) {
+  const api = window.VPT?.api;
+  const surfaceKey = surface === "webrtc" ? "webrtc" : "canvas";
+  const nextAction = normalizePolicyAction(action);
+  viewState.saves[surfaceKey] = { pending: true, tone: "pending", message: `Saving ${nextAction.replace("_", " ")} for ${surfaceKey}...` };
+  renderControls();
+  try {
+    if (!api?.postPolicy) throw new Error("Policy API not available in dashboard context");
+    const created = await api.postPolicy("set_api_surface_policy", { surface: surfaceKey, action: nextAction });
+    const createdItems = Array.isArray(created) ? created : [created];
+    viewState.latestPolicies = {
+      latestTs: Math.max(Number(viewState.latestPolicies.latestTs) || 0, ...createdItems.map((item) => Number(item?.ts) || 0)),
+      items: (Array.isArray(viewState.latestPolicies.items) ? viewState.latestPolicies.items : []).concat(createdItems.filter(Boolean)),
+    };
+    viewState.saves[surfaceKey] = { pending: false, tone: "success", message: `Saved. ${labelFor(SURFACE_LABELS, surfaceKey, surfaceKey)} is now set to ${POLICY_ACTIONS.find(([value]) => value === nextAction)?.[1] || "Observe"}.` };
+  } catch (error) {
+    viewState.saves[surfaceKey] = { pending: false, tone: "error", message: `Could not save ${labelFor(SURFACE_LABELS, surfaceKey, surfaceKey)} policy. ${error?.message || "Try again."}` };
+  }
+  renderControls();
+}
+
+function bindFilters() {
+  if (filtersBound) return;
+  ["apiSignalsSurfaceFilter", "apiSignalsTypeFilter", "apiSignalsConfidenceFilter"].forEach((id) => {
+    document.getElementById(id)?.addEventListener("change", () => {
+      filterState.surfaceDetail = String(document.getElementById("apiSignalsSurfaceFilter")?.value || "all");
+      filterState.signalType = String(document.getElementById("apiSignalsTypeFilter")?.value || "all");
+      filterState.confidence = String(document.getElementById("apiSignalsConfidenceFilter")?.value || "all");
+      renderInsights(typeof getLatestEventsCb === "function" ? getLatestEventsCb() || [] : viewState.latestEvents);
+    });
+  });
+  document.getElementById("apiSignalsClearFiltersBtn")?.addEventListener("click", () => {
+    filterState.surfaceDetail = "all";
+    filterState.signalType = "all";
+    filterState.confidence = "all";
+    ["apiSignalsSurfaceFilter", "apiSignalsTypeFilter", "apiSignalsConfidenceFilter"].forEach((id) => {
+      const element = document.getElementById(id);
+      if (element) element.value = "all";
+    });
+    renderInsights(typeof getLatestEventsCb === "function" ? getLatestEventsCb() || [] : viewState.latestEvents);
+  });
   filtersBound = true;
 }
 
-window.VPT = window.VPT || {};
-window.VPT.features = window.VPT.features || {};
-window.VPT.features.apiSignals = { initApiSignalsFeature, renderApiSignalsView };
+function bindSubviewControls() {
+  if (subviewBound) return;
+  document.querySelectorAll("[data-api-subview]").forEach((button) => {
+    button.addEventListener("click", () => {
+      viewState.subview = button.dataset.apiSubview === "controls" ? "controls" : "insights";
+      syncSubview();
+    });
+  });
+  subviewBound = true;
+}
+
+function bindControlEvents() {
+  if (controlsBound) return;
+  document.getElementById("apiPolicyCards")?.addEventListener("change", (event) => {
+    const target = event.target;
+    if (!(target instanceof HTMLInputElement) || target.type !== "radio" || !target.checked) return;
+    const surface = normalizeOptional(target.dataset.surface).toLowerCase();
+    if (surface !== "canvas" && surface !== "webrtc") return;
+    submitSurfacePolicy(surface, target.value);
+  });
+  controlsBound = true;
+}
+
+export function renderApiSignalsView(events, options = {}) {
+  viewState.latestEvents = Array.isArray(events) ? events : [];
+  if (Object.prototype.hasOwnProperty.call(options, "policies")) {
+    viewState.latestPolicies = options.policies && typeof options.policies === "object"
+      ? { latestTs: Number(options.policies.latestTs) || 0, items: Array.isArray(options.policies.items) ? options.policies.items.slice() : [] }
+      : { latestTs: 0, items: [] };
+  }
+  syncSubview();
+  renderInsights(viewState.latestEvents);
+  renderControls();
+}
+
+export function initApiSignalsFeature({ getLatestEvents } = {}) {
+  getLatestEventsCb = typeof getLatestEvents === "function" ? getLatestEvents : null;
+  bindFilters();
+  bindSubviewControls();
+  bindControlEvents();
+}
+
+if (typeof window !== "undefined") {
+  window.VPT = window.VPT || {};
+  window.VPT.features = window.VPT.features || {};
+  window.VPT.features.apiSignals = { initApiSignalsFeature, renderApiSignalsView };
+}

@@ -14,6 +14,7 @@ let latestEvents = [];
 let selectedEvent = null;
 let trustedSites = new Set(); // derived from /api/policies
 let latestSitesCache = [];
+let latestPoliciesCache = { latestTs: 0, items: [] };
 
 function setSelectedSite(site) {
   const normalized = typeof site === "string" && site.trim() ? site.trim() : null;
@@ -102,6 +103,9 @@ async function fetchAndRender() {
     const { events, sites, policies } = await api.fetchDashboardData();
 
     latestSitesCache = Array.isArray(sites) ? sites : [];
+    latestPoliciesCache = policies && typeof policies === "object"
+      ? { latestTs: Number(policies.latestTs) || 0, items: Array.isArray(policies.items) ? policies.items : [] }
+      : { latestTs: 0, items: [] };
 
     // Clear selection if the selected event no longer exists in the latest poll window.
     if (selectedEvent?.id && !events.some(e => e?.id === selectedEvent.id)) {
@@ -124,7 +128,7 @@ async function fetchAndRender() {
     // refresh details panel so status + button reflect current trust state
     window.VPT?.features?.events?.renderEventDetails?.(selectedEvent, { trustedSites });
     window.VPT?.features?.cookies?.renderCookiesView?.(events); //modularised cookie render
-    window.VPT?.features?.apiSignals?.renderApiSignalsView?.(events);
+    window.VPT?.features?.apiSignals?.renderApiSignalsView?.(events, { policies: latestPoliciesCache });
   } catch (err) {
     console.error("fetch error", err);
     statusEl.textContent = "Backend unavailable – is server.js running?";
@@ -214,7 +218,7 @@ window.addEventListener("load", () => {
       sitesView.classList.remove("hidden");
     } else if (view === "api-signals") {
       apiSignalsView.classList.remove("hidden");
-      window.VPT?.features?.apiSignals?.renderApiSignalsView?.(latestEvents);
+      window.VPT?.features?.apiSignals?.renderApiSignalsView?.(latestEvents, { policies: latestPoliciesCache });
     } else {
       homeView.classList.remove("hidden");
       view = "home";
