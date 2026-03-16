@@ -20,7 +20,7 @@
   const MAX_BURST_MS = 60_000;
   const MAX_DIMENSION = 16_384;
   const MAX_HOSTNAMES = 8;
-  const CANVAS_GATE_OUTCOMES = new Set(gateShared?.CANVAS_GATE_OUTCOMES || ["observed", "warned", "blocked", "trusted_allowed"]);
+  const API_GATE_OUTCOMES = new Set(gateShared?.GATE_OUTCOMES || ["observed", "warned", "blocked", "trusted_allowed"]);
   const FRAME_SCOPES = new Set(["top_frame"]);
 
   function asSafeInt(value, min, max) {
@@ -73,29 +73,58 @@
     return next === "warn" || next === "block" || next === "allow_trusted" ? next : "observe";
   }
 
-  function postCanvasGateState(snapshot) {
-    if (!gateShared?.buildCanvasGateState) return;
-    const payload = gateShared.buildCanvasGateState({
-      apiGatePolicy: snapshot?.apiGatePolicy,
-      trusted: snapshot?.trusted,
-      hostname: window.location.hostname,
-    });
+  function normalizeWebrtcGateAction(value) {
+    if (gateShared?.normalizeWebrtcGateAction) {
+      return gateShared.normalizeWebrtcGateAction(value);
+    }
+    const next = asSafeString(value, 32);
+    return next === "warn" || next === "block" || next === "allow_trusted" ? next : "observe";
+  }
+
+  function buildApiGateState(snapshot) {
+    if (gateShared?.buildApiGateState) {
+      return gateShared.buildApiGateState({
+        apiGatePolicy: snapshot?.apiGatePolicy,
+        trusted: snapshot?.trusted,
+        hostname: window.location.hostname,
+      });
+    }
+
+    const siteBase = toBaseDomain(window.location.hostname) || "";
+    const trustedList = Array.isArray(snapshot?.trusted) ? snapshot.trusted : [];
+    const trustedSite = trustedList
+      .map((entry) => toBaseDomain(entry))
+      .filter(Boolean)
+      .includes(siteBase);
+
+    return {
+      canvasAction: normalizeCanvasGateAction(snapshot?.apiGatePolicy?.canvas),
+      webrtcAction: normalizeWebrtcGateAction(snapshot?.apiGatePolicy?.webrtc),
+      trustedSite,
+      siteBase,
+      frameScope: "top_frame",
+    };
+  }
+
+  function postApiGateState(snapshot) {
+    const payload = buildApiGateState(snapshot);
+    if (!payload) return;
     window.postMessage(
       {
         source: GATE_SOURCE_TAG,
-        type: "canvas_gate_state",
+        type: "api_gate_state",
         payload,
       },
       "*"
     );
   }
 
-  async function syncCanvasGateState() {
+  async function syncApiGateState() {
     try {
       const snapshot = await chrome.storage.local.get(["trusted", "apiGatePolicy"]);
-      postCanvasGateState(snapshot);
+      postApiGateState(snapshot);
     } catch {
-      // Ignore bridge sync failures; Canvas defaults remain observe-only.
+      // Ignore bridge sync failures; API gate defaults remain observe-only.
     }
   }
 
@@ -122,7 +151,7 @@
       count,
       burstMs,
       sampleWindowMs,
-      gateOutcome: CANVAS_GATE_OUTCOMES.has(asSafeString(payload.gateOutcome, 32) || "")
+      gateOutcome: API_GATE_OUTCOMES.has(asSafeString(payload.gateOutcome, 32) || "")
         ? asSafeString(payload.gateOutcome, 32)
         : "observed",
       gateAction: normalizeCanvasGateAction(payload.gateAction),
@@ -160,6 +189,14 @@
       count,
       burstMs,
       sampleWindowMs,
+      gateOutcome: API_GATE_OUTCOMES.has(asSafeString(payload.gateOutcome, 32) || "")
+        ? asSafeString(payload.gateOutcome, 32)
+        : "observed",
+      gateAction: normalizeWebrtcGateAction(payload.gateAction),
+      trustedSite: typeof payload.trustedSite === "boolean" ? payload.trustedSite : undefined,
+      frameScope: FRAME_SCOPES.has(asSafeString(payload.frameScope, 32) || "")
+        ? asSafeString(payload.frameScope, 32)
+        : "top_frame",
       siteBase: toBaseDomain(window.location.hostname) || undefined,
     };
   }
@@ -176,8 +213,11 @@
     if (event.source !== window) return;
     const data = event.data;
     if (!data || typeof data !== "object") return;
-    if (data.source === GATE_SOURCE_TAG && data.type === "canvas_gate_state_request") {
-      syncCanvasGateState().catch(() => {});
+    if (
+      data.source === GATE_SOURCE_TAG
+      && (data.type === "api_gate_state_request" || data.type === "canvas_gate_state_request")
+    ) {
+      syncApiGateState().catch(() => {});
       return;
     }
     if (data.source !== SOURCE_TAG) return;
@@ -196,9 +236,9 @@
     chrome.storage.onChanged.addListener((changes, areaName) => {
       if (areaName && areaName !== "local") return;
       if (!changes || (!("trusted" in changes) && !("apiGatePolicy" in changes))) return;
-      syncCanvasGateState().catch(() => {});
+      syncApiGateState().catch(() => {});
     });
   }
 
-  syncCanvasGateState().catch(() => {});
+  syncApiGateState().catch(() => {});
 })();

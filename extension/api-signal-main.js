@@ -15,8 +15,16 @@
   const canvasContextByElement = new WeakMap(); // canvas -> context type
   const webrtcMeta = new WeakMap(); // pc -> { stunTurnHostnames:Set<string> }
   const canvasWarnMap = new Map(); // key -> lastWarnTs
+  const webrtcWarnMap = new Map(); // key -> lastWarnTs
   const canvasGateState = {
     canvasAction: "observe",
+    trustedSite: false,
+    siteBase: "",
+    frameScope: "top_frame",
+    ready: false,
+  };
+  const webrtcGateState = {
+    webrtcAction: "observe",
     trustedSite: false,
     siteBase: "",
     frameScope: "top_frame",
@@ -60,6 +68,14 @@
     return next === "warn" || next === "block" || next === "allow_trusted" ? next : "observe";
   }
 
+  function normalizeWebrtcGateAction(value) {
+    if (gateShared?.normalizeWebrtcGateAction) {
+      return gateShared.normalizeWebrtcGateAction(value);
+    }
+    const next = String(value || "").trim().toLowerCase();
+    return next === "warn" || next === "block" || next === "allow_trusted" ? next : "observe";
+  }
+
   function getCanvasGateDecision() {
     if (gateShared?.deriveCanvasGateDecision) {
       return gateShared.deriveCanvasGateDecision(
@@ -82,20 +98,58 @@
     return { policyAction, gateOutcome: "observed", shouldBlock: false };
   }
 
-  function applyCanvasGateState(payload) {
-    if (!payload || typeof payload !== "object") return;
-    canvasGateState.canvasAction = normalizeCanvasGateAction(payload.canvasAction);
-    canvasGateState.trustedSite = payload.trustedSite === true;
-    canvasGateState.siteBase = String(payload.siteBase || "").trim().toLowerCase();
-    canvasGateState.frameScope = payload.frameScope === "top_frame" ? "top_frame" : "top_frame";
-    canvasGateState.ready = true;
+  function getWebrtcGateDecision() {
+    if (gateShared?.deriveWebrtcGateDecision) {
+      return gateShared.deriveWebrtcGateDecision(
+        webrtcGateState.webrtcAction,
+        webrtcGateState.trustedSite
+      );
+    }
+    if (gateShared?.deriveGateDecision) {
+      return gateShared.deriveGateDecision(
+        webrtcGateState.webrtcAction,
+        webrtcGateState.trustedSite
+      );
+    }
+    const policyAction = normalizeWebrtcGateAction(webrtcGateState.webrtcAction);
+    if (policyAction === "warn") {
+      return { policyAction, gateOutcome: "warned", shouldBlock: false };
+    }
+    if (policyAction === "block") {
+      return { policyAction, gateOutcome: "blocked", shouldBlock: true };
+    }
+    if (policyAction === "allow_trusted") {
+      return webrtcGateState.trustedSite
+        ? { policyAction, gateOutcome: "trusted_allowed", shouldBlock: false }
+        : { policyAction, gateOutcome: "blocked", shouldBlock: true };
+    }
+    return { policyAction, gateOutcome: "observed", shouldBlock: false };
   }
 
-  function requestCanvasGateState() {
+  function applyApiGateState(payload) {
+    if (!payload || typeof payload !== "object") return;
+    const trustedSite = payload.trustedSite === true;
+    const siteBase = String(payload.siteBase || "").trim().toLowerCase();
+    const frameScope = payload.frameScope === "top_frame" ? "top_frame" : "top_frame";
+
+    canvasGateState.canvasAction = normalizeCanvasGateAction(payload.canvasAction);
+    canvasGateState.trustedSite = trustedSite;
+    canvasGateState.siteBase = siteBase;
+    canvasGateState.frameScope = frameScope;
+    canvasGateState.ready = true;
+
+    webrtcGateState.webrtcAction = normalizeWebrtcGateAction(payload.webrtcAction);
+    webrtcGateState.trustedSite = trustedSite;
+    webrtcGateState.siteBase = siteBase;
+    webrtcGateState.frameScope = frameScope;
+    webrtcGateState.ready = true;
+  }
+
+  function requestApiGateState() {
     window.postMessage(
       {
         source: GATE_SOURCE_TAG,
-        type: "canvas_gate_state_request",
+        type: "api_gate_state_request",
       },
       "*"
     );
@@ -300,8 +354,13 @@
     if (event.source !== window) return;
     const data = event.data;
     if (!data || typeof data !== "object") return;
-    if (data.source !== GATE_SOURCE_TAG || data.type !== "canvas_gate_state") return;
-    applyCanvasGateState(data.payload);
+    if (
+      data.source !== GATE_SOURCE_TAG
+      || (data.type !== "api_gate_state" && data.type !== "canvas_gate_state")
+    ) {
+      return;
+    }
+    applyApiGateState(data.payload);
   });
 
   function getPcMeta(pc) {
@@ -331,19 +390,57 @@
     }
   }
 
+  function maybeWarnWebrtc(action, payload) {
+    const decision = getWebrtcGateDecision();
+    if (decision.gateOutcome !== "warned") return;
+
+    const key = buildBurstKey("api.webrtc.warn", [
+      action,
+      String(payload.state || ""),
+      String(payload.offerType || ""),
+      String(payload.candidateType || ""),
+    ]);
+    const now = Date.now();
+    const lastWarnTs = webrtcWarnMap.get(key) || 0;
+    if ((now - lastWarnTs) < WARN_THROTTLE_MS) return;
+
+    webrtcWarnMap.set(key, now);
+    console.warn("[VPT] WebRTC activity allowed with warning", {
+      action,
+      state: payload.state || undefined,
+      offerType: payload.offerType || undefined,
+      candidateType: payload.candidateType || undefined,
+      stunTurnHostnames: Array.isArray(payload.stunTurnHostnames) ? payload.stunTurnHostnames : [],
+      site: webrtcGateState.siteBase || window.location.hostname || "",
+    });
+  }
+
   function recordWebrtcSignal(action, details = {}) {
     const cleanAction = String(action || "").trim();
     if (!cleanAction) return;
+    const decision = getWebrtcGateDecision();
+    const payload = {
+      action: cleanAction,
+      gateOutcome: decision.gateOutcome,
+      gateAction: decision.policyAction,
+      trustedSite: webrtcGateState.trustedSite,
+      frameScope: webrtcGateState.frameScope,
+      siteBase: webrtcGateState.siteBase || undefined,
+      ...details,
+    };
+    maybeWarnWebrtc(cleanAction, payload);
 
     const keyParts = [
       cleanAction,
-      String(details.state || ""),
-      String(details.offerType || ""),
-      String(details.candidateType || ""),
-      Array.isArray(details.stunTurnHostnames) ? details.stunTurnHostnames.join(",") : "",
+      String(payload.state || ""),
+      String(payload.offerType || ""),
+      String(payload.candidateType || ""),
+      Array.isArray(payload.stunTurnHostnames) ? payload.stunTurnHostnames.join(",") : "",
+      decision.policyAction,
+      decision.gateOutcome,
     ];
     const key = buildBurstKey("api.webrtc.activity", keyParts);
-    recordBurst("api.webrtc.activity", { action: cleanAction, ...details }, key);
+    recordBurst("api.webrtc.activity", payload, key);
   }
 
   function patchMethod(proto, methodName, wrapFn) {
@@ -413,12 +510,7 @@
       const result = original.apply(this, args);
       try {
         maybeWarnCanvasReadback("toDataURL", contextType, width, height);
-        recordCanvasSignal(
-          "toDataURL",
-          contextType,
-          width,
-          height
-        );
+        recordCanvasSignal("toDataURL", contextType, width, height);
       } catch {
         // Ignore instrumentation failures.
       }
@@ -452,12 +544,7 @@
       const result = original.apply(this, args);
       try {
         maybeWarnCanvasReadback("toBlob", contextType, width, height);
-        recordCanvasSignal(
-          "toBlob",
-          contextType,
-          width,
-          height
-        );
+        recordCanvasSignal("toBlob", contextType, width, height);
       } catch {
         // Ignore instrumentation failures.
       }
@@ -535,11 +622,36 @@
     const NativePeerConnection = window.RTCPeerConnection;
     if (typeof NativePeerConnection !== "function") return;
 
+    function createBlockedPeerConnectionError() {
+      if (typeof window.DOMException === "function") {
+        return new window.DOMException(
+          "Blocked by Visual Privacy Toolkit WebRTC policy",
+          "NotAllowedError"
+        );
+      }
+      const error = new Error("Blocked by Visual Privacy Toolkit WebRTC policy");
+      error.name = "NotAllowedError";
+      return error;
+    }
+
     const WrappedPeerConnection = function VptWrappedPeerConnection(...args) {
+      const hostnames = extractIceHostnames(args[0]);
+      const decision = getWebrtcGateDecision();
+      if (decision.shouldBlock) {
+        try {
+          recordWebrtcSignal("peer_connection_created", {
+            state: "blocked",
+            stunTurnHostnames: hostnames,
+          });
+        } catch {
+          // Ignore instrumentation failures.
+        }
+        throw createBlockedPeerConnectionError();
+      }
+
       const pc = new NativePeerConnection(...args);
 
       try {
-        const hostnames = extractIceHostnames(args[0]);
         addPcHostnames(pc, hostnames);
         recordWebrtcSignal("peer_connection_created", {
           state: String(pc.iceGatheringState || "new"),
@@ -603,7 +715,7 @@
   }
 
   try {
-    requestCanvasGateState();
+    requestApiGateState();
     patchCanvasApis();
     patchWebrtcApis();
   } catch {

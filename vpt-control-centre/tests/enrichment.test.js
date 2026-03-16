@@ -421,3 +421,89 @@ test("api.webrtc infers ICE probe classification from metadata when safe hostnam
   assert.equal(row.confidence, 0.93);
   assert.equal(row.requestDomain, null);
 });
+
+test("api.webrtc warned outcome stays observed_only but preserves raw gate metadata", () => {
+  const ev = {
+    id: "evt-api-webrtc-warn-1",
+    ts: 1700000005600,
+    site: "rtc.example.com",
+    kind: "api.webrtc.activity",
+    mode: "moderate",
+    source: "extension",
+    data: {
+      action: "peer_connection_created",
+      count: 1,
+      burstMs: 0,
+      sampleWindowMs: 1200,
+      gateOutcome: "warned",
+      gateAction: "warn",
+      trustedSite: false,
+      frameScope: "top_frame",
+    },
+  };
+
+  const row = buildEnrichmentRecord(ev, ev.site);
+  assert.equal(row.privacyStatus, "signal_detected");
+  assert.equal(row.mitigationStatus, "observed_only");
+  assert.equal(row.patternId, "api.webrtc.peer_connection_setup");
+
+  const rawContext = JSON.parse(row.rawContext);
+  assert.equal(rawContext.gateOutcome, "warned");
+  assert.equal(rawContext.gateAction, "warn");
+  assert.equal(rawContext.trustedSite, false);
+  assert.equal(rawContext.frameScope, "top_frame");
+});
+
+test("api.webrtc blocked outcome maps to policy_blocked", () => {
+  const ev = {
+    id: "evt-api-webrtc-block-1",
+    ts: 1700000005650,
+    site: "rtc.example.com",
+    kind: "api.webrtc.activity",
+    mode: "moderate",
+    source: "extension",
+    data: {
+      action: "peer_connection_created",
+      state: "blocked",
+      stunTurnHostnames: ["stun.example.net"],
+      count: 1,
+      burstMs: 0,
+      sampleWindowMs: 1200,
+      gateOutcome: "blocked",
+      gateAction: "block",
+      trustedSite: false,
+      frameScope: "top_frame",
+    },
+  };
+
+  const row = buildEnrichmentRecord(ev, ev.site);
+  assert.equal(row.privacyStatus, "policy_blocked");
+  assert.equal(row.mitigationStatus, "blocked");
+  assert.equal(row.patternId, "api.webrtc.peer_connection_setup");
+});
+
+test("api.webrtc trusted-site allowed outcome maps to policy_allowed", () => {
+  const ev = {
+    id: "evt-api-webrtc-trusted-1",
+    ts: 1700000005700,
+    site: "rtc.example.com",
+    kind: "api.webrtc.activity",
+    mode: "moderate",
+    source: "extension",
+    data: {
+      action: "create_offer_called",
+      count: 1,
+      burstMs: 0,
+      sampleWindowMs: 1200,
+      gateOutcome: "trusted_allowed",
+      gateAction: "allow_trusted",
+      trustedSite: true,
+      frameScope: "top_frame",
+    },
+  };
+
+  const row = buildEnrichmentRecord(ev, ev.site);
+  assert.equal(row.privacyStatus, "policy_allowed");
+  assert.equal(row.mitigationStatus, "allowed");
+  assert.equal(row.patternId, "api.webrtc.offer_probe");
+});

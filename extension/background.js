@@ -199,7 +199,7 @@ function isThirdParty(initiator, requestUrl) {
 
 const API_CANVAS_OPERATIONS = new Set(["getImageData", "toDataURL", "toBlob", "readPixels"]);
 const API_GATE_ACTIONS = new Set(["observe", "warn", "block", "allow_trusted"]);
-const API_CANVAS_GATE_OUTCOMES = new Set(["observed", "warned", "blocked", "trusted_allowed"]);
+const API_GATE_OUTCOMES = new Set(["observed", "warned", "blocked", "trusted_allowed"]);
 const API_WEBRTC_ACTIONS = new Set([
   "peer_connection_created",
   "create_offer_called",
@@ -239,6 +239,7 @@ function sanitizeApiGatePolicy(policy) {
   const source = policy && typeof policy === "object" ? policy : {};
   return {
     canvas: normalizeApiGateAction(source.canvas),
+    webrtc: normalizeApiGateAction(source.webrtc),
   };
 }
 
@@ -299,7 +300,7 @@ function getCanvasDefaults(operation, gateOutcome = "observed") {
   };
 }
 
-function getWebrtcDefaults(action) {
+function getWebrtcDefaults(action, gateOutcome = "observed") {
   const nextAction = String(action || "");
   const deviceProbeActions = new Set([
     "create_offer_called",
@@ -319,10 +320,20 @@ function getWebrtcDefaults(action) {
     set_configuration: 0.86,
   };
 
+  let privacyStatus = "signal_detected";
+  let mitigationStatus = "observed_only";
+  if (gateOutcome === "blocked") {
+    privacyStatus = "policy_blocked";
+    mitigationStatus = "blocked";
+  } else if (gateOutcome === "trusted_allowed") {
+    privacyStatus = "policy_allowed";
+    mitigationStatus = "allowed";
+  }
+
   return {
     signalType,
-    privacyStatus: "signal_detected",
-    mitigationStatus: "observed_only",
+    privacyStatus,
+    mitigationStatus,
     patternId: `api.webrtc.${nextAction || "action"}`,
     confidence: confidenceMap[nextAction] || 0.88,
   };
@@ -333,7 +344,7 @@ function sanitizeCanvasSignal(data) {
   const operation = asSafeString(data.operation, 32);
   if (!operation || !API_CANVAS_OPERATIONS.has(operation)) return null;
   const gateOutcomeRaw = asSafeString(data.gateOutcome, 32);
-  const gateOutcome = gateOutcomeRaw && API_CANVAS_GATE_OUTCOMES.has(gateOutcomeRaw)
+  const gateOutcome = gateOutcomeRaw && API_GATE_OUTCOMES.has(gateOutcomeRaw)
     ? gateOutcomeRaw
     : "observed";
 
@@ -363,6 +374,10 @@ function sanitizeWebrtcSignal(data) {
   if (!data || typeof data !== "object") return null;
   const action = asSafeString(data.action, 48);
   if (!action || !API_WEBRTC_ACTIONS.has(action)) return null;
+  const gateOutcomeRaw = asSafeString(data.gateOutcome, 32);
+  const gateOutcome = gateOutcomeRaw && API_GATE_OUTCOMES.has(gateOutcomeRaw)
+    ? gateOutcomeRaw
+    : "observed";
 
   return {
     surface: "api",
@@ -375,8 +390,12 @@ function sanitizeWebrtcSignal(data) {
     count: asSafeInt(data.count, 1, API_MAX_COUNT) || 1,
     burstMs: asSafeInt(data.burstMs, 0, API_MAX_BURST_MS) || 0,
     sampleWindowMs: asSafeInt(data.sampleWindowMs, 100, API_MAX_BURST_MS) || 1200,
+    gateOutcome,
+    gateAction: normalizeApiGateAction(data.gateAction),
+    trustedSite: typeof data.trustedSite === "boolean" ? data.trustedSite : undefined,
+    frameScope: asSafeString(data.frameScope, 32) === "top_frame" ? "top_frame" : "top_frame",
     siteBase: asSafeString(data.siteBase, 128) || undefined,
-    ...getWebrtcDefaults(action),
+    ...getWebrtcDefaults(action, gateOutcome),
   };
 }
 
@@ -519,11 +538,11 @@ async function applyPolicy(policy) {
     case "set_api_policy":
     case "set_api_surface_policy": {
       const surface = asSafeString(payload.surface, 32);
-      if (surface !== "canvas") break;
+      if (surface !== "canvas" && surface !== "webrtc") break;
       const action = normalizeApiGateAction(payload.action);
       const { apiGatePolicy } = await chrome.storage.local.get("apiGatePolicy");
       const nextPolicy = sanitizeApiGatePolicy(apiGatePolicy);
-      nextPolicy.canvas = action;
+      nextPolicy[surface] = action;
       await chrome.storage.local.set({ apiGatePolicy: nextPolicy });
       break;
     }

@@ -2,20 +2,47 @@ const test = require("node:test");
 const assert = require("node:assert/strict");
 
 const {
+  buildApiGateState,
   buildCanvasGateState,
   deriveCanvasGateDecision,
+  deriveWebrtcGateDecision,
   normalizeApiGatePolicy,
 } = require("../../extension/api-gate-shared.js");
 
 test("api gate shared defaults canvas policy to observe", () => {
-  assert.deepEqual(normalizeApiGatePolicy(null), { canvas: "observe" });
-  assert.deepEqual(normalizeApiGatePolicy({ canvas: "warn" }), { canvas: "warn" });
-  assert.deepEqual(normalizeApiGatePolicy({ canvas: "invalid" }), { canvas: "observe" });
+  assert.deepEqual(normalizeApiGatePolicy(null), {
+    canvas: "observe",
+    webrtc: "observe",
+  });
+  assert.deepEqual(normalizeApiGatePolicy({ canvas: "warn", webrtc: "block" }), {
+    canvas: "warn",
+    webrtc: "block",
+  });
+  assert.deepEqual(normalizeApiGatePolicy({ canvas: "invalid", webrtc: "invalid" }), {
+    canvas: "observe",
+    webrtc: "observe",
+  });
+});
+
+test("api gate shared derives trusted top-frame api state from storage snapshot", () => {
+  const state = buildApiGateState({
+    apiGatePolicy: { canvas: "allow_trusted", webrtc: "warn" },
+    trusted: ["shop.example.com", "alpha.test"],
+    hostname: "www.shop.example.com",
+  });
+
+  assert.deepEqual(state, {
+    canvasAction: "allow_trusted",
+    webrtcAction: "warn",
+    trustedSite: true,
+    siteBase: "example.com",
+    frameScope: "top_frame",
+  });
 });
 
 test("api gate shared derives trusted top-frame canvas state from storage snapshot", () => {
   const state = buildCanvasGateState({
-    apiGatePolicy: { canvas: "allow_trusted" },
+    apiGatePolicy: { canvas: "allow_trusted", webrtc: "block" },
     trusted: ["shop.example.com", "alpha.test"],
     hostname: "www.shop.example.com",
   });
@@ -41,5 +68,13 @@ test("api gate shared maps allow_trusted to blocked on untrusted sites", () => {
     policyAction: "allow_trusted",
     gateOutcome: "blocked",
     shouldBlock: true,
+  });
+});
+
+test("api gate shared maps webrtc warn policy to warned outcome", () => {
+  assert.deepEqual(deriveWebrtcGateDecision("warn", false), {
+    policyAction: "warn",
+    gateOutcome: "warned",
+    shouldBlock: false,
   });
 });
