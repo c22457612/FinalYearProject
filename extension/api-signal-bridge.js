@@ -86,12 +86,15 @@
       return gateShared.buildApiGateState({
         apiGatePolicy: snapshot?.apiGatePolicy,
         trusted: snapshot?.trusted,
+        trustedSitesEnabled: snapshot?.trustedSitesEnabled,
         hostname: window.location.hostname,
       });
     }
 
     const siteBase = toBaseDomain(window.location.hostname) || "";
-    const trustedList = Array.isArray(snapshot?.trusted) ? snapshot.trusted : [];
+    const trustedList = snapshot?.trustedSitesEnabled === false
+      ? []
+      : (Array.isArray(snapshot?.trusted) ? snapshot.trusted : []);
     const trustedSite = trustedList
       .map((entry) => toBaseDomain(entry))
       .filter(Boolean)
@@ -121,7 +124,7 @@
 
   async function syncApiGateState() {
     try {
-      const snapshot = await chrome.storage.local.get(["trusted", "apiGatePolicy"]);
+      const snapshot = await chrome.storage.local.get(["trusted", "apiGatePolicy", "trustedSitesEnabled"]);
       postApiGateState(snapshot);
     } catch {
       // Ignore bridge sync failures; API gate defaults remain observe-only.
@@ -235,7 +238,7 @@
   if (chrome?.storage?.onChanged) {
     chrome.storage.onChanged.addListener((changes, areaName) => {
       if (areaName && areaName !== "local") return;
-      if (!changes || (!("trusted" in changes) && !("apiGatePolicy" in changes))) return;
+      if (!changes || (!("trusted" in changes) && !("apiGatePolicy" in changes) && !("trustedSitesEnabled" in changes))) return;
       syncApiGateState().catch(() => {});
     });
   }

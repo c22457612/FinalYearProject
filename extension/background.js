@@ -20,6 +20,8 @@ let notifyEnabled = false;
 const lastNotifyByDomain = new Map(); // throttle toasts
 let promptOnNewSites = true;   // default ON 
 let trustedDomains = [];       // base domains user trusts
+let trustedSitesEnabled = true;
+let backendTrustedDomains = new Set();
 let enterOnce = null; // { siteBase, ts }
 
 let previewReq = null;             // { siteBase, dest, ts }
@@ -450,7 +452,7 @@ async function applyRules(mode = "moderate") {
           urlFilter: f,
           resourceTypes: ["script", "xmlhttprequest", "image", "sub_frame"],
           ...(mode === "moderate" ? { domainType: "thirdParty" } : {}),
-          excludedInitiatorDomains: trustedDomains
+          excludedInitiatorDomains: trustedSitesEnabled ? trustedDomains : []
         }
       });
     });
@@ -481,13 +483,15 @@ function maybeNotify(host) {
 }
 
 async function loadTrustAndPromptFlag() {
-  const { trusted = [], promptOnNewSites: flag } = await chrome.storage.local.get([
+  const { trusted = [], promptOnNewSites: flag, trustedSitesEnabled: trustedFlag } = await chrome.storage.local.get([
     "trusted",
-    "promptOnNewSites"
+    "promptOnNewSites",
+    "trustedSitesEnabled"
   ]);
   trustedDomains = Array.isArray(trusted) ? trusted : [];
   // default to true unless explicitly false
   promptOnNewSites = flag !== false;
+  trustedSitesEnabled = trustedFlag !== false;
 }
 // sibling helper to loadTrustAndPromptFlag()
 async function loadCustomFilters() {
@@ -553,6 +557,50 @@ async function applyPolicy(policy) {
   }
 }
 
+function replayBackendPolicyState(policy) {
+  if (!policy || typeof policy !== "object") return;
+  const op = policy.op;
+  const payload = policy.payload && typeof policy.payload === "object" ? policy.payload : {};
+  const site = typeof payload.site === "string" ? payload.site : "";
+  if (!site) return;
+
+  if (op === "trust_site") {
+    backendTrustedDomains.add(site);
+  } else if (op === "untrust_site") {
+    backendTrustedDomains.delete(site);
+  }
+}
+
+async function syncLocalTrustedSitesToBackend() {
+  if (!trustedDomains.length) return;
+
+  const missing = trustedDomains.filter((site) => site && !backendTrustedDomains.has(site));
+  if (!missing.length) return;
+
+  try {
+    const res = await fetch(`${BACKEND_URL}/api/policies`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(missing.map((site) => ({
+        op: "trust_site",
+        payload: { site },
+      }))),
+    });
+
+    if (!res.ok) return;
+    const created = await res.json();
+    const items = Array.isArray(created) ? created : [created];
+    for (const item of items) {
+      replayBackendPolicyState(item);
+      if (typeof item?.ts === "number" && item.ts > lastPolicyTs) {
+        lastPolicyTs = item.ts;
+      }
+    }
+  } catch {
+    // backend may not be running yet; ignore and let later polls retry
+  }
+}
+
 async function pollPolicies() {
   try {
     const res = await fetch(`${BACKEND_URL}/api/policies?since=${lastPolicyTs}`);
@@ -561,6 +609,7 @@ async function pollPolicies() {
 
     if (Array.isArray(items)) {
       for (const p of items) {
+        replayBackendPolicyState(p);
         await applyPolicy(p);
       }
     }
@@ -568,6 +617,8 @@ async function pollPolicies() {
     if (typeof latestTs === "number" && latestTs > lastPolicyTs) {
       lastPolicyTs = latestTs;
     }
+
+    await syncLocalTrustedSitesToBackend();
   } catch (e) {
     // backend may not be running; ignore
   }
@@ -631,6 +682,7 @@ async function init() {
   await loadTrustAndPromptFlag();
   await loadCustomFilters(); 
   await loadApiGatePolicy();
+  await pollPolicies();
   setInterval(pollPolicies, 10000); // poll every 10s
   const { privacyMode, notifyEnabled: storedNotify } = await chrome.storage.local.get([
     "privacyMode",
@@ -649,9 +701,12 @@ chrome.storage.onChanged.addListener(async ch => {
   if ("notifyEnabled" in ch) notifyEnabled = !!ch.notifyEnabled.newValue;
 
   // trust list or interstitial flag changed
-  if ("trusted" in ch || "promptOnNewSites" in ch) {
+  if ("trusted" in ch || "promptOnNewSites" in ch || "trustedSitesEnabled" in ch) {
     await loadTrustAndPromptFlag();
     await applyRules(currentMode);
+    if ("trusted" in ch) {
+      await syncLocalTrustedSitesToBackend();
+    }
   }
 
   if ("__enterOnce" in ch && ch.__enterOnce?.newValue) {
@@ -806,7 +861,7 @@ chrome.webNavigation.onBeforeNavigate.addListener((details) => {
 
     // interstitial redirect (unchanged)
     if (!promptOnNewSites) return;
-    if (trustedDomains.includes(siteBase)) return;
+    if (trustedSitesEnabled && trustedDomains.includes(siteBase)) return;
 
     const interstitial = `${chrome.runtime.getURL("interstitial.html")}?dest=${encodeURIComponent(url)}`;
     chrome.tabs.update(details.tabId, { url: interstitial });

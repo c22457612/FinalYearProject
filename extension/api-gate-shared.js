@@ -50,10 +50,11 @@
     };
   }
 
-  function buildApiGateState({ apiGatePolicy, trusted, hostname } = {}) {
+  function buildApiGateState({ apiGatePolicy, trusted, trustedSitesEnabled, hostname } = {}) {
     const normalizedPolicy = normalizeApiGatePolicy(apiGatePolicy);
     const siteBase = toBaseDomain(hostname);
-    const trustedList = Array.isArray(trusted) ? trusted : [];
+    const trustEnabled = trustedSitesEnabled !== false;
+    const trustedList = trustEnabled && Array.isArray(trusted) ? trusted : [];
     const trustedSet = new Set(
       trustedList
         .map((entry) => toBaseDomain(entry))

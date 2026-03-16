@@ -40,6 +40,23 @@ test("api gate shared derives trusted top-frame api state from storage snapshot"
   });
 });
 
+test("api gate shared ignores stored trusted sites when trusted sites are toggled off", () => {
+  const state = buildApiGateState({
+    apiGatePolicy: { canvas: "allow_trusted", webrtc: "warn" },
+    trusted: ["shop.example.com", "alpha.test"],
+    trustedSitesEnabled: false,
+    hostname: "www.shop.example.com",
+  });
+
+  assert.deepEqual(state, {
+    canvasAction: "allow_trusted",
+    webrtcAction: "warn",
+    trustedSite: false,
+    siteBase: "example.com",
+    frameScope: "top_frame",
+  });
+});
+
 test("api gate shared derives trusted top-frame canvas state from storage snapshot", () => {
   const state = buildCanvasGateState({
     apiGatePolicy: { canvas: "allow_trusted", webrtc: "block" },

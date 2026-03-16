@@ -20,8 +20,6 @@ let pendingCommands = []; // { id, type, site, createdAt }
 // --- In-memory stores (prototype only for now) ---
 /** @type {Array<any>} */
 const events = [];
-/** @type {Array<any>} */
-const policies = [];
 /** @type {Map<string, any>} */
 const siteStats = new Map();
 
@@ -1039,38 +1037,92 @@ app.get("/api/vendor-vault-summary", async (req, res) => {
 });
 
 // ---- Policies API ----
-app.post("/api/policies", (req, res) => {
+app.post("/api/policies", async (req, res) => {
+  const dbCtx = app.locals.db;
+  if (!dbCtx) {
+    return res.status(500).json({ ok: false, error: "db_not_ready" });
+  }
+
   const body = req.body;
   const input = Array.isArray(body) ? body : [body];
   const created = [];
 
   console.log("POST /api/policies", "count =", input.length);
-  for (const p of input) {
-    if (!p || typeof p !== "object") continue;
-    const { op, payload } = p;
-    if (!op) continue;
 
-    const pol = {
-      id: makeId("pol"),
-      ts: Date.now(),
-      op,
-      payload: payload || {},
-    };
-    policies.push(pol);
-    created.push(pol);
+  try {
+    for (const p of input) {
+      if (!p || typeof p !== "object") continue;
+      const { op, payload } = p;
+      if (!op) continue;
+
+      const pol = {
+        id: makeId("pol"),
+        ts: Date.now(),
+        op,
+        payload: payload || {},
+      };
+
+      await dbCtx.run(
+        `
+          INSERT INTO policies (policy_id, ts, op, payload)
+          VALUES (?, ?, ?, ?)
+        `,
+        [pol.id, pol.ts, pol.op, JSON.stringify(pol.payload)]
+      );
+
+      created.push(pol);
+    }
+  } catch (err) {
+    console.error("Failed to persist policies:", err);
+    return res.status(500).json({ ok: false, error: "policy_persist_failed" });
   }
 
   res.status(201).json(created.length === 1 ? created[0] : created);
 });
 
-app.get("/api/policies", (req, res) => {
-  const since = Number(req.query.since || 0);
-  const items = policies.filter((p) => p.ts > since);
-  const latestTs = items.length
-    ? items.reduce((max, p) => (p.ts > max ? p.ts : max), since)
-    : since;
+app.get("/api/policies", async (req, res) => {
+  const dbCtx = app.locals.db;
+  if (!dbCtx) {
+    return res.status(500).json({ ok: false, error: "db_not_ready" });
+  }
 
-  res.json({ latestTs, items });
+  const since = Number(req.query.since || 0);
+
+  try {
+    const rows = await dbCtx.all(
+      `
+        SELECT policy_id, ts, op, payload
+        FROM policies
+        WHERE ts > ?
+        ORDER BY ts ASC, pk ASC
+      `,
+      [since]
+    );
+
+    const items = rows.map((row) => {
+      let payload = {};
+      try {
+        payload = row?.payload ? JSON.parse(row.payload) : {};
+      } catch {
+        payload = {};
+      }
+      return {
+        id: row.policy_id,
+        ts: Number(row.ts) || 0,
+        op: row.op || "",
+        payload,
+      };
+    });
+
+    const latestTs = items.length
+      ? items.reduce((max, item) => (item.ts > max ? item.ts : max), since)
+      : since;
+
+    res.json({ latestTs, items });
+  } catch (err) {
+    console.error("Failed to read policies from DB:", err);
+    res.status(500).json({ ok: false, error: "policy_read_failed" });
+  }
 });
 
 //Initialise persistence, then start server ONCE

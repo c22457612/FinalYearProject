@@ -7,9 +7,19 @@ const cookieCountEl = document.getElementById("cookieCount");
 const cookieSnapshotBtn = document.getElementById("cookieSnapshotBtn"); 
 const clearCookiesBtn = document.getElementById("clearCookiesBtn");
 
-// debug clear-trusted controls
-const clearTrustedBtn = document.getElementById("clearTrustedBtn");
-const clearTrustedStatus = document.getElementById("clearTrustedStatus");
+const toggleTrustedBtn = document.getElementById("toggleTrustedBtn");
+const toggleTrustedStatus = document.getElementById("toggleTrustedStatus");
+
+function setToggleTrustedUi({ enabled, trustedCount }) {
+  if (!toggleTrustedBtn) return;
+  const count = Number(trustedCount) || 0;
+  toggleTrustedBtn.textContent = enabled ? "Disable trusted sites" : "Enable trusted sites";
+  if (toggleTrustedStatus) {
+    toggleTrustedStatus.textContent = enabled
+      ? `Trusted sites are active. Stored sites: ${count}.`
+      : `Trusted sites are paused. Stored sites kept: ${count}.`;
+  }
+}
 
 async function getCurrentTabUrl() {
   const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
@@ -47,16 +57,22 @@ async function updateCookieCount() {
 } 
 
 async function load() {
-  const { privacyMode, stats, notifyEnabled } = await chrome.storage.local.get([
+  const { privacyMode, stats, notifyEnabled, trusted = [], trustedSitesEnabled } = await chrome.storage.local.get([
     "privacyMode",
     "stats",
-    "notifyEnabled"
+    "notifyEnabled",
+    "trusted",
+    "trustedSitesEnabled",
   ]);
   modeSel.value = privacyMode || "moderate";
   firstEl.textContent = stats?.firstParty || 0;
   thirdEl.textContent = stats?.thirdParty || 0;
   notifyChk.checked = !!notifyEnabled;
   statusEl.textContent = `Current: ${modeSel.value}`;
+  setToggleTrustedUi({
+    enabled: trustedSitesEnabled !== false,
+    trustedCount: Array.isArray(trusted) ? trusted.length : 0,
+  });
 
   updateCookieCount();
 }
@@ -115,22 +131,28 @@ notifyChk.addEventListener("change", async () => {
   await chrome.storage.local.set({ notifyEnabled: notifyChk.checked });
 });
 
-// clear all trusted sites (debug button)
-if (clearTrustedBtn) {
-  clearTrustedBtn.addEventListener("click", async () => {
+if (toggleTrustedBtn) {
+  toggleTrustedBtn.addEventListener("click", async () => {
     try {
-      await chrome.storage.local.set({ trusted: [] });
-      if (clearTrustedStatus) {
-        clearTrustedStatus.textContent = "All trusted sites cleared.";
-        setTimeout(() => {
-          clearTrustedStatus.textContent = "";
-        }, 2000);
-      }
+      const { trusted = [], trustedSitesEnabled } = await chrome.storage.local.get([
+        "trusted",
+        "trustedSitesEnabled",
+      ]);
+      const nextEnabled = trustedSitesEnabled === false;
+      toggleTrustedBtn.disabled = true;
+      toggleTrustedBtn.textContent = nextEnabled ? "Enabling..." : "Disabling...";
+      await chrome.storage.local.set({ trustedSitesEnabled: nextEnabled });
+      setToggleTrustedUi({
+        enabled: nextEnabled,
+        trustedCount: Array.isArray(trusted) ? trusted.length : 0,
+      });
     } catch (e) {
-      console.error("Failed to clear trusted sites", e);
-      if (clearTrustedStatus) {
-        clearTrustedStatus.textContent = "Error clearing trusted sites.";
+      console.error("Failed to toggle trusted sites", e);
+      if (toggleTrustedStatus) {
+        toggleTrustedStatus.textContent = "Error updating trusted sites toggle.";
       }
+    } finally {
+      toggleTrustedBtn.disabled = false;
     }
   });
 }
