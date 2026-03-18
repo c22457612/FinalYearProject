@@ -15,7 +15,10 @@
   const canvasContextByElement = new WeakMap(); // canvas -> context type
   const webrtcMeta = new WeakMap(); // pc -> { stunTurnHostnames:Set<string> }
   const canvasWarnMap = new Map(); // key -> lastWarnTs
+  const geolocationWarnMap = new Map(); // key -> lastWarnTs
   const webrtcWarnMap = new Map(); // key -> lastWarnTs
+  const blockedWatchIds = new Set();
+  let nextBlockedWatchId = -1;
   const canvasGateState = {
     canvasAction: "observe",
     trustedSite: false,
@@ -25,6 +28,13 @@
   };
   const webrtcGateState = {
     webrtcAction: "observe",
+    trustedSite: false,
+    siteBase: "",
+    frameScope: "top_frame",
+    ready: false,
+  };
+  const geolocationGateState = {
+    geolocationAction: "observe",
     trustedSite: false,
     siteBase: "",
     frameScope: "top_frame",
@@ -50,6 +60,14 @@
     return next;
   }
 
+  function toNonNegativeInt(value, fallback = null) {
+    const n = Number(value);
+    if (!Number.isFinite(n)) return fallback;
+    const next = Math.floor(n);
+    if (next < 0) return fallback;
+    return next;
+  }
+
   function normalizeContextType(raw) {
     const value = String(raw || "").toLowerCase();
     if (value === "2d") return "2d";
@@ -71,6 +89,14 @@
   function normalizeWebrtcGateAction(value) {
     if (gateShared?.normalizeWebrtcGateAction) {
       return gateShared.normalizeWebrtcGateAction(value);
+    }
+    const next = String(value || "").trim().toLowerCase();
+    return next === "warn" || next === "block" || next === "allow_trusted" ? next : "observe";
+  }
+
+  function normalizeGeolocationGateAction(value) {
+    if (gateShared?.normalizeGeolocationGateAction) {
+      return gateShared.normalizeGeolocationGateAction(value);
     }
     const next = String(value || "").trim().toLowerCase();
     return next === "warn" || next === "block" || next === "allow_trusted" ? next : "observe";
@@ -126,6 +152,42 @@
     return { policyAction, gateOutcome: "observed", shouldBlock: false };
   }
 
+  function getGeolocationGateDecision() {
+    if (!geolocationGateState.ready) {
+      return {
+        policyAction: "block",
+        gateOutcome: "blocked",
+        shouldBlock: true,
+        policyReady: false,
+      };
+    }
+    if (gateShared?.deriveGeolocationGateDecision) {
+      return gateShared.deriveGeolocationGateDecision(
+        geolocationGateState.geolocationAction,
+        geolocationGateState.trustedSite
+      );
+    }
+    if (gateShared?.deriveGateDecision) {
+      return gateShared.deriveGateDecision(
+        geolocationGateState.geolocationAction,
+        geolocationGateState.trustedSite
+      );
+    }
+    const policyAction = normalizeGeolocationGateAction(geolocationGateState.geolocationAction);
+    if (policyAction === "warn") {
+      return { policyAction, gateOutcome: "warned", shouldBlock: false };
+    }
+    if (policyAction === "block") {
+      return { policyAction, gateOutcome: "blocked", shouldBlock: true };
+    }
+    if (policyAction === "allow_trusted") {
+      return geolocationGateState.trustedSite
+        ? { policyAction, gateOutcome: "trusted_allowed", shouldBlock: false }
+        : { policyAction, gateOutcome: "blocked", shouldBlock: true };
+    }
+    return { policyAction, gateOutcome: "observed", shouldBlock: false };
+  }
+
   function applyApiGateState(payload) {
     if (!payload || typeof payload !== "object") return;
     const trustedSite = payload.trustedSite === true;
@@ -143,6 +205,12 @@
     webrtcGateState.siteBase = siteBase;
     webrtcGateState.frameScope = frameScope;
     webrtcGateState.ready = true;
+
+    geolocationGateState.geolocationAction = normalizeGeolocationGateAction(payload.geolocationAction);
+    geolocationGateState.trustedSite = trustedSite;
+    geolocationGateState.siteBase = siteBase;
+    geolocationGateState.frameScope = frameScope;
+    geolocationGateState.ready = true;
   }
 
   function requestApiGateState() {
@@ -350,10 +418,93 @@
     }
   }
 
+  function buildGeolocationDetails(method, options, success, error) {
+    const config = options && typeof options === "object" ? options : {};
+    return {
+      method,
+      requestedHighAccuracy: config.enableHighAccuracy === true,
+      timeoutMs: toNonNegativeInt(config.timeout),
+      maximumAgeMs: toNonNegativeInt(config.maximumAge),
+      hasSuccessCallback: typeof success === "function",
+      hasErrorCallback: typeof error === "function",
+    };
+  }
+
+  function recordGeolocationSignal(method, options, success, error) {
+    const cleanMethod = String(method || "").trim();
+    if (!cleanMethod) return;
+    const decision = getGeolocationGateDecision();
+    const payload = {
+      ...buildGeolocationDetails(cleanMethod, options, success, error),
+      gateOutcome: decision.gateOutcome,
+      gateAction: decision.policyAction,
+      policyReady: decision.policyReady !== false,
+      trustedSite: geolocationGateState.trustedSite,
+      frameScope: geolocationGateState.frameScope,
+      siteBase: geolocationGateState.siteBase || undefined,
+    };
+
+    if (decision.gateOutcome === "warned") {
+      const key = buildBurstKey("api.geolocation.warn", [
+        cleanMethod,
+        String(payload.requestedHighAccuracy),
+        String(payload.timeoutMs ?? ""),
+        String(payload.maximumAgeMs ?? ""),
+      ]);
+      const now = Date.now();
+      const lastWarnTs = geolocationWarnMap.get(key) || 0;
+      if ((now - lastWarnTs) >= WARN_THROTTLE_MS) {
+        geolocationWarnMap.set(key, now);
+        console.warn("[VPT] Geolocation request allowed with warning", {
+          method: cleanMethod,
+          requestedHighAccuracy: payload.requestedHighAccuracy,
+          timeoutMs: payload.timeoutMs,
+          maximumAgeMs: payload.maximumAgeMs,
+          site: geolocationGateState.siteBase || window.location.hostname || "",
+        });
+      }
+    }
+
+    const key = buildBurstKey("api.geolocation.activity", [
+      cleanMethod,
+      String(payload.requestedHighAccuracy),
+      String(payload.timeoutMs ?? ""),
+      String(payload.maximumAgeMs ?? ""),
+      decision.policyAction,
+      decision.gateOutcome,
+    ]);
+    recordBurst("api.geolocation.activity", payload, key);
+  }
+
+  function createBlockedGeolocationError() {
+    return {
+      code: 1,
+      message: "Blocked by Visual Privacy Toolkit Geolocation policy",
+      PERMISSION_DENIED: 1,
+      POSITION_UNAVAILABLE: 2,
+      TIMEOUT: 3,
+    };
+  }
+
+  function notifyBlockedGeolocation(errorCallback) {
+    if (typeof errorCallback !== "function") return;
+    const error = createBlockedGeolocationError();
+    setTimeout(() => {
+      try {
+        errorCallback(error);
+      } catch {
+        // Ignore callback failures.
+      }
+    }, 0);
+  }
+
+  function normalizeMessageData(data) {
+    return data && typeof data === "object" ? data : null;
+  }
+
   window.addEventListener("message", (event) => {
-    if (event.source !== window) return;
-    const data = event.data;
-    if (!data || typeof data !== "object") return;
+    const data = normalizeMessageData(event.data);
+    if (!data) return;
     if (
       data.source !== GATE_SOURCE_TAG
       || (data.type !== "api_gate_state" && data.type !== "canvas_gate_state")
@@ -584,6 +735,63 @@
     });
   }
 
+  function patchGeolocationApis() {
+    const geolocation = window.navigator && window.navigator.geolocation;
+    if (!geolocation || typeof geolocation !== "object") return;
+
+    patchMethod(geolocation, "getCurrentPosition", function wrapGetCurrentPosition(original, args) {
+      const success = args[0];
+      const error = args[1];
+      const options = args[2];
+      const decision = getGeolocationGateDecision();
+
+      try {
+        recordGeolocationSignal("getCurrentPosition", options, success, error);
+      } catch {
+        // Ignore instrumentation failures.
+      }
+
+      if (decision.shouldBlock) {
+        notifyBlockedGeolocation(error);
+        return undefined;
+      }
+
+      return original.apply(this, args);
+    });
+
+    patchMethod(geolocation, "watchPosition", function wrapWatchPosition(original, args) {
+      const success = args[0];
+      const error = args[1];
+      const options = args[2];
+      const decision = getGeolocationGateDecision();
+
+      try {
+        recordGeolocationSignal("watchPosition", options, success, error);
+      } catch {
+        // Ignore instrumentation failures.
+      }
+
+      if (decision.shouldBlock) {
+        const blockedId = nextBlockedWatchId;
+        nextBlockedWatchId -= 1;
+        blockedWatchIds.add(blockedId);
+        notifyBlockedGeolocation(error);
+        return blockedId;
+      }
+
+      return original.apply(this, args);
+    });
+
+    patchMethod(geolocation, "clearWatch", function wrapClearWatch(original, args) {
+      const watchId = Number(args[0]);
+      if (Number.isFinite(watchId) && blockedWatchIds.has(watchId)) {
+        blockedWatchIds.delete(watchId);
+        return undefined;
+      }
+      return original.apply(this, args);
+    });
+  }
+
   function attachPeerConnectionListeners(pc) {
     if (!pc || typeof pc.addEventListener !== "function") return;
 
@@ -717,6 +925,7 @@
   try {
     requestApiGateState();
     patchCanvasApis();
+    patchGeolocationApis();
     patchWebrtcApis();
   } catch {
     // Never block page execution on instrumentation issues.

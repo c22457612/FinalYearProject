@@ -63,8 +63,8 @@ const SCHEMA_SQL = `
     value TEXT NOT NULL
   );
 
-  INSERT OR IGNORE INTO meta(key, value) VALUES ('schema_version', '4');
-  UPDATE meta SET value = '4' WHERE key = 'schema_version';
+  INSERT OR IGNORE INTO meta(key, value) VALUES ('schema_version', '5');
+  UPDATE meta SET value = '5' WHERE key = 'schema_version';
 
   -- Event-sourcing: immutable privacy events
   CREATE TABLE IF NOT EXISTS events (
@@ -116,6 +116,7 @@ const SCHEMA_SQL = `
         'indexeddb',
         'cache_api',
         'canvas',
+        'geolocation',
         'webgl',
         'webrtc',
         'audiocontext',
@@ -201,6 +202,7 @@ const SCHEMA_SQL = `
     ('surface_detail', 'indexeddb', 'IndexedDB surface'),
     ('surface_detail', 'cache_api', 'Cache API surface'),
     ('surface_detail', 'canvas', 'Canvas API signal'),
+    ('surface_detail', 'geolocation', 'Geolocation API signal'),
     ('surface_detail', 'webgl', 'WebGL API signal'),
     ('surface_detail', 'webrtc', 'WebRTC API signal'),
     ('surface_detail', 'audiocontext', 'AudioContext API signal'),
@@ -253,6 +255,7 @@ async function initDb(opts = {}) {
   );
 
   await exec(db, SCHEMA_SQL);
+  await ensureEventEnrichmentGeolocationSupport(db);
 
   return {
     db,
@@ -263,6 +266,164 @@ async function initDb(opts = {}) {
     all: (sql, params) => all(db, sql, params),
     close: () => close(db),
   };
+}
+
+async function ensureEventEnrichmentGeolocationSupport(db) {
+  const table = await get(
+    db,
+    `
+      SELECT sql
+      FROM sqlite_master
+      WHERE type = 'table' AND name = 'event_enrichment'
+    `
+  );
+
+  const tableSql = String(table?.sql || "").toLowerCase();
+  if (!tableSql || tableSql.includes("'geolocation'")) {
+    return;
+  }
+
+  await exec(
+    db,
+    `
+      BEGIN;
+
+      ALTER TABLE event_enrichment RENAME TO event_enrichment_legacy_v4;
+
+      CREATE TABLE event_enrichment (
+        pk                 INTEGER PRIMARY KEY AUTOINCREMENT,
+        event_pk           INTEGER NOT NULL UNIQUE,
+        event_id           TEXT NOT NULL UNIQUE,
+        enriched_ts        INTEGER NOT NULL,
+        enrichment_version TEXT NOT NULL DEFAULT 'v1',
+        surface            TEXT NOT NULL CHECK (surface IN ('network', 'cookies', 'storage', 'api', 'browser_api', 'script', 'unknown')),
+        surface_detail     TEXT NOT NULL CHECK (
+          surface_detail IN (
+            'network_request',
+            'cookie_snapshot',
+            'cookie_operation',
+            'local_storage',
+            'session_storage',
+            'indexeddb',
+            'cache_api',
+            'canvas',
+            'geolocation',
+            'webgl',
+            'webrtc',
+            'audiocontext',
+            'script_execution',
+            'unknown'
+          )
+        ),
+        privacy_status     TEXT NOT NULL CHECK (
+          privacy_status IN (
+            'baseline',
+            'signal_detected',
+            'high_risk',
+            'policy_blocked',
+            'policy_allowed',
+            'unknown'
+          )
+        ),
+        mitigation_status  TEXT NOT NULL CHECK (
+          mitigation_status IN (
+            'allowed',
+            'blocked',
+            'observed_only',
+            'modified',
+            'unknown'
+          )
+        ),
+        signal_type        TEXT NOT NULL CHECK (
+          signal_type IN (
+            'fingerprinting_signal',
+            'tracking_signal',
+            'device_probe',
+            'capability_probe',
+            'state_change',
+            'unknown'
+          )
+        ),
+        pattern_id         TEXT,
+        confidence         REAL CHECK (confidence IS NULL OR (confidence >= 0 AND confidence <= 1)),
+        vendor_id          TEXT,
+        vendor_name        TEXT,
+        vendor_family      TEXT,
+        request_domain     TEXT,
+        request_url        TEXT,
+        first_party_site   TEXT,
+        is_third_party     INTEGER CHECK (is_third_party IS NULL OR is_third_party IN (0, 1)),
+        rule_id            TEXT,
+        raw_context        TEXT,
+        FOREIGN KEY(event_pk) REFERENCES events(pk) ON DELETE CASCADE
+      );
+
+      INSERT INTO event_enrichment (
+        pk,
+        event_pk,
+        event_id,
+        enriched_ts,
+        enrichment_version,
+        surface,
+        surface_detail,
+        privacy_status,
+        mitigation_status,
+        signal_type,
+        pattern_id,
+        confidence,
+        vendor_id,
+        vendor_name,
+        vendor_family,
+        request_domain,
+        request_url,
+        first_party_site,
+        is_third_party,
+        rule_id,
+        raw_context
+      )
+      SELECT
+        pk,
+        event_pk,
+        event_id,
+        enriched_ts,
+        enrichment_version,
+        surface,
+        surface_detail,
+        privacy_status,
+        mitigation_status,
+        signal_type,
+        pattern_id,
+        confidence,
+        vendor_id,
+        vendor_name,
+        vendor_family,
+        request_domain,
+        request_url,
+        first_party_site,
+        is_third_party,
+        rule_id,
+        raw_context
+      FROM event_enrichment_legacy_v4;
+
+      DROP TABLE event_enrichment_legacy_v4;
+
+      CREATE INDEX IF NOT EXISTS idx_event_enrichment_site_ts ON event_enrichment(first_party_site, enriched_ts);
+      CREATE INDEX IF NOT EXISTS idx_event_enrichment_surface_ts ON event_enrichment(surface, enriched_ts);
+      CREATE INDEX IF NOT EXISTS idx_event_enrichment_privacy_ts ON event_enrichment(privacy_status, enriched_ts);
+      CREATE INDEX IF NOT EXISTS idx_event_enrichment_signal_ts ON event_enrichment(signal_type, enriched_ts);
+      CREATE INDEX IF NOT EXISTS idx_event_enrichment_vendor_ts ON event_enrichment(vendor_id, enriched_ts);
+      CREATE INDEX IF NOT EXISTS idx_event_enrichment_mitigation_ts ON event_enrichment(mitigation_status, enriched_ts);
+      CREATE INDEX IF NOT EXISTS idx_event_enrichment_party_ts ON event_enrichment(is_third_party, enriched_ts);
+      CREATE INDEX IF NOT EXISTS idx_event_enrichment_site_vendor ON event_enrichment(first_party_site, vendor_id);
+
+      INSERT OR IGNORE INTO enrichment_taxonomy(dimension, value, description) VALUES
+        ('surface_detail', 'geolocation', 'Geolocation API signal');
+
+      UPDATE meta SET value = '5' WHERE key = 'schema_version';
+
+      COMMIT;
+    `
+  );
 }
 
 module.exports = {

@@ -416,8 +416,9 @@ const API_GATE_ACTION_VALUES = new Set([
 
 function deriveApiSurfaceDetail(kind, data = {}) {
   const explicit = String(data.surfaceDetail || "").trim().toLowerCase();
-  if (explicit === "canvas" || explicit === "webrtc") return explicit;
+  if (explicit === "canvas" || explicit === "webrtc" || explicit === "geolocation") return explicit;
   if (kind.includes("canvas")) return "canvas";
+  if (kind.includes("geolocation")) return "geolocation";
   if (kind.includes("webrtc")) return "webrtc";
   return "unknown";
 }
@@ -436,6 +437,10 @@ const WEBRTC_OFFER_ACTIONS = new Set([
 const WEBRTC_ICE_ACTIONS = new Set([
   "ice_gathering_state",
   "ice_candidate_activity",
+]);
+
+const GEOLOCATION_WATCH_METHODS = new Set([
+  "watchposition",
 ]);
 
 function normalizeApiToken(value) {
@@ -522,6 +527,19 @@ function deriveApiClassification(kind, surfaceDetail, data = {}, stunTurnHostnam
     };
   }
 
+  if (surfaceDetail === "geolocation") {
+    const method = normalizeApiToken(data.method);
+    const isWatch = GEOLOCATION_WATCH_METHODS.has(method);
+
+    return {
+      signalType: "tracking_signal",
+      patternId: isWatch
+        ? "api.geolocation.watch_request"
+        : "api.geolocation.current_position_request",
+      confidence: isWatch ? 0.98 : 0.97,
+    };
+  }
+
   return {
     signalType: "capability_probe",
     patternId: kind.startsWith("api.") || kind.startsWith("browser_api.") ? kind : null,
@@ -585,6 +603,13 @@ function buildApiEnrichment(ev, site, data, kind) {
   const state = String(data.state || "").trim() || null;
   const offerType = String(data.offerType || "").trim() || null;
   const candidateType = String(data.candidateType || "").trim() || null;
+  const method = String(data.method || "").trim() || null;
+  const requestedHighAccuracy = data.requestedHighAccuracy === true;
+  const timeoutMs = toSafeNumber(data.timeoutMs, null);
+  const maximumAgeMs = toSafeNumber(data.maximumAgeMs, null);
+  const hasSuccessCallback = data.hasSuccessCallback !== false;
+  const hasErrorCallback = data.hasErrorCallback === true;
+  const policyReady = data.policyReady !== false;
   const stunTurnHostnames = Array.isArray(data.stunTurnHostnames)
     ? data.stunTurnHostnames.map((h) => normalizeHost(h)).filter(Boolean).slice(0, 8)
     : [];
@@ -620,6 +645,7 @@ function buildApiEnrichment(ev, site, data, kind) {
       mode: ev?.mode || null,
       source: ev?.source || null,
       operation,
+      method,
       action,
       contextType,
       width: Number.isFinite(width) ? width : null,
@@ -627,6 +653,12 @@ function buildApiEnrichment(ev, site, data, kind) {
       state,
       offerType,
       candidateType,
+      requestedHighAccuracy,
+      timeoutMs: Number.isFinite(timeoutMs) ? timeoutMs : null,
+      maximumAgeMs: Number.isFinite(maximumAgeMs) ? maximumAgeMs : null,
+      hasSuccessCallback,
+      hasErrorCallback,
+      policyReady,
       burstCount,
       burstMs,
       gateOutcome: gateOutcome || null,

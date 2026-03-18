@@ -8,6 +8,7 @@ const viewState = {
   saves: {
     canvas: { pending: false, tone: "", message: "" },
     webrtc: { pending: false, tone: "", message: "" },
+    geolocation: { pending: false, tone: "", message: "" },
   },
 };
 
@@ -36,6 +37,14 @@ const PATTERN_PRESENTATION = Object.freeze({
     label: "WebRTC STUN/TURN-assisted probing",
     explanation: "The page combined WebRTC probing with STUN or TURN metadata, which strengthens the capability-probing signal.",
   },
+  "api.geolocation.current_position_request": {
+    label: "Geolocation current-position request",
+    explanation: "The page requested one current position reading through the browser geolocation API.",
+  },
+  "api.geolocation.watch_request": {
+    label: "Geolocation watch request",
+    explanation: "The page requested ongoing geolocation updates through the browser geolocation API.",
+  },
 });
 
 const SIGNAL_TYPE_LABELS = Object.freeze({
@@ -47,6 +56,7 @@ const SIGNAL_TYPE_LABELS = Object.freeze({
 
 const SURFACE_LABELS = Object.freeze({
   canvas: "Canvas",
+  geolocation: "Geolocation",
   webrtc: "WebRTC",
   unknown: "Unknown surface",
 });
@@ -72,6 +82,13 @@ const POLICY_SURFACES = Object.freeze([
     kicker: "Readback gating",
     summary: "Control the implemented Canvas readback points without affecting general drawing.",
     note: "Current Canvas enforcement covers getImageData, toDataURL, toBlob, and readPixels only.",
+  },
+  {
+    key: "geolocation",
+    title: "Geolocation",
+    kicker: "Location-request gating",
+    summary: "Control browser geolocation requests without storing coordinates or place names.",
+    note: "Current Geolocation enforcement covers top-frame navigator.geolocation.getCurrentPosition and watchPosition only.",
   },
   {
     key: "webrtc",
@@ -134,6 +151,9 @@ function patternPresentation(event) {
   if (surfaceDetail === "canvas") {
     return { label: "Unclassified canvas activity", explanation: "Canvas metadata was observed without a canonical backend pattern yet.", canonicalId: "", classified: false };
   }
+  if (surfaceDetail === "geolocation") {
+    return { label: "Unclassified geolocation activity", explanation: "Geolocation metadata was observed without a canonical backend pattern yet.", canonicalId: "", classified: false };
+  }
   if (surfaceDetail === "webrtc") {
     return { label: "Unclassified WebRTC activity", explanation: "WebRTC metadata was observed without a canonical backend pattern yet.", canonicalId: "", classified: false };
   }
@@ -147,6 +167,12 @@ function summarizeEvent(event) {
     const size = data.width && data.height ? ` | ${data.width}x${data.height}` : "";
     const burst = Number(data.count || 0) > 1 ? ` | ${data.count} calls in one burst` : "";
     return `Observed ${normalizeValue(data.operation, "activity")}${data.contextType ? ` | ${data.contextType} canvas` : ""}${size}${burst}`;
+  }
+  if (surface === "geolocation") {
+    const accuracy = data.requestedHighAccuracy === true ? " | high accuracy requested" : "";
+    const timeout = typeof data.timeoutMs === "number" ? ` | timeout ${data.timeoutMs}ms` : "";
+    const maximumAge = typeof data.maximumAgeMs === "number" ? ` | maximum age ${data.maximumAgeMs}ms` : "";
+    return `Observed ${normalizeValue(data.method, "request")}${accuracy}${timeout}${maximumAge}`;
   }
   if (surface === "webrtc") {
     const hostCount = Array.isArray(data.stunTurnHostnames) ? data.stunTurnHostnames.filter(Boolean).length : 0;
@@ -218,7 +244,7 @@ function renderInsights(events) {
   const patterns = new Set(filtered.map((event) => normalizeOptional(event?.enrichment?.patternId)).filter(Boolean));
   const highConfidence = filtered.filter((event) => confidenceBand(event?.enrichment?.confidence) === "high").length;
   const filterNote = !allEvents.length
-    ? "Waiting for Canvas or WebRTC signals from the existing /api/events feed."
+    ? "Waiting for Canvas, Geolocation, or WebRTC signals from the existing /api/events feed."
     : `Showing ${filtered.length} of ${allEvents.length} API signal${allEvents.length === 1 ? "" : "s"} from the current in-memory dashboard window.${describeActiveFilters() ? ` ${describeActiveFilters()}` : ""}`;
 
   const resultsMeta = !allEvents.length
@@ -253,7 +279,7 @@ function renderInsights(events) {
   const list = document.getElementById("apiSignalsEventsList");
   if (!allEvents.length) {
     empty.classList.remove("hidden");
-    empty.innerHTML = emptyStateHtml("No API signals captured in this window", "Browse a site with Canvas or WebRTC activity while capture is enabled, then revisit this page.", "This view reflects the current /api/events dashboard window only.");
+    empty.innerHTML = emptyStateHtml("No API signals captured in this window", "Browse a site with Canvas, Geolocation, or WebRTC activity while capture is enabled, then revisit this page.", "This view reflects the current /api/events dashboard window only.");
     list.innerHTML = "";
     return;
   }
@@ -366,18 +392,33 @@ function eventCardHtml(event) {
 }
 
 function derivePolicySnapshot(policiesResponse) {
-  const snapshot = { trustedSites: new Set(), surfaces: { canvas: "observe", webrtc: "observe" } };
+  const snapshot = { trustedSites: new Set(), surfaces: { canvas: "observe", geolocation: "observe", webrtc: "observe" } };
   const items = Array.isArray(policiesResponse?.items) ? policiesResponse.items : [];
   items.forEach((item) => {
     const op = normalizeOptional(item?.op);
     const payload = item?.payload && typeof item.payload === "object" ? item.payload : {};
     if (op === "trust_site" && payload.site) snapshot.trustedSites.add(String(payload.site));
     if (op === "untrust_site" && payload.site) snapshot.trustedSites.delete(String(payload.site));
-    if ((op === "set_api_policy" || op === "set_api_surface_policy") && (payload.surface === "canvas" || payload.surface === "webrtc")) {
+    if ((op === "set_api_policy" || op === "set_api_surface_policy") && (payload.surface === "canvas" || payload.surface === "webrtc" || payload.surface === "geolocation")) {
       snapshot.surfaces[payload.surface] = normalizePolicyAction(payload.action);
     }
   });
   return snapshot;
+}
+
+function syncExtensionSurfacePolicy(surface, action) {
+  if (typeof window === "undefined" || typeof window.postMessage !== "function") return;
+  window.postMessage(
+    {
+      source: "vpt_api_gate",
+      type: "api_gate_apply_policy",
+      payload: {
+        surface,
+        action,
+      },
+    },
+    "*"
+  );
 }
 
 function renderControls() {
@@ -429,7 +470,11 @@ function controlCardHtml(surface, currentAction, saveState) {
 
 async function submitSurfacePolicy(surface, action) {
   const api = window.VPT?.api;
-  const surfaceKey = surface === "webrtc" ? "webrtc" : "canvas";
+  const surfaceKey = surface === "webrtc"
+    ? "webrtc"
+    : surface === "geolocation"
+      ? "geolocation"
+      : "canvas";
   const nextAction = normalizePolicyAction(action);
   viewState.saves[surfaceKey] = { pending: true, tone: "pending", message: `Saving ${nextAction.replace("_", " ")} for ${surfaceKey}...` };
   renderControls();
@@ -441,6 +486,7 @@ async function submitSurfacePolicy(surface, action) {
       latestTs: Math.max(Number(viewState.latestPolicies.latestTs) || 0, ...createdItems.map((item) => Number(item?.ts) || 0)),
       items: (Array.isArray(viewState.latestPolicies.items) ? viewState.latestPolicies.items : []).concat(createdItems.filter(Boolean)),
     };
+    syncExtensionSurfacePolicy(surfaceKey, nextAction);
     viewState.saves[surfaceKey] = { pending: false, tone: "success", message: `Saved. ${labelFor(SURFACE_LABELS, surfaceKey, surfaceKey)} is now set to ${POLICY_ACTIONS.find(([value]) => value === nextAction)?.[1] || "Observe"}.` };
   } catch (error) {
     viewState.saves[surfaceKey] = { pending: false, tone: "error", message: `Could not save ${labelFor(SURFACE_LABELS, surfaceKey, surfaceKey)} policy. ${error?.message || "Try again."}` };
@@ -488,7 +534,7 @@ function bindControlEvents() {
     const target = event.target;
     if (!(target instanceof HTMLInputElement) || target.type !== "radio" || !target.checked) return;
     const surface = normalizeOptional(target.dataset.surface).toLowerCase();
-    if (surface !== "canvas" && surface !== "webrtc") return;
+    if (surface !== "canvas" && surface !== "webrtc" && surface !== "geolocation") return;
     submitSurfacePolicy(surface, target.value);
   });
   controlsBound = true;

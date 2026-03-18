@@ -302,6 +302,123 @@ test("api.canvas trusted-site allowed outcome maps to policy_allowed", () => {
   assert.equal(row.mitigationStatus, "allowed");
 });
 
+test("api.geolocation current-position requests map to canonical backend semantics without coordinates", () => {
+  const ev = {
+    id: "evt-api-geo-current-1",
+    ts: 1700000004885,
+    site: "maps.example.com",
+    kind: "api.geolocation.activity",
+    mode: "moderate",
+    source: "extension",
+    data: {
+      method: "getCurrentPosition",
+      requestedHighAccuracy: true,
+      timeoutMs: 5000,
+      maximumAgeMs: 0,
+      hasSuccessCallback: true,
+      hasErrorCallback: true,
+      count: 1,
+      burstMs: 0,
+      sampleWindowMs: 1200,
+    },
+  };
+
+  const row = buildEnrichmentRecord(ev, ev.site);
+  assert.equal(row.surface, "api");
+  assert.equal(row.surfaceDetail, "geolocation");
+  assert.equal(row.signalType, "tracking_signal");
+  assert.equal(row.patternId, "api.geolocation.current_position_request");
+  assert.equal(row.confidence, 0.97);
+  assert.equal(row.requestDomain, null);
+
+  const rawContext = JSON.parse(row.rawContext);
+  assert.equal(rawContext.method, "getCurrentPosition");
+  assert.equal(rawContext.requestedHighAccuracy, true);
+  assert.equal(rawContext.timeoutMs, 5000);
+  assert.equal(rawContext.maximumAgeMs, 0);
+  assert.equal("coords" in rawContext, false);
+  assert.equal("latitude" in rawContext, false);
+  assert.equal("longitude" in rawContext, false);
+});
+
+test("api.geolocation watch requests map to watch-request classification", () => {
+  const ev = {
+    id: "evt-api-geo-watch-1",
+    ts: 1700000004890,
+    site: "maps.example.com",
+    kind: "api.geolocation.activity",
+    mode: "moderate",
+    source: "extension",
+    data: {
+      method: "watchPosition",
+      requestedHighAccuracy: false,
+      maximumAgeMs: 60000,
+      hasSuccessCallback: true,
+      hasErrorCallback: false,
+      count: 1,
+      burstMs: 0,
+      sampleWindowMs: 1200,
+    },
+  };
+
+  const row = buildEnrichmentRecord(ev, ev.site);
+  assert.equal(row.surface, "api");
+  assert.equal(row.surfaceDetail, "geolocation");
+  assert.equal(row.signalType, "tracking_signal");
+  assert.equal(row.patternId, "api.geolocation.watch_request");
+  assert.equal(row.confidence, 0.98);
+});
+
+test("api.geolocation blocked outcome maps to policy_blocked", () => {
+  const ev = {
+    id: "evt-api-geo-block-1",
+    ts: 1700000004895,
+    site: "maps.example.com",
+    kind: "api.geolocation.activity",
+    mode: "moderate",
+    source: "extension",
+    data: {
+      method: "getCurrentPosition",
+      requestedHighAccuracy: true,
+      gateOutcome: "blocked",
+      gateAction: "block",
+      trustedSite: false,
+      frameScope: "top_frame",
+    },
+  };
+
+  const row = buildEnrichmentRecord(ev, ev.site);
+  assert.equal(row.privacyStatus, "policy_blocked");
+  assert.equal(row.mitigationStatus, "blocked");
+});
+
+test("api.geolocation trusted-site allowed outcome maps to policy_allowed", () => {
+  const ev = {
+    id: "evt-api-geo-trusted-1",
+    ts: 1700000004898,
+    site: "maps.example.com",
+    kind: "api.geolocation.activity",
+    mode: "moderate",
+    source: "extension",
+    data: {
+      method: "watchPosition",
+      requestedHighAccuracy: false,
+      gateOutcome: "trusted_allowed",
+      gateAction: "allow_trusted",
+      trustedSite: true,
+      frameScope: "top_frame",
+    },
+  };
+
+  const row = buildEnrichmentRecord(ev, ev.site);
+  assert.equal(row.privacyStatus, "policy_allowed");
+  assert.equal(row.mitigationStatus, "allowed");
+
+  const rawContext = JSON.parse(row.rawContext);
+  assert.equal(rawContext.trustedSite, true);
+  assert.equal(rawContext.frameScope, "top_frame");
+});
+
 test("api.webrtc peer connection setup stays a capability probe", () => {
   const ev = {
     id: "evt-api-webrtc-setup-1",

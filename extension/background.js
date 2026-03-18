@@ -248,6 +248,7 @@ function isThirdParty(initiator, requestUrl) {
 }
 
 const API_CANVAS_OPERATIONS = new Set(["getImageData", "toDataURL", "toBlob", "readPixels"]);
+const API_GEOLOCATION_METHODS = new Set(["getCurrentPosition", "watchPosition"]);
 const API_GATE_ACTIONS = new Set(["observe", "warn", "block", "allow_trusted"]);
 const API_GATE_OUTCOMES = new Set(["observed", "warned", "blocked", "trusted_allowed"]);
 const API_WEBRTC_ACTIONS = new Set([
@@ -264,6 +265,7 @@ const API_MAX_HOSTNAMES = 8;
 const API_MAX_COUNT = 5000;
 const API_MAX_BURST_MS = 60_000;
 const API_MAX_DIMENSION = 16_384;
+const API_MAX_GEOLOCATION_OPTION_MS = 86_400_000;
 
 function asSafeInt(value, min, max) {
   const n = Number(value);
@@ -290,6 +292,7 @@ function sanitizeApiGatePolicy(policy) {
   return {
     canvas: normalizeApiGateAction(source.canvas),
     webrtc: normalizeApiGateAction(source.webrtc),
+    geolocation: normalizeApiGateAction(source.geolocation),
   };
 }
 
@@ -389,6 +392,29 @@ function getWebrtcDefaults(action, gateOutcome = "observed") {
   };
 }
 
+function getGeolocationDefaults(method, gateOutcome = "observed") {
+  const nextMethod = String(method || "");
+  let privacyStatus = "signal_detected";
+  let mitigationStatus = "observed_only";
+  if (gateOutcome === "blocked") {
+    privacyStatus = "policy_blocked";
+    mitigationStatus = "blocked";
+  } else if (gateOutcome === "trusted_allowed") {
+    privacyStatus = "policy_allowed";
+    mitigationStatus = "allowed";
+  }
+
+  return {
+    signalType: "tracking_signal",
+    privacyStatus,
+    mitigationStatus,
+    patternId: nextMethod === "watchPosition"
+      ? "api.geolocation.watch_request"
+      : "api.geolocation.current_position_request",
+    confidence: nextMethod === "watchPosition" ? 0.98 : 0.97,
+  };
+}
+
 function sanitizeCanvasSignal(data) {
   if (!data || typeof data !== "object") return null;
   const operation = asSafeString(data.operation, 32);
@@ -449,6 +475,37 @@ function sanitizeWebrtcSignal(data) {
   };
 }
 
+function sanitizeGeolocationSignal(data) {
+  if (!data || typeof data !== "object") return null;
+  const method = asSafeString(data.method, 32);
+  if (!method || !API_GEOLOCATION_METHODS.has(method)) return null;
+  const gateOutcomeRaw = asSafeString(data.gateOutcome, 32);
+  const gateOutcome = gateOutcomeRaw && API_GATE_OUTCOMES.has(gateOutcomeRaw)
+    ? gateOutcomeRaw
+    : "observed";
+
+  return {
+    surface: "api",
+    surfaceDetail: "geolocation",
+    method,
+    requestedHighAccuracy: data.requestedHighAccuracy === true,
+    timeoutMs: asSafeInt(data.timeoutMs, 0, API_MAX_GEOLOCATION_OPTION_MS),
+    maximumAgeMs: asSafeInt(data.maximumAgeMs, 0, API_MAX_GEOLOCATION_OPTION_MS),
+    hasSuccessCallback: data.hasSuccessCallback !== false,
+    hasErrorCallback: data.hasErrorCallback === true,
+    policyReady: data.policyReady !== false,
+    count: asSafeInt(data.count, 1, API_MAX_COUNT) || 1,
+    burstMs: asSafeInt(data.burstMs, 0, API_MAX_BURST_MS) || 0,
+    sampleWindowMs: asSafeInt(data.sampleWindowMs, 100, API_MAX_BURST_MS) || 1200,
+    gateOutcome,
+    gateAction: normalizeApiGateAction(data.gateAction),
+    trustedSite: typeof data.trustedSite === "boolean" ? data.trustedSite : undefined,
+    frameScope: asSafeString(data.frameScope, 32) === "top_frame" ? "top_frame" : "top_frame",
+    siteBase: asSafeString(data.siteBase, 128) || undefined,
+    ...getGeolocationDefaults(method, gateOutcome),
+  };
+}
+
 function sanitizeApiSignalPayload(payload) {
   if (!payload || typeof payload !== "object") return null;
   const kind = asSafeString(payload.kind, 64);
@@ -457,6 +514,12 @@ function sanitizeApiSignalPayload(payload) {
 
   if (kind.startsWith("api.canvas.")) {
     const cleanData = sanitizeCanvasSignal(data);
+    if (!cleanData) return null;
+    return { kind, data: cleanData };
+  }
+
+  if (kind.startsWith("api.geolocation.")) {
+    const cleanData = sanitizeGeolocationSignal(data);
     if (!cleanData) return null;
     return { kind, data: cleanData };
   }
@@ -552,6 +615,26 @@ async function loadApiGatePolicy() {
   await chrome.storage.local.set({ apiGatePolicy: sanitizeApiGatePolicy(apiGatePolicy) });
 }
 
+async function updateApiSurfacePolicy(surface, action) {
+  const surfaceKey = asSafeString(surface, 32);
+  if (surfaceKey !== "canvas" && surfaceKey !== "webrtc" && surfaceKey !== "geolocation") {
+    throw new Error("invalid_api_surface");
+  }
+  const nextAction = normalizeApiGateAction(action);
+  const { apiGatePolicy } = await chrome.storage.local.get("apiGatePolicy");
+  const nextPolicy = sanitizeApiGatePolicy(apiGatePolicy);
+  nextPolicy[surfaceKey] = nextAction;
+  await chrome.storage.local.set({ apiGatePolicy: nextPolicy });
+  return nextPolicy;
+}
+
+async function getApiGateSnapshot({ refresh = false } = {}) {
+  if (refresh) {
+    await pollPolicies();
+  }
+  return chrome.storage.local.get(["trusted", "apiGatePolicy", "trustedSitesEnabled"]);
+}
+
 async function applyPolicy(policy) {
   if (!policy || typeof policy !== "object") return;
   const { op, payload = {} } = policy;
@@ -589,13 +672,7 @@ async function applyPolicy(policy) {
 
     case "set_api_policy":
     case "set_api_surface_policy": {
-      const surface = asSafeString(payload.surface, 32);
-      if (surface !== "canvas" && surface !== "webrtc") break;
-      const action = normalizeApiGateAction(payload.action);
-      const { apiGatePolicy } = await chrome.storage.local.get("apiGatePolicy");
-      const nextPolicy = sanitizeApiGatePolicy(apiGatePolicy);
-      nextPolicy[surface] = action;
-      await chrome.storage.local.set({ apiGatePolicy: nextPolicy });
+      await updateApiSurfacePolicy(payload.surface, payload.action);
       break;
     }
 
@@ -764,6 +841,19 @@ chrome.storage.onChanged.addListener(async ch => {
 });
 
 chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
+  if (msg?.type === "api:gateStateSnapshot") {
+    (async () => {
+      try {
+        const snapshot = await getApiGateSnapshot({ refresh: msg.refresh === true });
+        sendResponse({ ok: true, snapshot });
+      } catch (e) {
+        console.error("api:gateStateSnapshot failed", e);
+        sendResponse({ ok: false, error: e.message || String(e) });
+      }
+    })();
+    return true;
+  }
+
   if (msg?.type === "api:signal") {
     (async () => {
       try {
@@ -782,6 +872,20 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
         sendResponse({ ok: true });
       } catch (e) {
         console.error("api:signal failed", e);
+        sendResponse({ ok: false, error: e.message || String(e) });
+      }
+    })();
+    return true;
+  }
+
+  if (msg?.type === "api:gatePolicyUpdate") {
+    (async () => {
+      try {
+        const payload = msg.payload && typeof msg.payload === "object" ? msg.payload : {};
+        const apiGatePolicy = await updateApiSurfacePolicy(payload.surface, payload.action);
+        sendResponse({ ok: true, apiGatePolicy });
+      } catch (e) {
+        console.error("api:gatePolicyUpdate failed", e);
         sendResponse({ ok: false, error: e.message || String(e) });
       }
     })();

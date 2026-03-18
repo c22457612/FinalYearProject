@@ -8,6 +8,8 @@
   API.CANVAS_GATE_OUTCOMES = API.GATE_OUTCOMES;
   API.WEBRTC_GATE_ACTIONS = API.GATE_ACTIONS;
   API.WEBRTC_GATE_OUTCOMES = API.GATE_OUTCOMES;
+  API.GEOLOCATION_GATE_ACTIONS = API.GATE_ACTIONS;
+  API.GEOLOCATION_GATE_OUTCOMES = API.GATE_OUTCOMES;
 
   function toBaseDomain(host) {
     const parts = String(host || "").toLowerCase().split(".").filter(Boolean);
@@ -42,11 +44,20 @@
     return normalizeApiGateOutcome(value);
   }
 
+  function normalizeGeolocationGateAction(value) {
+    return normalizeApiGateAction(value);
+  }
+
+  function normalizeGeolocationGateOutcome(value) {
+    return normalizeApiGateOutcome(value);
+  }
+
   function normalizeApiGatePolicy(rawPolicy) {
     const policy = rawPolicy && typeof rawPolicy === "object" ? rawPolicy : {};
     return {
       canvas: normalizeApiGateAction(policy.canvas),
       webrtc: normalizeApiGateAction(policy.webrtc),
+      geolocation: normalizeApiGateAction(policy.geolocation),
     };
   }
 
@@ -64,6 +75,7 @@
     return {
       canvasAction: normalizedPolicy.canvas,
       webrtcAction: normalizedPolicy.webrtc,
+      geolocationAction: normalizedPolicy.geolocation,
       trustedSite: Boolean(siteBase && trustedSet.has(siteBase)),
       siteBase,
       frameScope: "top_frame",
@@ -84,6 +96,16 @@
     const state = buildApiGateState(options);
     return {
       webrtcAction: state.webrtcAction,
+      trustedSite: state.trustedSite,
+      siteBase: state.siteBase,
+      frameScope: state.frameScope,
+    };
+  }
+
+  function buildGeolocationGateState(options = {}) {
+    const state = buildApiGateState(options);
+    return {
+      geolocationAction: state.geolocationAction,
       trustedSite: state.trustedSite,
       siteBase: state.siteBase,
       frameScope: state.frameScope,
@@ -115,6 +137,10 @@
     return deriveGateDecision(webrtcAction, trustedSite);
   }
 
+  function deriveGeolocationGateDecision(geolocationAction, trustedSite) {
+    return deriveGateDecision(geolocationAction, trustedSite);
+  }
+
   API.toBaseDomain = toBaseDomain;
   API.normalizeApiGateAction = normalizeApiGateAction;
   API.normalizeApiGateOutcome = normalizeApiGateOutcome;
@@ -122,13 +148,17 @@
   API.normalizeCanvasGateOutcome = normalizeCanvasGateOutcome;
   API.normalizeWebrtcGateAction = normalizeWebrtcGateAction;
   API.normalizeWebrtcGateOutcome = normalizeWebrtcGateOutcome;
+  API.normalizeGeolocationGateAction = normalizeGeolocationGateAction;
+  API.normalizeGeolocationGateOutcome = normalizeGeolocationGateOutcome;
   API.normalizeApiGatePolicy = normalizeApiGatePolicy;
   API.buildApiGateState = buildApiGateState;
   API.buildCanvasGateState = buildCanvasGateState;
   API.buildWebrtcGateState = buildWebrtcGateState;
+  API.buildGeolocationGateState = buildGeolocationGateState;
   API.deriveGateDecision = deriveGateDecision;
   API.deriveCanvasGateDecision = deriveCanvasGateDecision;
   API.deriveWebrtcGateDecision = deriveWebrtcGateDecision;
+  API.deriveGeolocationGateDecision = deriveGeolocationGateDecision;
 
   globalScope.__VPTApiGateShared = API;
   if (typeof module !== "undefined" && module.exports) {

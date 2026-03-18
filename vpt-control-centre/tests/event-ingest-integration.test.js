@@ -235,6 +235,27 @@ test("network/cookies paths remain intact when api canvas+webrtc events are inge
         },
       },
       {
+        id: "integ-mixed-geo-1",
+        ts: ts + 2500,
+        source: "test-extension",
+        site,
+        kind: "api.geolocation.activity",
+        mode: "moderate",
+        data: {
+          surface: "api",
+          surfaceDetail: "geolocation",
+          method: "getCurrentPosition",
+          requestedHighAccuracy: true,
+          timeoutMs: 5000,
+          maximumAgeMs: 0,
+          hasSuccessCallback: true,
+          hasErrorCallback: true,
+          count: 1,
+          burstMs: 0,
+          sampleWindowMs: 1200,
+        },
+      },
+      {
         id: "integ-mixed-webrtc-1",
         ts: ts + 3000,
         source: "test-extension",
@@ -267,20 +288,22 @@ test("network/cookies paths remain intact when api canvas+webrtc events are inge
     assert.equal(postResponse.status, 202, `Expected HTTP 202 from POST /api/events: ${postBodyText}`);
     const postBody = JSON.parse(postBodyText);
     assert.equal(postBody.ok, true);
-    assert.equal(postBody.count, 4);
-    assert.equal(postBody.inserted, 4);
+    assert.equal(postBody.count, 5);
+    assert.equal(postBody.inserted, 5);
 
     const saved = await getJson(`${baseUrl}/api/events?site=${encodeURIComponent(site)}&limit=50`);
-    assert.equal(saved.length, 4);
+    assert.equal(saved.length, 5);
 
     const networkEv = saved.find((row) => row.id === "integ-mixed-network-1");
     const cookiesEv = saved.find((row) => row.id === "integ-mixed-cookies-1");
     const canvasEv = saved.find((row) => row.id === "integ-mixed-canvas-1");
+    const geoEv = saved.find((row) => row.id === "integ-mixed-geo-1");
     const webrtcEv = saved.find((row) => row.id === "integ-mixed-webrtc-1");
 
     assert.ok(networkEv);
     assert.ok(cookiesEv);
     assert.ok(canvasEv);
+    assert.ok(geoEv);
     assert.ok(webrtcEv);
 
     assert.equal(networkEv.enrichment.surface, "network");
@@ -298,6 +321,16 @@ test("network/cookies paths remain intact when api canvas+webrtc events are inge
     assert.equal(canvasEv.data?.signalType, "fingerprinting_signal");
     assert.equal(canvasEv.data?.patternId, "api.canvas.toDataURL");
     assert.equal(canvasEv.data?.confidence, 0.94);
+    assert.equal(geoEv.enrichment.surface, "api");
+    assert.equal(geoEv.enrichment.surfaceDetail, "geolocation");
+    assert.equal(geoEv.enrichment.privacyStatus, "signal_detected");
+    assert.equal(geoEv.enrichment.mitigationStatus, "observed_only");
+    assert.equal(geoEv.enrichment.signalType, "tracking_signal");
+    assert.equal(geoEv.enrichment.patternId, "api.geolocation.current_position_request");
+    assert.equal(geoEv.enrichment.confidence, 0.97);
+    assert.equal(geoEv.data?.method, "getCurrentPosition");
+    assert.equal(geoEv.data?.requestedHighAccuracy, true);
+    assert.equal("coords" in (geoEv.data || {}), false);
     assert.equal(webrtcEv.enrichment.surface, "api");
     assert.equal(webrtcEv.enrichment.surfaceDetail, "webrtc");
     assert.equal(webrtcEv.enrichment.privacyStatus, "signal_detected");
@@ -563,5 +596,141 @@ test("webrtc gate outcomes round-trip through events API with stable enrichment 
     assert.equal(byId.get("webrtc-gate-trusted-1")?.enrichment?.mitigationStatus, "allowed");
     assert.equal(byId.get("webrtc-gate-trusted-1")?.enrichment?.privacyStatus, "policy_allowed");
     assert.equal(byId.get("webrtc-gate-trusted-1")?.data?.frameScope, "top_frame");
+  });
+});
+
+test("geolocation gate outcomes round-trip through events API with stable enrichment mapping", async () => {
+  await withTempApiServer(async ({ baseUrl }) => {
+    const site = "geo-gate.example.com";
+    const ts = Date.UTC(2026, 2, 15, 12, 0, 0);
+    const events = [
+      {
+        id: "geo-gate-observed-1",
+        ts,
+        source: "test-extension",
+        site,
+        kind: "api.geolocation.activity",
+        mode: "moderate",
+        data: {
+          surface: "api",
+          surfaceDetail: "geolocation",
+          method: "getCurrentPosition",
+          requestedHighAccuracy: true,
+          timeoutMs: 5000,
+          maximumAgeMs: 0,
+          hasSuccessCallback: true,
+          hasErrorCallback: true,
+          count: 1,
+          burstMs: 0,
+          sampleWindowMs: 1200,
+          gateOutcome: "observed",
+          gateAction: "observe",
+          trustedSite: false,
+          frameScope: "top_frame",
+        },
+      },
+      {
+        id: "geo-gate-warned-1",
+        ts: ts + 1000,
+        source: "test-extension",
+        site,
+        kind: "api.geolocation.activity",
+        mode: "moderate",
+        data: {
+          surface: "api",
+          surfaceDetail: "geolocation",
+          method: "watchPosition",
+          requestedHighAccuracy: false,
+          maximumAgeMs: 60000,
+          hasSuccessCallback: true,
+          hasErrorCallback: false,
+          count: 1,
+          burstMs: 0,
+          sampleWindowMs: 1200,
+          gateOutcome: "warned",
+          gateAction: "warn",
+          trustedSite: false,
+          frameScope: "top_frame",
+        },
+      },
+      {
+        id: "geo-gate-blocked-1",
+        ts: ts + 2000,
+        source: "test-extension",
+        site,
+        kind: "api.geolocation.activity",
+        mode: "moderate",
+        data: {
+          surface: "api",
+          surfaceDetail: "geolocation",
+          method: "getCurrentPosition",
+          requestedHighAccuracy: true,
+          hasSuccessCallback: true,
+          hasErrorCallback: true,
+          count: 1,
+          burstMs: 0,
+          sampleWindowMs: 1200,
+          gateOutcome: "blocked",
+          gateAction: "block",
+          trustedSite: false,
+          frameScope: "top_frame",
+        },
+      },
+      {
+        id: "geo-gate-trusted-1",
+        ts: ts + 3000,
+        source: "test-extension",
+        site,
+        kind: "api.geolocation.activity",
+        mode: "moderate",
+        data: {
+          surface: "api",
+          surfaceDetail: "geolocation",
+          method: "watchPosition",
+          requestedHighAccuracy: false,
+          maximumAgeMs: 60000,
+          hasSuccessCallback: true,
+          hasErrorCallback: true,
+          count: 1,
+          burstMs: 0,
+          sampleWindowMs: 1200,
+          gateOutcome: "trusted_allowed",
+          gateAction: "allow_trusted",
+          trustedSite: true,
+          frameScope: "top_frame",
+        },
+      },
+    ];
+
+    const postResponse = await fetch(`${baseUrl}/api/events`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(events),
+    });
+    const postBodyText = await postResponse.text();
+    assert.equal(postResponse.status, 202, `Expected HTTP 202 from POST /api/events: ${postBodyText}`);
+
+    const saved = await getJson(`${baseUrl}/api/events?site=${encodeURIComponent(site)}&limit=50`);
+    assert.equal(saved.length, 4);
+
+    const byId = new Map(saved.map((event) => [event.id, event]));
+
+    assert.equal(byId.get("geo-gate-observed-1")?.data?.gateOutcome, "observed");
+    assert.equal(byId.get("geo-gate-observed-1")?.enrichment?.mitigationStatus, "observed_only");
+    assert.equal(byId.get("geo-gate-observed-1")?.enrichment?.privacyStatus, "signal_detected");
+
+    assert.equal(byId.get("geo-gate-warned-1")?.data?.gateOutcome, "warned");
+    assert.equal(byId.get("geo-gate-warned-1")?.enrichment?.mitigationStatus, "observed_only");
+    assert.equal(byId.get("geo-gate-warned-1")?.enrichment?.privacyStatus, "signal_detected");
+
+    assert.equal(byId.get("geo-gate-blocked-1")?.data?.gateOutcome, "blocked");
+    assert.equal(byId.get("geo-gate-blocked-1")?.enrichment?.mitigationStatus, "blocked");
+    assert.equal(byId.get("geo-gate-blocked-1")?.enrichment?.privacyStatus, "policy_blocked");
+
+    assert.equal(byId.get("geo-gate-trusted-1")?.data?.gateOutcome, "trusted_allowed");
+    assert.equal(byId.get("geo-gate-trusted-1")?.enrichment?.mitigationStatus, "allowed");
+    assert.equal(byId.get("geo-gate-trusted-1")?.enrichment?.privacyStatus, "policy_allowed");
+    assert.equal(byId.get("geo-gate-trusted-1")?.data?.frameScope, "top_frame");
+    assert.equal("coords" in (byId.get("geo-gate-trusted-1")?.data || {}), false);
   });
 });

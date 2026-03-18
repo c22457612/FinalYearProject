@@ -8,7 +8,7 @@ const { initDb } = require("../db");
 const { buildEnrichmentRecord } = require("../enrichment");
 const { upsertEnrichmentRow } = require("../scripts/backfill-enrichment");
 
-test("backfill supports legacy event_enrichment schema that only allows browser_api surface", async () => {
+test("backfill upgrades legacy event_enrichment schema before inserting API rows", async () => {
   const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "vpt-backfill-legacy-"));
   const dbPath = path.join(tempDir, "privacy.db");
 
@@ -149,7 +149,7 @@ test("backfill supports legacy event_enrichment schema that only allows browser_
       );
 
       assert.ok(row, "Expected legacy backfill to create an event_enrichment row");
-      assert.equal(row.surface, "browser_api");
+      assert.equal(row.surface, "api");
       assert.equal(row.surfaceDetail, "webrtc");
       assert.equal(row.signalType, "device_probe");
       assert.equal(row.patternId, "api.webrtc.stun_turn_assisted_probe");

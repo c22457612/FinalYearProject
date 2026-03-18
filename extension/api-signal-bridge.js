@@ -6,6 +6,7 @@
   const SOURCE_TAG = "vpt_api_signal";
   const GATE_SOURCE_TAG = gateShared?.CONFIG_SOURCE_TAG || "vpt_api_gate";
   const CANVAS_OPS = new Set(["getImageData", "toDataURL", "toBlob", "readPixels"]);
+  const GEOLOCATION_METHODS = new Set(["getCurrentPosition", "watchPosition"]);
   const WEBRTC_ACTIONS = new Set([
     "peer_connection_created",
     "create_offer_called",
@@ -22,6 +23,7 @@
   const MAX_HOSTNAMES = 8;
   const API_GATE_OUTCOMES = new Set(gateShared?.GATE_OUTCOMES || ["observed", "warned", "blocked", "trusted_allowed"]);
   const FRAME_SCOPES = new Set(["top_frame"]);
+  const MAX_GEOLOCATION_OPTION_MS = 86_400_000;
 
   function asSafeInt(value, min, max) {
     const n = Number(value);
@@ -81,6 +83,14 @@
     return next === "warn" || next === "block" || next === "allow_trusted" ? next : "observe";
   }
 
+  function normalizeGeolocationGateAction(value) {
+    if (gateShared?.normalizeGeolocationGateAction) {
+      return gateShared.normalizeGeolocationGateAction(value);
+    }
+    const next = asSafeString(value, 32);
+    return next === "warn" || next === "block" || next === "allow_trusted" ? next : "observe";
+  }
+
   function buildApiGateState(snapshot) {
     if (gateShared?.buildApiGateState) {
       return gateShared.buildApiGateState({
@@ -103,6 +113,7 @@
     return {
       canvasAction: normalizeCanvasGateAction(snapshot?.apiGatePolicy?.canvas),
       webrtcAction: normalizeWebrtcGateAction(snapshot?.apiGatePolicy?.webrtc),
+      geolocationAction: normalizeGeolocationGateAction(snapshot?.apiGatePolicy?.geolocation),
       trustedSite,
       siteBase,
       frameScope: "top_frame",
@@ -122,9 +133,26 @@
     );
   }
 
-  async function syncApiGateState() {
+  async function requestApiGateSnapshot(refresh = false) {
+    if (!chrome?.runtime?.sendMessage) return null;
     try {
-      const snapshot = await chrome.storage.local.get(["trusted", "apiGatePolicy", "trustedSitesEnabled"]);
+      const response = await chrome.runtime.sendMessage({
+        type: "api:gateStateSnapshot",
+        refresh: refresh === true,
+      });
+      return response?.ok && response.snapshot && typeof response.snapshot === "object"
+        ? response.snapshot
+        : null;
+    } catch {
+      return null;
+    }
+  }
+
+  async function syncApiGateState({ refresh = false } = {}) {
+    try {
+      const snapshot = refresh === true
+        ? (await requestApiGateSnapshot(true)) || await chrome.storage.local.get(["trusted", "apiGatePolicy", "trustedSitesEnabled"])
+        : await chrome.storage.local.get(["trusted", "apiGatePolicy", "trustedSitesEnabled"]);
       postApiGateState(snapshot);
     } catch {
       // Ignore bridge sync failures; API gate defaults remain observe-only.
@@ -204,23 +232,96 @@
     };
   }
 
+  function sanitizeGeolocationSignal(payload) {
+    const method = asSafeString(payload.method, 32);
+    if (!method || !GEOLOCATION_METHODS.has(method)) return null;
+
+    return {
+      surface: "api",
+      surfaceDetail: "geolocation",
+      method,
+      requestedHighAccuracy: payload.requestedHighAccuracy === true,
+      timeoutMs: asSafeInt(payload.timeoutMs, 0, MAX_GEOLOCATION_OPTION_MS),
+      maximumAgeMs: asSafeInt(payload.maximumAgeMs, 0, MAX_GEOLOCATION_OPTION_MS),
+      hasSuccessCallback: payload.hasSuccessCallback !== false,
+      hasErrorCallback: payload.hasErrorCallback === true,
+      policyReady: payload.policyReady !== false,
+      count: asSafeInt(payload.count, 1, MAX_COUNT) || 1,
+      burstMs: asSafeInt(payload.burstMs, 0, MAX_BURST_MS) || 0,
+      sampleWindowMs: asSafeInt(payload.sampleWindowMs, 100, MAX_BURST_MS) || 1200,
+      gateOutcome: API_GATE_OUTCOMES.has(asSafeString(payload.gateOutcome, 32) || "")
+        ? asSafeString(payload.gateOutcome, 32)
+        : "observed",
+      gateAction: normalizeGeolocationGateAction(payload.gateAction),
+      trustedSite: typeof payload.trustedSite === "boolean" ? payload.trustedSite : undefined,
+      frameScope: FRAME_SCOPES.has(asSafeString(payload.frameScope, 32) || "")
+        ? asSafeString(payload.frameScope, 32)
+        : "top_frame",
+      siteBase: toBaseDomain(window.location.hostname) || undefined,
+    };
+  }
+
   function normalizeSignal(kind, payload) {
     if (!kind || typeof payload !== "object" || !payload) return null;
 
     if (kind.startsWith("api.canvas.")) return sanitizeCanvasSignal(payload);
+    if (kind.startsWith("api.geolocation.")) return sanitizeGeolocationSignal(payload);
     if (kind.startsWith("api.webrtc.")) return sanitizeWebrtcSignal(payload);
     return null;
   }
 
+  function normalizeMessageData(data) {
+    return data && typeof data === "object" ? data : null;
+  }
+
+  function sendRuntimeMessage(message) {
+    if (!chrome?.runtime?.sendMessage) return;
+    try {
+      chrome.runtime.sendMessage(message).catch(() => {});
+    } catch {
+      // Ignore runtime messaging failures; page execution must continue.
+    }
+  }
+
+  function isLoopbackControlCentrePage() {
+    const protocol = String(window.location.protocol || "").toLowerCase();
+    const host = String(window.location.hostname || "").toLowerCase();
+    if (protocol !== "http:" && protocol !== "https:") return false;
+    return host === "127.0.0.1" || host === "localhost";
+  }
+
+  function sanitizeImmediatePolicyUpdate(payload) {
+    const data = payload && typeof payload === "object" ? payload : {};
+    const surface = asSafeString(data.surface, 32);
+    if (surface !== "canvas" && surface !== "webrtc" && surface !== "geolocation") return null;
+    const rawAction = asSafeString(data.action, 32);
+    const action = rawAction === "warn" || rawAction === "block" || rawAction === "allow_trusted"
+      ? rawAction
+      : "observe";
+    return { surface, action };
+  }
+
   window.addEventListener("message", (event) => {
-    if (event.source !== window) return;
-    const data = event.data;
-    if (!data || typeof data !== "object") return;
+    const data = normalizeMessageData(event.data);
+    if (!data) return;
     if (
       data.source === GATE_SOURCE_TAG
       && (data.type === "api_gate_state_request" || data.type === "canvas_gate_state_request")
     ) {
-      syncApiGateState().catch(() => {});
+      syncApiGateState({ refresh: true }).catch(() => {});
+      return;
+    }
+    if (
+      data.source === GATE_SOURCE_TAG
+      && data.type === "api_gate_apply_policy"
+      && isLoopbackControlCentrePage()
+    ) {
+      const payload = sanitizeImmediatePolicyUpdate(data.payload);
+      if (!payload) return;
+      sendRuntimeMessage({
+        type: "api:gatePolicyUpdate",
+        payload,
+      });
       return;
     }
     if (data.source !== SOURCE_TAG) return;
@@ -229,10 +330,10 @@
     const payload = normalizeSignal(kind, data.payload);
     if (!kind || !payload) return;
 
-    chrome.runtime.sendMessage({
+    sendRuntimeMessage({
       type: "api:signal",
       payload: { kind, data: payload },
-    }).catch(() => {});
+    });
   });
 
   if (chrome?.storage?.onChanged) {
