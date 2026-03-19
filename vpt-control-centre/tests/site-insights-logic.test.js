@@ -451,3 +451,216 @@ test("selection lifecycle sync is deterministic for same inputs and control stat
 
   assert.deepEqual(first, second);
 });
+
+test("api event presentation maps canonical labels and metadata-only summaries", () => {
+  const { getApiEventPresentation, isApiSignalEvent } = loadRuntimeModuleExport(
+    "public/app/api-event-presentation.js",
+    ["getApiEventPresentation", "isApiSignalEvent"]
+  );
+
+  const event = {
+    id: "api-1",
+    ts: 1_000,
+    kind: "api.canvas",
+    site: "alpha.local",
+    data: {
+      operation: "toDataURL",
+      contextType: "2d",
+      width: 300,
+      height: 150,
+      gateOutcome: "warned",
+    },
+    enrichment: {
+      surface: "api",
+      surfaceDetail: "canvas",
+      signalType: "fingerprinting_signal",
+      patternId: "api.canvas.readback",
+      confidence: 0.93,
+    },
+  };
+
+  const presentation = getApiEventPresentation(event);
+  assert.equal(isApiSignalEvent(event), true);
+  assert.equal(presentation.label, "Canvas readback");
+  assert.equal(presentation.surfaceLabel, "Canvas");
+  assert.equal(presentation.signalTypeLabel, "Fingerprinting signal");
+  assert.equal(presentation.gateOutcomeLabel, "Warned");
+  assert.equal(presentation.confidenceBand, "high");
+  assert.match(presentation.summary, /toDataURL/i);
+  assert.match(presentation.summary, /300x150/);
+});
+
+test("site filter logic keeps API events compatible with surface and mitigation filters", () => {
+  const {
+    matchesFilters,
+    getKindBucket,
+    getSurfaceBucket,
+    getMitigationStatusBucket,
+    getPrivacyStatusBucket,
+  } = loadRuntimeModuleExport(
+    "public/app/site/filter-state.js",
+    ["matchesFilters", "getKindBucket", "getSurfaceBucket", "getMitigationStatusBucket", "getPrivacyStatusBucket"]
+  );
+
+  const apiEvent = {
+    id: "api-blocked-1",
+    ts: 1_000,
+    kind: "api.geolocation",
+    site: "alpha.local",
+    enrichment: {
+      surface: "api",
+      surfaceDetail: "geolocation",
+      privacyStatus: "policy_blocked",
+      mitigationStatus: "blocked",
+      signalType: "tracking_signal",
+    },
+  };
+
+  assert.equal(getKindBucket(apiEvent), "blocked");
+  assert.equal(getSurfaceBucket(apiEvent), "api");
+  assert.equal(getMitigationStatusBucket(apiEvent), "blocked");
+  assert.equal(getPrivacyStatusBucket(apiEvent), "policy_blocked");
+
+  assert.equal(matchesFilters(apiEvent, {
+    kind: { blocked: true, observed: false, other: false },
+    party: "all",
+    resource: "all",
+    surface: "api",
+    privacyStatus: "policy_blocked",
+    mitigationStatus: "blocked",
+    domainText: "",
+  }), true);
+
+  assert.equal(matchesFilters(apiEvent, {
+    kind: { blocked: false, observed: false, other: true },
+    party: "all",
+    resource: "all",
+    surface: "network",
+    privacyStatus: "all",
+    mitigationStatus: "all",
+    domainText: "",
+  }), false);
+});
+
+test("insight evidence summary counts API events by mitigation semantics", () => {
+  const sandbox = createSandbox();
+  loadBrowserModule("public/app/insight-rules.js", sandbox);
+  const api = sandbox.window.VPT.insightRules;
+
+  const summary = api.makeEvidenceSummary([
+    {
+      id: "api-blocked",
+      ts: 1_000,
+      kind: "api.clipboard",
+      enrichment: { mitigationStatus: "blocked" },
+    },
+    {
+      id: "api-observed",
+      ts: 2_000,
+      kind: "api.clipboard",
+      enrichment: { mitigationStatus: "observed_only" },
+    },
+    {
+      id: "api-allowed",
+      ts: 3_000,
+      kind: "api.clipboard",
+      enrichment: { mitigationStatus: "allowed" },
+    },
+  ]);
+
+  assert.equal(summary.total, 3);
+  assert.equal(summary.blocked, 1);
+  assert.equal(summary.observed, 1);
+  assert.equal(summary.other, 1);
+});
+
+test("insight summary text calls out other for API-only selections", () => {
+  const sandbox = createSandbox();
+  loadBrowserModule("public/app/insight-rules.js", sandbox);
+  const api = sandbox.window.VPT.insightRules;
+
+  const insight = api.buildInsightResult({
+    events: [
+      {
+        id: "api-allowed-1",
+        ts: 1_000,
+        site: "github.io",
+        kind: "api.clipboard.activity",
+        enrichment: {
+          surface: "api",
+          mitigationStatus: "allowed",
+        },
+      },
+      {
+        id: "api-allowed-2",
+        ts: 1_100,
+        site: "github.io",
+        kind: "api.clipboard.activity",
+        enrichment: {
+          surface: "api",
+          mitigationStatus: "allowed",
+        },
+      },
+    ],
+    viewId: "vendorOverview",
+    viewMode: "power",
+    siteName: "github.io",
+    selectedVendor: {
+      vendorId: "github.io",
+      vendorName: "github.io",
+      category: "unmapped",
+      domains: ["github.io"],
+      riskHints: [],
+    },
+  });
+
+  assert.match(insight.summary, /0 blocked, 0 observed, 2 other/i);
+});
+
+test("timeline chart counts API blocked and observed buckets from semantic status", () => {
+  const { createChartBuilders } = loadRuntimeModuleExport(
+    "public/app/site/chart-builders.js",
+    ["createChartBuilders"]
+  );
+
+  const builders = createChartBuilders({
+    vizOptions: {
+      metric: "seen",
+      seriesType: "bar",
+      topN: 20,
+      sort: "value_desc",
+      binSize: "5m",
+      normalize: false,
+      stackBars: true,
+    },
+    binSizeMs: { "5m": 5 * 60 * 1000 },
+    hoverPointStyle: { borderColor: "#38BDF8", borderWidth: 1 },
+    selectedPointStyle: { borderColor: "#A78BFA", borderWidth: 2 },
+    getRangeWindow: () => ({ from: 1_000, to: 10_000 }),
+    buildVendorRollup: () => [],
+    getKindBucket: (ev) => {
+      const mitigation = String(ev?.enrichment?.mitigationStatus || "");
+      if (mitigation === "blocked") return "blocked";
+      if (mitigation === "observed_only") return "observed";
+      return "other";
+    },
+    getVendorMetricValue: () => 0,
+    getResourceBucket: () => "other",
+    getPartyBucket: () => "first_or_unknown",
+    getPrivacyStatusBucket: () => "unknown",
+    getMitigationStatusBucket: (ev) => String(ev?.enrichment?.mitigationStatus || "unknown"),
+    resourceLabels: {},
+    partyLabels: {},
+  });
+
+  const built = builders.buildTimelineOption([
+    { id: "api-blocked", ts: 1_500, kind: "api.clipboard", enrichment: { mitigationStatus: "blocked" } },
+    { id: "api-observed", ts: 2_000, kind: "api.clipboard", enrichment: { mitigationStatus: "observed_only" } },
+    { id: "api-other", ts: 2_500, kind: "api.clipboard", enrichment: { mitigationStatus: "allowed" } },
+  ], { viewMode: "power", densityAware: false });
+
+  const seriesByName = new Map((built.option.series || []).map((series) => [series.name, series.data]));
+  assert.equal(seriesByName.get("Blocked")?.[0], 1);
+  assert.equal(seriesByName.get("Observed")?.[0], 1);
+  assert.equal(seriesByName.get("Other")?.[0], 1);
+});

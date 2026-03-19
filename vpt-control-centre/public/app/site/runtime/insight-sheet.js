@@ -1,3 +1,6 @@
+import { getApiEventPresentation, isApiSignalEvent } from "../../api-event-presentation.js";
+import { getEventListContextText, getEventListKindText, getEventListMetaText } from "../utils.js";
+
 export function createInsightSheet(deps) {
   const {
     qs,
@@ -32,18 +35,40 @@ export function createInsightSheet(deps) {
     if (!ev) return "";
 
     const d = ev.data || {};
-    return [
+    const enrich = ev.enrichment || {};
+    const lines = [
       `id: ${ev.id || "-"}`,
       `ts: ${ev.ts ? new Date(ev.ts).toLocaleString() : "-"}`,
       `site: ${ev.site || "-"}`,
       `kind: ${ev.kind || "-"}`,
       `mode: ${ev.mode || "-"}`,
+      `surface: ${enrich.surface || "-"}`,
+      `surfaceDetail: ${enrich.surfaceDetail || "-"}`,
+      `privacyStatus: ${enrich.privacyStatus || "-"}`,
+      `mitigationStatus: ${enrich.mitigationStatus || "-"}`,
+      `signalType: ${enrich.signalType || "-"}`,
+      `patternId: ${enrich.patternId || "-"}`,
+      `confidence: ${typeof enrich.confidence === "number" ? enrich.confidence.toFixed(2) : "-"}`,
+    ];
+
+    if (isApiSignalEvent(ev)) {
+      const presentation = getApiEventPresentation(ev);
+      return lines.concat([
+        `label: ${presentation.label}`,
+        `gateOutcome: ${presentation.gateOutcome}`,
+        `explanation: ${presentation.explanation}`,
+        `observedDetails: ${presentation.summary}`,
+        "dataHandling: metadata only (no canvas output, clipboard contents, coordinates, SDP, candidates, or IP addresses)",
+      ]).join("\n");
+    }
+
+    return lines.concat([
       `domain: ${d.domain || "-"}`,
       `url: ${d.url || "-"}`,
       `resourceType: ${d.resourceType || "-"}`,
       `isThirdParty: ${typeof d.isThirdParty === "boolean" ? d.isThirdParty : "-"}`,
       `ruleId: ${d.ruleId || "-"}`,
-    ].join("\n");
+    ]).join("\n");
   }
 
   function renderListItems(el, items, emptyText) {
@@ -93,6 +118,10 @@ export function createInsightSheet(deps) {
       }
     }
     return "";
+  }
+
+  function getOtherBucketLabel(events) {
+    return "other";
   }
 
   function setInsightSeverity(severity, confidence) {
@@ -254,9 +283,11 @@ export function createInsightSheet(deps) {
     const total = evidence.length;
     const blocked = evidence.filter((e) => e?.kind === "network.blocked").length;
     const observed = evidence.filter((e) => e?.kind === "network.observed").length;
+    const other = Math.max(0, total - blocked - observed);
+    const otherLabel = getOtherBucketLabel(evidence);
     return {
       title: selection?.title || "Insight",
-      summary: `${total} events selected (${blocked} blocked, ${observed} observed).`,
+      summary: `${total} events selected (${blocked} blocked, ${observed} observed${other > 0 ? `, ${other} ${otherLabel}` : ""}).`,
       severity: total >= 40 ? "caution" : "info",
       confidence: total >= 10 ? 0.72 : 0.45,
       warnings: ["Selection evidence is based on current filters and range."],
@@ -280,7 +311,7 @@ export function createInsightSheet(deps) {
         total,
         blocked,
         observed,
-        other: Math.max(0, total - blocked - observed),
+        other,
         firstTs: evidence[0]?.ts || null,
         lastTs: evidence[evidence.length - 1]?.ts || null,
         dominantKinds: [],
@@ -324,11 +355,23 @@ export function createInsightSheet(deps) {
     const dominant = Array.isArray(summary.dominantKinds) && summary.dominantKinds.length
       ? summary.dominantKinds.map((d) => `${d.kind}:${d.count}`).join(", ")
       : "-";
+    const otherLabel = getOtherBucketLabel(evs);
 
     if (qs("insightHow")) {
       const label = selection?.title || "current scope";
-      const evidenceLine = `From ${label}: total ${summary.total || 0}, blocked ${summary.blocked || 0}, observed ${summary.observed || 0}, first ${firstText}, last ${lastText}, dominant ${dominant}.`;
+      const evidenceLine = `From ${label}: total ${summary.total || 0}, blocked ${summary.blocked || 0}, observed ${summary.observed || 0}, ${otherLabel} ${summary.other || 0}, first ${firstText}, last ${lastText}, dominant ${dominant}.`;
       const whatThisAnswers = getWhatThisAnswersLine(context.viewId);
+      const apiHowLine = primaryEvent && isApiSignalEvent(primaryEvent)
+        ? (() => {
+            const presentation = getApiEventPresentation(primaryEvent);
+            const technical = [
+              presentation.canonicalId ? `pattern ${presentation.canonicalId}` : "pattern not yet classified",
+              `signal type ${presentation.signalType}`,
+              `confidence ${presentation.confidenceText}`,
+            ].join(", ");
+            return `Representative Browser API signal: ${presentation.label}. ${presentation.explanation} Observed details: ${presentation.summary}. Backend classification: ${technical}.`;
+          })()
+        : "";
       if (context.viewId === "vendorTopDomainsEndpoints" && selection?.bucketKey) {
         const bucketLabel = selection?.bucketLabel || label;
         const seen = Number(selection?.seen || 0);
@@ -338,12 +381,12 @@ export function createInsightSheet(deps) {
         const bucketLine = `Selected bucket: ${bucketLabel} (${seen} total; ${blocked} blocked; ${observed} observed; ${other} other).`;
         const example = getBucketExample(selection, evs);
         const exampleLine = example ? ` Example URL/path: ${example}.` : "";
-        qs("insightHow").textContent = `${whatThisAnswers ? `${whatThisAnswers} ` : ""}${bucketLine}${exampleLine}`;
+        qs("insightHow").textContent = `${whatThisAnswers ? `${whatThisAnswers} ` : ""}${apiHowLine ? `${apiHowLine} ` : ""}${bucketLine}${exampleLine}`;
       } else {
         const bucketKeyLine = selection?.bucketKey
           ? ` Bucket key: ${selection.bucketKey}.`
           : "";
-        qs("insightHow").textContent = `${whatThisAnswers ? `${whatThisAnswers} ` : ""}${evidenceLine}${bucketKeyLine}`;
+        qs("insightHow").textContent = `${whatThisAnswers ? `${whatThisAnswers} ` : ""}${apiHowLine ? `${apiHowLine} ` : ""}${evidenceLine}${bucketKeyLine}`;
       }
     }
 
@@ -358,6 +401,9 @@ export function createInsightSheet(deps) {
     ];
     if (context.viewId === "baselineDetectedBlockedTrend") {
       limits.push("'No signal detected' indicates no classified signal in captured events, not a guarantee of safety.");
+    }
+    if (evs.some((eventItem) => isApiSignalEvent(eventItem))) {
+      limits.push("Browser API evidence here is metadata only. VPT stores classification and call metadata, not canvas output, clipboard contents, coordinates, SDP, candidates, or IP addresses.");
     }
     if (evs.length < 8) {
       limits.push("Low confidence due to small sample size; gather more events before acting.");
@@ -425,8 +471,9 @@ export function createInsightSheet(deps) {
         const btn = document.createElement("button");
         btn.className = "event-row";
         btn.type = "button";
-        btn.innerHTML = `<div style="font-size:12px;opacity:.8">${friendlyTime(ev.ts)} | ${ev.kind || "-"} | ${ev.mode || "-"}</div>
-                       <div style="font-size:13px">${ev.data?.domain || "-"}</div>`;
+        btn.innerHTML = `<div style="font-size:12px;opacity:.8">${getEventListMetaText(ev)}</div>
+                       <div style="font-size:13px">${getEventListKindText(ev)}</div>
+                       <div style="font-size:12px;opacity:.78">${getEventListContextText(ev)}</div>`;
         if (!firstEvent) firstEvent = { ev, btn };
 
         btn.addEventListener("click", () => {

@@ -18,6 +18,44 @@
     return counts;
   }
 
+  function getMitigationBucket(ev) {
+    const enriched = String(ev?.enrichment?.mitigationStatus || "").trim();
+    if (enriched) return enriched;
+
+    const kind = String(ev?.kind || "");
+    if (kind === "network.blocked") return "blocked";
+    if (kind === "network.allowed") return "allowed";
+    if (kind === "cookies.cleared" || kind === "cookies.removed") return "modified";
+    if (
+      kind === "network.observed"
+      || kind.startsWith("cookies.")
+      || kind.startsWith("storage.")
+      || kind.startsWith("browser_api.")
+      || kind.startsWith("api.")
+      || kind.startsWith("script.")
+    ) {
+      return "observed_only";
+    }
+    return "unknown";
+  }
+
+  function getDispositionBucket(ev) {
+    const mitigation = getMitigationBucket(ev);
+    if (mitigation === "blocked") return "blocked";
+    if (mitigation === "observed_only") return "observed";
+    return "other";
+  }
+
+  function isApiSignalEvent(ev) {
+    const kind = String(ev?.kind || "").toLowerCase();
+    const surface = String(ev?.enrichment?.surface || "").toLowerCase();
+    return surface === "api" || surface === "browser_api" || kind.startsWith("api.") || kind.startsWith("browser_api.");
+  }
+
+  function getOtherBucketLabel(events) {
+    return "other";
+  }
+
   function makeEvidenceSummary(events) {
     const list = Array.isArray(events) ? events.filter(Boolean) : [];
     const tsList = list.map((e) => Number(e?.ts || 0)).filter((n) => Number.isFinite(n) && n > 0);
@@ -27,8 +65,9 @@
     let blocked = 0;
     let observed = 0;
     for (const ev of list) {
-      if (ev?.kind === "network.blocked") blocked += 1;
-      else if (ev?.kind === "network.observed") observed += 1;
+      const bucket = getDispositionBucket(ev);
+      if (bucket === "blocked") blocked += 1;
+      else if (bucket === "observed") observed += 1;
     }
 
     const total = list.length;
@@ -122,8 +161,12 @@
     const scopeLabel = vendorName ? `${vendorName} activity` : "selected activity";
     const blocked = summary.blocked;
     const observed = summary.observed;
+    const other = summary.other;
+    const otherLabel = getOtherBucketLabel(context?.events);
 
-    let summaryLine = `${scopeLabel} includes ${summary.total} events (${blocked} blocked, ${observed} observed).`;
+    let summaryLine = `${scopeLabel} includes ${summary.total} events (${blocked} blocked, ${observed} observed`;
+    if (other > 0) summaryLine += `, ${other} ${otherLabel}`;
+    summaryLine += ").";
     if (vendorName && String(context?.selectedVendor?.vendorId || "") === "google") {
       summaryLine += " This likely reflects analytics/tag-manager and ad delivery infrastructure.";
     }

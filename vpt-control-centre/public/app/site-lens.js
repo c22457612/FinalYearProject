@@ -90,6 +90,34 @@
     return "other";
   }
 
+  function getMitigationBucket(ev) {
+    const enriched = String(ev?.enrichment?.mitigationStatus || "").trim();
+    if (enriched) return enriched;
+
+    const kind = String(ev?.kind || "");
+    if (kind === "network.blocked") return "blocked";
+    if (kind === "network.allowed") return "allowed";
+    if (kind === "cookies.cleared" || kind === "cookies.removed") return "modified";
+    if (
+      kind === "network.observed"
+      || kind.startsWith("cookies.")
+      || kind.startsWith("storage.")
+      || kind.startsWith("browser_api.")
+      || kind.startsWith("api.")
+      || kind.startsWith("script.")
+    ) {
+      return "observed_only";
+    }
+    return "unknown";
+  }
+
+  function getDispositionBucket(ev) {
+    const mitigation = getMitigationBucket(ev);
+    if (mitigation === "blocked") return "blocked";
+    if (mitigation === "observed_only") return "observed";
+    return "other";
+  }
+
   function buildScopeKpis(events, binMs) {
     const list = toList(events);
     let blocked = 0;
@@ -97,8 +125,9 @@
     let thirdParty = 0;
 
     for (const ev of list) {
-      if (ev?.kind === "network.blocked") blocked += 1;
-      if (ev?.kind === "network.observed") observed += 1;
+      const bucket = getDispositionBucket(ev);
+      if (bucket === "blocked") blocked += 1;
+      if (bucket === "observed") observed += 1;
       if (ev?.data?.isThirdParty === true) thirdParty += 1;
     }
 

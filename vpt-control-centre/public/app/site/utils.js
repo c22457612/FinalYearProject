@@ -1,3 +1,5 @@
+import { getApiEventPresentation, isApiSignalEvent } from "../api-event-presentation.js";
+
 export function qs(id) {
   return document.getElementById(id);
 }
@@ -61,10 +63,52 @@ export function formatSelectedLead(selection, primaryEvent) {
   const label = selection?.title || selection?.value || "current scope";
   if (!primaryEvent) return `You selected: ${label}. No representative event available.`;
 
+  if (isApiSignalEvent(primaryEvent)) {
+    const presentation = getApiEventPresentation(primaryEvent);
+    const when = primaryEvent?.ts ? friendlyTime(primaryEvent.ts) : "unknown time";
+    return `You selected: ${label}. Representative event: ${presentation.label} at ${when}.`;
+  }
+
   const kind = primaryEvent.kind || "event";
   const domain = primaryEvent?.data?.domain ? ` on ${primaryEvent.data.domain}` : "";
   const when = primaryEvent?.ts ? friendlyTime(primaryEvent.ts) : "unknown time";
   return `You selected: ${label}. Representative event: ${kind}${domain} at ${when}.`;
+}
+
+export function getEventListKindText(ev) {
+  if (isApiSignalEvent(ev)) {
+    return getApiEventPresentation(ev).label;
+  }
+  return String(ev?.kind || "event");
+}
+
+export function getEventListContextText(ev) {
+  if (isApiSignalEvent(ev)) {
+    return getApiEventPresentation(ev).summary;
+  }
+
+  const domain = String(ev?.data?.domain || "").trim();
+  if (domain) return domain;
+
+  const rawUrl = String(ev?.data?.url || "").trim();
+  if (rawUrl) {
+    try {
+      const parsed = new URL(rawUrl);
+      return `${parsed.hostname}${parsed.pathname || "/"}`;
+    } catch {
+      return rawUrl;
+    }
+  }
+
+  return String(ev?.site || "-");
+}
+
+export function getEventListMetaText(ev) {
+  if (isApiSignalEvent(ev)) {
+    const presentation = getApiEventPresentation(ev);
+    return `${friendlyTime(ev?.ts)} | ${presentation.surfaceLabel} | ${presentation.gateOutcomeLabel}`;
+  }
+  return `${friendlyTime(ev?.ts)} | ${ev?.kind || "-"} | ${ev?.mode || "-"}`;
 }
 
 export function triggerDownload(url) {

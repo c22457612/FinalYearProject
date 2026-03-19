@@ -6,6 +6,7 @@ export function createChartBuilders(deps) {
     selectedPointStyle,
     getRangeWindow,
     buildVendorRollup,
+    getKindBucket,
     getVendorMetricValue,
     getResourceBucket,
     getPartyBucket,
@@ -404,8 +405,9 @@ function buildTimelineOption(events, options = {}) {
       binEvents[idx].push(ev);
       total[idx] += 1;
 
-      if (ev.kind === "network.blocked") blocked[idx] += 1;
-      else if (ev.kind === "network.observed") observed[idx] += 1;
+      const bucket = getBlockedObservedOtherBucket(ev);
+      if (bucket === "blocked") blocked[idx] += 1;
+      else if (bucket === "observed") observed[idx] += 1;
       else other[idx] += 1;
     }
 
@@ -711,6 +713,10 @@ function buildForcedStackedBarSeries(name, data, stackKey) {
   delete series.areaStyle;
   series.stack = stackKey;
   return series;
+}
+
+function getBlockedObservedOtherBucket(ev) {
+  return typeof getKindBucket === "function" ? getKindBucket(ev) : "other";
 }
 
 function assessVendorBucketSignal(rows) {

@@ -1,4 +1,10 @@
-// public/app/features/api-signals.js
+import {
+  getApiConfidenceBand,
+  getApiEventPresentation,
+  getApiSignalTypeLabel,
+  getApiSurfaceLabel,
+  isApiSignalEvent,
+} from "../api-event-presentation.js";
 
 const filterState = { surfaceDetail: "all", signalType: "all", confidence: "all" };
 const viewState = {
@@ -12,81 +18,6 @@ const viewState = {
     geolocation: { pending: false, tone: "", message: "" },
   },
 };
-
-const PATTERN_PRESENTATION = Object.freeze({
-  "api.canvas.readback": {
-    label: "Canvas readback",
-    explanation: "The page read image or pixel data back from a canvas. Readback can support fingerprinting or verification.",
-  },
-  "api.canvas.repeated_readback": {
-    label: "Repeated canvas readback",
-    explanation: "The page read canvas output repeatedly in a short burst. Repetition makes the signal more notable.",
-  },
-  "api.clipboard.async_read_text": {
-    label: "Clipboard text read",
-    explanation: "The page asked to read plain text from the async Clipboard API. Clipboard reads can expose copied user data, so this is treated as a high-sensitivity signal.",
-  },
-  "api.clipboard.async_read": {
-    label: "Clipboard item read",
-    explanation: "The page asked to read Clipboard items through the async Clipboard API. VPT records only method-level metadata, not clipboard contents.",
-  },
-  "api.clipboard.async_write_text": {
-    label: "Clipboard text write",
-    explanation: "The page asked to write plain text to the async Clipboard API. This first wave records the write attempt without storing the text.",
-  },
-  "api.clipboard.async_write": {
-    label: "Clipboard item write",
-    explanation: "The page asked to write Clipboard items through the async Clipboard API. Only item-count and MIME-type metadata are recorded where available.",
-  },
-  "api.webrtc.peer_connection_setup": {
-    label: "WebRTC peer connection setup",
-    explanation: "The page initialized a WebRTC peer connection. This is the starting point for later network-capability probing.",
-  },
-  "api.webrtc.offer_probe": {
-    label: "WebRTC offer probe",
-    explanation: "The page started WebRTC offer flow. Creating an offer can be part of browser and device capability probing.",
-  },
-  "api.webrtc.ice_probe": {
-    label: "WebRTC ICE probing",
-    explanation: "The page triggered ICE gathering or candidate activity. That can reveal network-path and device characteristics.",
-  },
-  "api.webrtc.stun_turn_assisted_probe": {
-    label: "WebRTC STUN/TURN-assisted probing",
-    explanation: "The page combined WebRTC probing with STUN or TURN metadata, which strengthens the capability-probing signal.",
-  },
-  "api.geolocation.current_position_request": {
-    label: "Geolocation current-position request",
-    explanation: "The page requested one current position reading through the browser geolocation API.",
-  },
-  "api.geolocation.watch_request": {
-    label: "Geolocation watch request",
-    explanation: "The page requested ongoing geolocation updates through the browser geolocation API.",
-  },
-});
-
-const SIGNAL_TYPE_LABELS = Object.freeze({
-  fingerprinting_signal: "Fingerprinting signal",
-  tracking_signal: "Tracking signal",
-  device_probe: "Device probe",
-  capability_probe: "Capability probe",
-  state_change: "State change",
-  unknown: "Unknown signal type",
-});
-
-const SURFACE_LABELS = Object.freeze({
-  canvas: "Canvas",
-  clipboard: "Clipboard",
-  geolocation: "Geolocation",
-  webrtc: "WebRTC",
-  unknown: "Unknown surface",
-});
-
-const OUTCOME_LABELS = Object.freeze({
-  observed: "Observed",
-  warned: "Warned",
-  blocked: "Blocked",
-  trusted_allowed: "Trusted-site allowed",
-});
 
 const POLICY_ACTIONS = Object.freeze([
   ["observe", "Observe", "Allow the implemented API calls and record them in Browser API insights."],
@@ -148,89 +79,14 @@ function normalizePolicyAction(value) {
   return next === "warn" || next === "block" || next === "allow_trusted" ? next : "observe";
 }
 
-function confidenceBand(value) {
-  if (typeof value !== "number" || Number.isNaN(value)) return "unknown";
-  if (value >= 0.9) return "high";
-  if (value >= 0.8) return "medium";
-  return "lower";
-}
-
-function isApiSignalEvent(event) {
-  const kind = String(event?.kind || "").toLowerCase();
-  const surface = String(event?.enrichment?.surface || "").toLowerCase();
-  return surface === "api" || surface === "browser_api" || kind.startsWith("api.") || kind.startsWith("browser_api.");
-}
-
-function patternPresentation(event) {
-  const patternId = normalizeOptional(event?.enrichment?.patternId);
-  const surfaceDetail = normalizeValue(event?.enrichment?.surfaceDetail || event?.data?.surfaceDetail);
-  if (patternId && PATTERN_PRESENTATION[patternId]) {
-    return { ...PATTERN_PRESENTATION[patternId], canonicalId: patternId, classified: true };
-  }
-  if (patternId) {
-    return {
-      label: patternId.split(".").filter(Boolean).pop().replaceAll("_", " "),
-      explanation: "This row has a canonical backend pattern id, but this UI does not yet have custom explanatory copy for it.",
-      canonicalId: patternId,
-      classified: true,
-    };
-  }
-  if (surfaceDetail === "canvas") {
-    return { label: "Unclassified canvas activity", explanation: "Canvas metadata was observed without a canonical backend pattern yet.", canonicalId: "", classified: false };
-  }
-  if (surfaceDetail === "clipboard") {
-    return { label: "Unclassified clipboard activity", explanation: "Clipboard metadata was observed without a canonical backend pattern yet.", canonicalId: "", classified: false };
-  }
-  if (surfaceDetail === "geolocation") {
-    return { label: "Unclassified geolocation activity", explanation: "Geolocation metadata was observed without a canonical backend pattern yet.", canonicalId: "", classified: false };
-  }
-  if (surfaceDetail === "webrtc") {
-    return { label: "Unclassified WebRTC activity", explanation: "WebRTC metadata was observed without a canonical backend pattern yet.", canonicalId: "", classified: false };
-  }
-  return { label: "Unclassified API activity", explanation: "API activity was observed without a canonical backend pattern yet.", canonicalId: "", classified: false };
-}
-
-function summarizeEvent(event) {
-  const data = event?.data || {};
-  const surface = normalizeValue(event?.enrichment?.surfaceDetail || data.surfaceDetail);
-  if (surface === "canvas") {
-    const size = data.width && data.height ? ` | ${data.width}x${data.height}` : "";
-    const burst = Number(data.count || 0) > 1 ? ` | ${data.count} calls in one burst` : "";
-    return `Observed ${normalizeValue(data.operation, "activity")}${data.contextType ? ` | ${data.contextType} canvas` : ""}${size}${burst}`;
-  }
-  if (surface === "clipboard") {
-    const access = data.accessType ? ` | ${data.accessType}` : "";
-    const items = typeof data.itemCount === "number" ? ` | ${data.itemCount} item${data.itemCount === 1 ? "" : "s"}` : "";
-    const mimeTypes = Array.isArray(data.mimeTypes) && data.mimeTypes.length ? ` | ${data.mimeTypes.join(", ")}` : "";
-    return `Observed ${normalizeValue(data.method, "clipboard access")}${access}${items}${mimeTypes}`;
-  }
-  if (surface === "geolocation") {
-    const accuracy = data.requestedHighAccuracy === true ? " | high accuracy requested" : "";
-    const timeout = typeof data.timeoutMs === "number" ? ` | timeout ${data.timeoutMs}ms` : "";
-    const maximumAge = typeof data.maximumAgeMs === "number" ? ` | maximum age ${data.maximumAgeMs}ms` : "";
-    return `Observed ${normalizeValue(data.method, "request")}${accuracy}${timeout}${maximumAge}`;
-  }
-  if (surface === "webrtc") {
-    const hostCount = Array.isArray(data.stunTurnHostnames) ? data.stunTurnHostnames.filter(Boolean).length : 0;
-    const hostText = hostCount ? ` | ${hostCount} safe STUN/TURN hostname${hostCount === 1 ? "" : "s"}` : "";
-    return `Observed ${normalizeValue(data.action, "activity")}${data.state ? ` | ${data.state}` : ""}${hostText}`;
-  }
-  return `Observed ${normalizeValue(event?.kind, "api.event")}`;
-}
-
 function escape(value) {
   return utils().escapeHtml ? utils().escapeHtml(String(value ?? "")) : String(value ?? "");
 }
 
-function labelFor(map, value, fallback = "Unknown") {
-  const key = normalizeValue(value);
-  return map[key] || fallback;
-}
-
 function describeActiveFilters() {
   const parts = [];
-  if (filterState.surfaceDetail !== "all") parts.push(`Surface: ${labelFor(SURFACE_LABELS, filterState.surfaceDetail)}`);
-  if (filterState.signalType !== "all") parts.push(`Signal type: ${labelFor(SIGNAL_TYPE_LABELS, filterState.signalType, filterState.signalType)}`);
+  if (filterState.surfaceDetail !== "all") parts.push(`Surface: ${getApiSurfaceLabel(filterState.surfaceDetail)}`);
+  if (filterState.signalType !== "all") parts.push(`Signal type: ${getApiSignalTypeLabel(filterState.signalType)}`);
   if (filterState.confidence !== "all") parts.push(`Confidence: ${filterState.confidence}`);
   return parts.length ? `Active filters: ${parts.join(" | ")}.` : "";
 }
@@ -264,13 +120,13 @@ function renderInsights(events) {
   const allEvents = (Array.isArray(events) ? events : []).filter(isApiSignalEvent);
   const surfaceCounts = [...allEvents.reduce((map, event) => map.set(normalizeValue(event?.enrichment?.surfaceDetail || event?.data?.surfaceDetail), (map.get(normalizeValue(event?.enrichment?.surfaceDetail || event?.data?.surfaceDetail)) || 0) + 1), new Map())].sort();
   const typeCounts = [...allEvents.reduce((map, event) => map.set(normalizeValue(event?.enrichment?.signalType), (map.get(normalizeValue(event?.enrichment?.signalType)) || 0) + 1), new Map())].sort();
-  filterState.surfaceDetail = syncSelect("apiSignalsSurfaceFilter", surfaceCounts, (value) => labelFor(SURFACE_LABELS, value, value), "All surfaces");
-  filterState.signalType = syncSelect("apiSignalsTypeFilter", typeCounts, (value) => labelFor(SIGNAL_TYPE_LABELS, value, value), "All signal types");
+  filterState.surfaceDetail = syncSelect("apiSignalsSurfaceFilter", surfaceCounts, (value) => getApiSurfaceLabel(value), "All surfaces");
+  filterState.signalType = syncSelect("apiSignalsTypeFilter", typeCounts, (value) => getApiSignalTypeLabel(value), "All signal types");
 
   const filtered = allEvents.filter((event) => {
     const surface = normalizeValue(event?.enrichment?.surfaceDetail || event?.data?.surfaceDetail);
     const signalType = normalizeValue(event?.enrichment?.signalType);
-    const band = confidenceBand(event?.enrichment?.confidence);
+    const band = getApiConfidenceBand(event?.enrichment?.confidence);
     return (filterState.surfaceDetail === "all" || surface === filterState.surfaceDetail)
       && (filterState.signalType === "all" || signalType === filterState.signalType)
       && (filterState.confidence === "all" || band === filterState.confidence);
@@ -278,7 +134,7 @@ function renderInsights(events) {
 
   const sites = new Set(filtered.map((event) => normalizeValue(event.site)));
   const patterns = new Set(filtered.map((event) => normalizeOptional(event?.enrichment?.patternId)).filter(Boolean));
-  const highConfidence = filtered.filter((event) => confidenceBand(event?.enrichment?.confidence) === "high").length;
+  const highConfidence = filtered.filter((event) => getApiConfidenceBand(event?.enrichment?.confidence) === "high").length;
   const filterNote = !allEvents.length
     ? "Waiting for Canvas, Clipboard, Geolocation, or WebRTC signals from the existing /api/events feed."
     : `Showing ${filtered.length} of ${allEvents.length} API signal${allEvents.length === 1 ? "" : "s"} from the current in-memory dashboard window.${describeActiveFilters() ? ` ${describeActiveFilters()}` : ""}`;
@@ -302,13 +158,13 @@ function renderInsights(events) {
   const topTypes = document.getElementById("apiSignalsTopTypes");
   const emptyText = allEvents.length ? "No matching signals in this filtered view." : "No API signals yet.";
   topPatterns.innerHTML = glanceHtml(topEntries(filtered, (event) => {
-    const presentation = patternPresentation(event);
+    const presentation = getApiEventPresentation(event);
     return { label: presentation.label, detail: presentation.canonicalId || "No canonical pattern id" };
   }), emptyText, true);
   topSites.innerHTML = glanceHtml(topEntries(filtered, (event) => ({ label: normalizeValue(event.site), detail: "" })), emptyText, false);
   topTypes.innerHTML = glanceHtml(topEntries(filtered, (event) => {
     const key = normalizeValue(event?.enrichment?.signalType);
-    return { label: labelFor(SIGNAL_TYPE_LABELS, key, key), detail: key };
+    return { label: getApiSignalTypeLabel(key), detail: key };
   }), emptyText, true);
 
   const empty = document.getElementById("apiSignalsEmptyState");
@@ -369,29 +225,24 @@ function emptyStateHtml(title, body, detail) {
 
 function eventCardHtml(event) {
   const { friendlyTime } = utils();
-  const presentation = patternPresentation(event);
-  const surface = normalizeValue(event?.enrichment?.surfaceDetail || event?.data?.surfaceDetail);
-  const signalType = normalizeValue(event?.enrichment?.signalType);
-  const gateOutcome = normalizeValue(event?.data?.gateOutcome, "observed");
-  const confidence = event?.enrichment?.confidence;
-  const confidenceText = typeof confidence === "number" && !Number.isNaN(confidence) ? `${confidenceBand(confidence)} ${confidence.toFixed(2)}` : "unknown";
+  const presentation = getApiEventPresentation(event);
   const timeText = typeof friendlyTime === "function" ? friendlyTime(event.ts) : new Date(event.ts || 0).toLocaleString();
   return `
     <article class="api-signals-event-card">
       <div class="api-signals-event-head">
         <div class="api-signals-event-title-wrap">
-          <div class="api-signals-event-kicker">${escape(labelFor(SURFACE_LABELS, surface, surface))} signal</div>
+          <div class="api-signals-event-kicker">${escape(presentation.surfaceLabel)} signal</div>
           <div class="api-signals-event-title">${escape(presentation.label)}</div>
         </div>
         <div class="api-signals-event-badges">
-          <span class="api-signals-confidence ${escape(confidenceBand(confidence))}">${escape(confidenceText)}</span>
-          <span class="api-signals-surface-pill ${escape(surface)}">${escape(labelFor(SURFACE_LABELS, surface, surface))}</span>
+          <span class="api-signals-confidence ${escape(presentation.confidenceBand)}">${escape(presentation.confidenceText)}</span>
+          <span class="api-signals-surface-pill ${escape(presentation.surfaceDetail)}">${escape(presentation.surfaceLabel)}</span>
         </div>
       </div>
       <div class="api-signals-event-meta">
         <span class="api-signals-event-site">${escape(normalizeValue(event.site))}</span>
-        <span class="api-signals-type-badge">${escape(labelFor(SIGNAL_TYPE_LABELS, signalType, signalType))}</span>
-        <span class="api-signals-outcome-badge ${escape(gateOutcome)}">${escape(labelFor(OUTCOME_LABELS, gateOutcome, gateOutcome))}</span>
+        <span class="api-signals-type-badge">${escape(presentation.signalTypeLabel)}</span>
+        <span class="api-signals-outcome-badge ${escape(presentation.gateOutcome)}">${escape(presentation.gateOutcomeLabel)}</span>
         <span class="api-signals-event-time">${escape(timeText || "-")}</span>
       </div>
       <div class="api-signals-event-summary-grid">
@@ -401,7 +252,7 @@ function eventCardHtml(event) {
         </div>
         <div class="api-signals-event-block">
           <div class="api-signals-event-block-label">Observed details</div>
-          <p class="api-signals-event-block-value">${escape(summarizeEvent(event))}</p>
+          <p class="api-signals-event-block-value">${escape(presentation.summary)}</p>
         </div>
       </div>
       <div class="api-signals-secondary-grid">
@@ -411,11 +262,11 @@ function eventCardHtml(event) {
         </div>
         <div class="api-signals-secondary-field">
           <div class="api-signals-secondary-label">Backend signal type</div>
-          <div class="api-signals-secondary-value api-signals-code">${escape(signalType)}</div>
+          <div class="api-signals-secondary-value api-signals-code">${escape(presentation.signalType)}</div>
         </div>
         <div class="api-signals-secondary-field">
           <div class="api-signals-secondary-label">Gate outcome</div>
-          <div class="api-signals-secondary-value api-signals-code">${escape(gateOutcome)}</div>
+          <div class="api-signals-secondary-value api-signals-code">${escape(presentation.gateOutcome)}</div>
         </div>
         ${presentation.classified ? "" : `
         <div class="api-signals-secondary-field">
@@ -525,9 +376,9 @@ async function submitSurfacePolicy(surface, action) {
       items: (Array.isArray(viewState.latestPolicies.items) ? viewState.latestPolicies.items : []).concat(createdItems.filter(Boolean)),
     };
     syncExtensionSurfacePolicy(surfaceKey, nextAction);
-    viewState.saves[surfaceKey] = { pending: false, tone: "success", message: `Saved. ${labelFor(SURFACE_LABELS, surfaceKey, surfaceKey)} is now set to ${POLICY_ACTIONS.find(([value]) => value === nextAction)?.[1] || "Observe"}.` };
+    viewState.saves[surfaceKey] = { pending: false, tone: "success", message: `Saved. ${getApiSurfaceLabel(surfaceKey)} is now set to ${POLICY_ACTIONS.find(([value]) => value === nextAction)?.[1] || "Observe"}.` };
   } catch (error) {
-    viewState.saves[surfaceKey] = { pending: false, tone: "error", message: `Could not save ${labelFor(SURFACE_LABELS, surfaceKey, surfaceKey)} policy. ${error?.message || "Try again."}` };
+    viewState.saves[surfaceKey] = { pending: false, tone: "error", message: `Could not save ${getApiSurfaceLabel(surfaceKey)} policy. ${error?.message || "Try again."}` };
   }
   renderControls();
 }

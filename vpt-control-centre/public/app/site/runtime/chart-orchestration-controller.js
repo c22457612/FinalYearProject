@@ -1,3 +1,5 @@
+import { getDispositionBucket } from "../filter-state.js";
+
 export function createChartOrchestrationController(deps) {
   const {
     getSiteLens,
@@ -63,8 +65,8 @@ export function createChartOrchestrationController(deps) {
   function summarizeBucketEvidence(events) {
     const list = Array.isArray(events) ? events.filter(Boolean) : [];
     const seen = list.length;
-    const blocked = list.filter((ev) => ev?.kind === "network.blocked").length;
-    const observed = list.filter((ev) => ev?.kind === "network.observed").length;
+    const blocked = list.filter((ev) => getDispositionBucket(ev) === "blocked").length;
+    const observed = list.filter((ev) => getDispositionBucket(ev) === "observed").length;
     const other = Math.max(0, seen - blocked - observed);
     return { seen, blocked, observed, other };
   }

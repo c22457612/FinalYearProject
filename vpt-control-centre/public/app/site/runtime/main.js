@@ -13,6 +13,7 @@ import {
   defaultFilterState,
   defaultVizOptions,
   getKindBucket,
+  getDispositionBucket,
   getPartyBucket,
   getResourceBucket,
   getPrivacyStatusBucket,
@@ -30,6 +31,8 @@ import {
   getQueryParam,
   friendlyTime,
   getEventKey,
+  getEventListContextText,
+  getEventListKindText,
   pickPrimarySelectedEvent,
   formatSelectedLead,
   triggerDownload,
@@ -204,6 +207,7 @@ const chartBuilders = createChartBuilders({
   selectedPointStyle: SELECTED_POINT_STYLE,
   getRangeWindow,
   buildVendorRollup,
+  getKindBucket,
   getVendorMetricValue,
   getResourceBucket,
   getPartyBucket,
@@ -588,11 +592,11 @@ function renderRecentEventsFromEvents(events, emptyMessage = "No events match cu
     tr.appendChild(tdTime);
 
     const tdKind = document.createElement("td");
-    tdKind.textContent = ev.kind || "-";
+    tdKind.textContent = getEventListKindText(ev);
     tr.appendChild(tdKind);
 
     const tdDomain = document.createElement("td");
-    tdDomain.textContent = ev.data?.domain || "-";
+    tdDomain.textContent = getEventListContextText(ev);
     tr.appendChild(tdDomain);
 
     const tdMode = document.createElement("td");
@@ -1541,8 +1545,8 @@ function ensureChart() {
 
       const startTs = meta.start + startIdx * meta.binMs;
       const endTs = meta.start + (endIdx + 1) * meta.binMs;
-      const blocked = selected.filter((e) => e.kind === "network.blocked").length;
-      const observed = selected.filter((e) => e.kind === "network.observed").length;
+      const blocked = selected.filter((e) => getDispositionBucket(e) === "blocked").length;
+      const observed = selected.filter((e) => getDispositionBucket(e) === "observed").length;
 
       setVizSelection({
         type: "bin",

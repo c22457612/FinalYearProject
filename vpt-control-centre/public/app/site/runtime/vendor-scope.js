@@ -1,3 +1,5 @@
+import { getDispositionBucket } from "../filter-state.js";
+
 export function createVendorScope(deps) {
   const {
     qs,
@@ -113,8 +115,9 @@ export function createVendorScope(deps) {
       }
       const row = map.get(vendor.vendorId);
       row.seen += 1;
-      if (ev?.kind === "network.blocked") row.blocked += 1;
-      else if (ev?.kind === "network.observed") row.observed += 1;
+      const bucket = getDispositionBucket(ev);
+      if (bucket === "blocked") row.blocked += 1;
+      else if (bucket === "observed") row.observed += 1;
       else row.other += 1;
       if (vendor.domain && !row.domains.includes(vendor.domain)) row.domains.push(vendor.domain);
       row.evs.push(ev);

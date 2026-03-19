@@ -1,4 +1,6 @@
 import { getChartGuideByViewId } from "./chart-guide.js";
+import { getDispositionBucket } from "../filter-state.js";
+import { getEventListContextText, getEventListKindText, getEventListMetaText } from "../utils.js";
 
 export function createSidebarModules(deps) {
   const {
@@ -106,8 +108,9 @@ export function createSidebarModules(deps) {
     let lastTs = null;
 
     for (const ev of list) {
-      if (ev?.kind === "network.blocked") blocked += 1;
-      else if (ev?.kind === "network.observed") observed += 1;
+      const bucket = getDispositionBucket(ev);
+      if (bucket === "blocked") blocked += 1;
+      else if (bucket === "observed") observed += 1;
       else other += 1;
 
       const ts = Number(ev?.ts);
@@ -178,10 +181,10 @@ export function createSidebarModules(deps) {
       item.className = "sidebar-event-item";
       const meta = document.createElement("div");
       meta.className = "sidebar-event-meta";
-      meta.textContent = `${friendlyTime(ev?.ts)} | ${ev?.kind || "-"} | ${ev?.mode || "-"}`;
+      meta.textContent = getEventListMetaText(ev);
       const main = document.createElement("div");
       main.className = "sidebar-event-main";
-      main.textContent = ev?.data?.domain || ev?.site || "-";
+      main.textContent = `${getEventListKindText(ev)}: ${getEventListContextText(ev)}`;
       item.appendChild(meta);
       item.appendChild(main);
       list.appendChild(item);

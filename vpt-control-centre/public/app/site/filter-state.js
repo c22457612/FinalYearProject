@@ -27,9 +27,7 @@ export function defaultVizOptions() {
 }
 
 export function getKindBucket(ev) {
-  if (ev?.kind === "network.blocked") return "blocked";
-  if (ev?.kind === "network.observed") return "observed";
-  return "other";
+  return getDispositionBucket(ev);
 }
 
 export function getPartyBucket(ev) {
@@ -72,6 +70,13 @@ export function getMitigationStatusBucket(ev) {
     return "observed_only";
   }
   return "unknown";
+}
+
+export function getDispositionBucket(ev) {
+  const mitigation = getMitigationStatusBucket(ev);
+  if (mitigation === "blocked") return "blocked";
+  if (mitigation === "observed_only") return "observed";
+  return "other";
 }
 
 export function getPrivacyStatusBucket(ev) {
