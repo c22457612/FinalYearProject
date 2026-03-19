@@ -184,7 +184,7 @@ const TREND_LEGEND_TEXT_STYLE = Object.freeze({
 const CATEGORY_SERIES_COLORS = Object.freeze({
   Blocked: "#5470C6",
   Observed: "#91CC75",
-  API: "#73C0DE",
+  API: "#EA7CCC",
   Other: "#FAC858",
 });
 
