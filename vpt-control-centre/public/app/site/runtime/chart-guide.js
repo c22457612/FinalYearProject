@@ -59,7 +59,7 @@ const CHART_GUIDE_BY_VIEW_ID = Object.freeze({
     what: "Where the selected vendor connects most (domains and endpoint buckets).",
     how: [
       "Each row is a domain-endpoint bucket.",
-      "Stacked segments show blocked, observed, and other counts.",
+      "Stacked segments show blocked, observed, API, and other counts.",
       "Click a row to scope evidence to that bucket.",
     ],
     bestFor: [

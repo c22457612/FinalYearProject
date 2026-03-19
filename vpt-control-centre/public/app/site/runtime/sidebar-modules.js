@@ -1,5 +1,5 @@
 import { getChartGuideByViewId } from "./chart-guide.js";
-import { getDispositionBucket } from "../filter-state.js";
+import { summarizeVisualCategoryCounts } from "../filter-state.js";
 import { getEventListContextText, getEventListKindText, getEventListMetaText } from "../utils.js";
 
 export function createSidebarModules(deps) {
@@ -101,25 +101,18 @@ export function createSidebarModules(deps) {
 
   function buildEvidenceStats(evidence) {
     const list = Array.isArray(evidence) ? evidence : [];
-    let blocked = 0;
-    let observed = 0;
-    let other = 0;
+    const counts = summarizeVisualCategoryCounts(list);
     let firstTs = null;
     let lastTs = null;
 
     for (const ev of list) {
-      const bucket = getDispositionBucket(ev);
-      if (bucket === "blocked") blocked += 1;
-      else if (bucket === "observed") observed += 1;
-      else other += 1;
-
       const ts = Number(ev?.ts);
       if (!Number.isFinite(ts)) continue;
       if (firstTs === null || ts < firstTs) firstTs = ts;
       if (lastTs === null || ts > lastTs) lastTs = ts;
     }
 
-    return { total: list.length, blocked, observed, other, firstTs, lastTs };
+    return { ...counts, firstTs, lastTs };
   }
 
   function renderSidebarSelectedEvidence() {
@@ -144,11 +137,13 @@ export function createSidebarModules(deps) {
     const primary = pickPrimarySelectedEvent(evidence);
     const kv = document.createElement("div");
     kv.className = "sidebar-kv-list";
+    const counts = summarizeVisualCategoryCounts(evidence);
     const rows = [
       ["Scope", label],
-      ["Blocked", String(stats.blocked)],
-      ["Observed", String(stats.observed)],
-      ["Other", String(stats.other)],
+      ["Blocked", String(counts.blocked)],
+      ["Observed", String(counts.observed)],
+      ...(counts.api > 0 ? [["API", String(counts.api)]] : []),
+      ["Other", String(counts.other)],
       ["First", stats.firstTs ? friendlyTime(stats.firstTs) : "-"],
       ["Last", stats.lastTs ? friendlyTime(stats.lastTs) : "-"],
     ];
@@ -273,12 +268,14 @@ export function createSidebarModules(deps) {
 
     const kv = document.createElement("div");
     kv.className = "sidebar-kv-list";
+    const counts = summarizeVisualCategoryCounts(row.evs || []);
     const metrics = [
       ["Category", String(row.category || "unmapped")],
       ["Events", String(row.seen || 0)],
-      ["Blocked", String(row.blocked || 0)],
-      ["Observed", String(row.observed || 0)],
-      ["Other", String(row.other || 0)],
+      ["Blocked", String(counts.blocked || 0)],
+      ["Observed", String(counts.observed || 0)],
+      ...(counts.api > 0 ? [["API", String(counts.api)]] : []),
+      ["Other", String(counts.other || 0)],
       ["Unique domains", String(Array.isArray(row.domains) ? row.domains.length : 0)],
     ];
     for (const [k, v] of metrics) {

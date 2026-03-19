@@ -494,12 +494,13 @@ test("site filter logic keeps API events compatible with surface and mitigation 
   const {
     matchesFilters,
     getKindBucket,
+    getVisualCategoryBucket,
     getSurfaceBucket,
     getMitigationStatusBucket,
     getPrivacyStatusBucket,
   } = loadRuntimeModuleExport(
     "public/app/site/filter-state.js",
-    ["matchesFilters", "getKindBucket", "getSurfaceBucket", "getMitigationStatusBucket", "getPrivacyStatusBucket"]
+    ["matchesFilters", "getKindBucket", "getVisualCategoryBucket", "getSurfaceBucket", "getMitigationStatusBucket", "getPrivacyStatusBucket"]
   );
 
   const apiEvent = {
@@ -517,9 +518,20 @@ test("site filter logic keeps API events compatible with surface and mitigation 
   };
 
   assert.equal(getKindBucket(apiEvent), "blocked");
+  assert.equal(getVisualCategoryBucket(apiEvent), "blocked");
   assert.equal(getSurfaceBucket(apiEvent), "api");
   assert.equal(getMitigationStatusBucket(apiEvent), "blocked");
   assert.equal(getPrivacyStatusBucket(apiEvent), "policy_blocked");
+
+  assert.equal(getVisualCategoryBucket({
+    id: "api-allowed-visual",
+    ts: 1_100,
+    kind: "api.canvas",
+    enrichment: {
+      surface: "api",
+      mitigationStatus: "allowed",
+    },
+  }), "api");
 
   assert.equal(matchesFilters(apiEvent, {
     kind: { blocked: true, observed: false, other: false },
@@ -571,10 +583,11 @@ test("insight evidence summary counts API events by mitigation semantics", () =>
   assert.equal(summary.total, 3);
   assert.equal(summary.blocked, 1);
   assert.equal(summary.observed, 1);
-  assert.equal(summary.other, 1);
+  assert.equal(summary.api, 1);
+  assert.equal(summary.other, 0);
 });
 
-test("insight summary text calls out other for API-only selections", () => {
+test("insight summary text calls out browser API activity for API-only selections", () => {
   const sandbox = createSandbox();
   loadBrowserModule("public/app/insight-rules.js", sandbox);
   const api = sandbox.window.VPT.insightRules;
@@ -614,7 +627,8 @@ test("insight summary text calls out other for API-only selections", () => {
     },
   });
 
-  assert.match(insight.summary, /0 blocked, 0 observed, 2 other/i);
+  assert.match(insight.summary, /0 blocked, 0 observed, 2 API/i);
+  assert.match(insight.summary, /Browser API activity/i);
 });
 
 test("timeline chart counts API blocked and observed buckets from semantic status", () => {
@@ -644,6 +658,13 @@ test("timeline chart counts API blocked and observed buckets from semantic statu
       if (mitigation === "observed_only") return "observed";
       return "other";
     },
+    getVisualCategoryBucket: (ev) => {
+      const mitigation = String(ev?.enrichment?.mitigationStatus || "");
+      if (mitigation === "blocked") return "blocked";
+      if (mitigation === "observed_only") return "observed";
+      if (String(ev?.enrichment?.surface || "") === "api") return "api";
+      return "other";
+    },
     getVendorMetricValue: () => 0,
     getResourceBucket: () => "other",
     getPartyBucket: () => "first_or_unknown",
@@ -654,13 +675,56 @@ test("timeline chart counts API blocked and observed buckets from semantic statu
   });
 
   const built = builders.buildTimelineOption([
-    { id: "api-blocked", ts: 1_500, kind: "api.clipboard", enrichment: { mitigationStatus: "blocked" } },
-    { id: "api-observed", ts: 2_000, kind: "api.clipboard", enrichment: { mitigationStatus: "observed_only" } },
-    { id: "api-other", ts: 2_500, kind: "api.clipboard", enrichment: { mitigationStatus: "allowed" } },
+    { id: "api-blocked", ts: 1_500, kind: "api.clipboard", enrichment: { surface: "api", mitigationStatus: "blocked" } },
+    { id: "api-observed", ts: 2_000, kind: "api.clipboard", enrichment: { surface: "api", mitigationStatus: "observed_only" } },
+    { id: "api-other", ts: 2_500, kind: "api.clipboard", enrichment: { surface: "api", mitigationStatus: "allowed" } },
   ], { viewMode: "power", densityAware: false });
 
   const seriesByName = new Map((built.option.series || []).map((series) => [series.name, series.data]));
   assert.equal(seriesByName.get("Blocked")?.[0], 1);
   assert.equal(seriesByName.get("Observed")?.[0], 1);
-  assert.equal(seriesByName.get("Other")?.[0], 1);
+  assert.equal(seriesByName.get("API")?.[0], 1);
+  assert.equal(seriesByName.get("Other")?.[0], 0);
+});
+
+test("timeline keeps API as a first-class series in easy low-signal scopes", () => {
+  const { createChartBuilders } = loadRuntimeModuleExport(
+    "public/app/site/chart-builders.js",
+    ["createChartBuilders"]
+  );
+
+  const builders = createChartBuilders({
+    vizOptions: {
+      metric: "seen",
+      seriesType: "bar",
+      topN: 20,
+      sort: "value_desc",
+      binSize: "5m",
+      normalize: false,
+      stackBars: true,
+    },
+    binSizeMs: { "5m": 5 * 60 * 1000 },
+    hoverPointStyle: { borderColor: "#38BDF8", borderWidth: 1 },
+    selectedPointStyle: { borderColor: "#A78BFA", borderWidth: 2 },
+    getRangeWindow: () => ({ from: 1_000, to: 10_000 }),
+    buildVendorRollup: () => [],
+    getKindBucket: () => "other",
+    getVisualCategoryBucket: (ev) => String(ev?.enrichment?.surface || "") === "api" ? "api" : "other",
+    getVendorMetricValue: () => 0,
+    getResourceBucket: () => "other",
+    getPartyBucket: () => "first_or_unknown",
+    getPrivacyStatusBucket: () => "unknown",
+    getMitigationStatusBucket: (ev) => String(ev?.enrichment?.mitigationStatus || "unknown"),
+    resourceLabels: {},
+    partyLabels: {},
+  });
+
+  const built = builders.buildTimelineOption([
+    { id: "api-only-1", ts: 1_500, kind: "api.canvas", enrichment: { surface: "api", mitigationStatus: "allowed" } },
+    { id: "api-only-2", ts: 2_000, kind: "api.webrtc", enrichment: { surface: "api", mitigationStatus: "allowed" } },
+  ], { viewMode: "easy", densityAware: true });
+
+  const seriesNames = (built.option.series || []).map((series) => series.name);
+  assert.equal(seriesNames.includes("Events"), false);
+  assert.equal(seriesNames.includes("API"), true);
 });

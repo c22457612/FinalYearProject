@@ -14,10 +14,12 @@ import {
   defaultVizOptions,
   getKindBucket,
   getDispositionBucket,
+  getVisualCategoryBucket,
   getPartyBucket,
   getResourceBucket,
   getPrivacyStatusBucket,
   getMitigationStatusBucket,
+  summarizeVisualCategoryCounts,
   matchesFilters,
   getActiveFilterLabels as computeActiveFilterLabels,
   getActiveVizOptionLabels as computeActiveVizOptionLabels,
@@ -208,6 +210,7 @@ const chartBuilders = createChartBuilders({
   getRangeWindow,
   buildVendorRollup,
   getKindBucket,
+  getVisualCategoryBucket,
   getVendorMetricValue,
   getResourceBucket,
   getPartyBucket,
@@ -829,18 +832,27 @@ function renderTopBucketSummary(viewId, meta = null) {
   }
 
   box.classList.remove("hidden");
+  const formatCounts = (counts) => {
+    const parts = [
+      `${counts.blocked || 0} blocked`,
+      `${counts.observed || 0} observed`,
+    ];
+    if (Number(counts.api || 0) > 0) parts.push(`${counts.api} API`);
+    if (Number(counts.other || 0) > 0) parts.push(`${counts.other} other`);
+    return parts.join(", ");
+  };
   if (compactSummary) {
     const bucketCount = Number(compactSummary.bucketCount || 0);
     const bucketLabel = `${bucketCount} endpoint bucket${bucketCount === 1 ? "" : "s"}`;
-    const compactText = `Compact summary: ${compactSummary.vendorName || "Selected vendor"} has ${compactSummary.totalEvents || 0} events across ${bucketLabel} (${compactSummary.blocked || 0} blocked, ${compactSummary.observed || 0} observed, ${compactSummary.other || 0} other).`;
+    const compactText = `Compact summary: ${compactSummary.vendorName || "Selected vendor"} has ${compactSummary.totalEvents || 0} events across ${bucketLabel} (${formatCounts(compactSummary)}).`;
     if (summary) {
-      box.textContent = `${compactText} Top bucket: ${summary.displayLabel} (${summary.seen} total; ${summary.blocked} blocked, ${summary.observed} observed, ${summary.other} other).`;
+      box.textContent = `${compactText} Top bucket: ${summary.displayLabel} (${summary.seen} total; ${formatCounts(summary)}).`;
       return;
     }
     box.textContent = compactText;
     return;
   }
-  box.textContent = `Top bucket: ${summary.displayLabel} (${summary.seen} total; ${summary.blocked} blocked, ${summary.observed} observed, ${summary.other} other)`;
+  box.textContent = `Top bucket: ${summary.displayLabel} (${summary.seen} total; ${formatCounts(summary)})`;
 }
 
 function readFilterStateFromControls() {
@@ -1216,6 +1228,7 @@ function setVizSelection({
   seen = 0,
   blocked = 0,
   observed = 0,
+  api = 0,
   other = 0,
   bucketExample = "",
   title,
@@ -1234,6 +1247,7 @@ function setVizSelection({
     seen,
     blocked,
     observed,
+    api,
     other,
     bucketExample,
     title,
@@ -1545,8 +1559,7 @@ function ensureChart() {
 
       const startTs = meta.start + startIdx * meta.binMs;
       const endTs = meta.start + (endIdx + 1) * meta.binMs;
-      const blocked = selected.filter((e) => getDispositionBucket(e) === "blocked").length;
-      const observed = selected.filter((e) => getDispositionBucket(e) === "observed").length;
+      const counts = summarizeVisualCategoryCounts(selected);
 
       setVizSelection({
         type: "bin",
@@ -1554,7 +1567,7 @@ function ensureChart() {
         fromTs: startTs,
         toTs: endTs,
         title: `Selected window ${new Date(startTs).toLocaleTimeString()}-${new Date(endTs).toLocaleTimeString()}`,
-        summaryHtml: `<div class="muted">${selected.length} events - blocked ${blocked} - observed ${observed}</div>`,
+        summaryHtml: `<div class="muted">${selected.length} events - blocked ${counts.blocked} - observed ${counts.observed}${counts.api ? ` - API ${counts.api}` : ""}${counts.other ? ` - other ${counts.other}` : ""}</div>`,
         events: selected,
         scrollMode: "never",
       });

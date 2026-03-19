@@ -79,6 +79,45 @@ export function getDispositionBucket(ev) {
   return "other";
 }
 
+export function isApiSurfaceEvent(ev) {
+  const surface = String(ev?.enrichment?.surface || "").trim().toLowerCase();
+  if (surface === "api" || surface === "browser_api") return true;
+
+  const kind = String(ev?.kind || "").toLowerCase();
+  return kind.startsWith("api.") || kind.startsWith("browser_api.");
+}
+
+export function getVisualCategoryBucket(ev) {
+  const mitigation = getMitigationStatusBucket(ev);
+  if (mitigation === "blocked") return "blocked";
+  if (mitigation === "observed_only") return "observed";
+  if (isApiSurfaceEvent(ev)) return "api";
+  return "other";
+}
+
+export function summarizeVisualCategoryCounts(events) {
+  const counts = {
+    total: 0,
+    blocked: 0,
+    observed: 0,
+    api: 0,
+    other: 0,
+  };
+
+  const list = Array.isArray(events) ? events : [];
+  for (const ev of list) {
+    if (!ev) continue;
+    counts.total += 1;
+    const bucket = getVisualCategoryBucket(ev);
+    if (bucket === "blocked") counts.blocked += 1;
+    else if (bucket === "observed") counts.observed += 1;
+    else if (bucket === "api") counts.api += 1;
+    else counts.other += 1;
+  }
+
+  return counts;
+}
+
 export function getPrivacyStatusBucket(ev) {
   const enriched = String(ev?.enrichment?.privacyStatus || "").trim();
   if (enriched) return enriched;

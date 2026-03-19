@@ -1,4 +1,4 @@
-import { getDispositionBucket } from "../filter-state.js";
+import { summarizeVisualCategoryCounts } from "../filter-state.js";
 
 export function createChartOrchestrationController(deps) {
   const {
@@ -63,12 +63,24 @@ export function createChartOrchestrationController(deps) {
   }
 
   function summarizeBucketEvidence(events) {
-    const list = Array.isArray(events) ? events.filter(Boolean) : [];
-    const seen = list.length;
-    const blocked = list.filter((ev) => getDispositionBucket(ev) === "blocked").length;
-    const observed = list.filter((ev) => getDispositionBucket(ev) === "observed").length;
-    const other = Math.max(0, seen - blocked - observed);
-    return { seen, blocked, observed, other };
+    const counts = summarizeVisualCategoryCounts(events);
+    return {
+      seen: counts.total,
+      blocked: counts.blocked,
+      observed: counts.observed,
+      api: counts.api,
+      other: counts.other,
+    };
+  }
+
+  function buildCategorySummaryHtml(counts, lead) {
+    const parts = [
+      `${counts.blocked || 0} blocked`,
+      `${counts.observed || 0} observed`,
+    ];
+    if (Number(counts.api || 0) > 0) parts.push(`${counts.api} API`);
+    if (Number(counts.other || 0) > 0) parts.push(`${counts.other} other`);
+    return `<div class="muted">${lead} (${parts.join("; ")}).</div>`;
   }
 
   function getRepresentativeBucketExample(events) {
@@ -196,7 +208,7 @@ export function createChartOrchestrationController(deps) {
         type: "vendor",
         value: label || "",
         title: label || "Vendor",
-        summaryHtml: `<div class="muted">${evs.length} vendor-scoped events (current filters/range).</div>`,
+        summaryHtml: buildCategorySummaryHtml(summarizeBucketEvidence(evs), `${evs.length} vendor-scoped events`),
         events: evs,
         chartPoint,
         scrollMode: wasAllVendors ? "never" : "force",
@@ -226,7 +238,7 @@ export function createChartOrchestrationController(deps) {
         type: "vendorBlockRate",
         value: label || "",
         title: label || "Vendor",
-        summaryHtml: `<div class="muted">Block rate ${rate}% (${counts.blocked || 0} blocked of ${counts.seen || 0} total).</div>`,
+        summaryHtml: `<div class="muted">Block rate ${rate}% (${counts.blocked || 0} blocked of ${counts.seen || 0} total${counts.api ? `; ${counts.api} API` : ""}).</div>`,
         events: evs,
         chartPoint,
         scrollMode: wasAllVendors ? "never" : "force",
@@ -242,7 +254,7 @@ export function createChartOrchestrationController(deps) {
         type: "domain",
         value: domain || "",
         title: domain || "Selection",
-        summaryHtml: `<div class="muted">${evs.length} matching events (current filters/range).</div>`,
+        summaryHtml: buildCategorySummaryHtml(summarizeBucketEvidence(evs), `${evs.length} matching events`),
         events: evs,
         chartPoint,
         scrollMode: "force",
@@ -274,10 +286,11 @@ export function createChartOrchestrationController(deps) {
         seen: counts.seen,
         blocked: counts.blocked,
         observed: counts.observed,
+        api: counts.api,
         other: counts.other,
         bucketExample,
         title,
-        summaryHtml: `<div class="muted">Selected bucket: ${title} (${counts.seen} total; ${counts.blocked} blocked; ${counts.observed} observed; ${counts.other} other).</div>`,
+        summaryHtml: `<div class="muted">Selected bucket: ${title} (${counts.seen} total; ${counts.blocked} blocked; ${counts.observed} observed${counts.api ? `; ${counts.api} API` : ""}${counts.other ? `; ${counts.other} other` : ""}).</div>`,
         events: evs,
         chartPoint,
         scrollMode: "force",

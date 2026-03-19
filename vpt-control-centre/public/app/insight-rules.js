@@ -6,7 +6,7 @@
   const root = global.VPT = global.VPT || {};
 
   /** @typedef {{type:string,label:string,payload?:Record<string, any>,requiresConfirm?:boolean,confirmTitle?:string,confirmBody?:string}} PrecautionAction */
-  /** @typedef {{total:number,blocked:number,observed:number,other:number,firstTs:number|null,lastTs:number|null,dominantKinds:Array<{kind:string,count:number}>}} EvidenceSummary */
+  /** @typedef {{total:number,blocked:number,observed:number,api:number,other:number,firstTs:number|null,lastTs:number|null,dominantKinds:Array<{kind:string,count:number}>}} EvidenceSummary */
   /** @typedef {{title:string,summary:string,severity:"info"|"caution"|"high",confidence:number,warnings:string[],dangers:string[],precautions:string[],actions:PrecautionAction[],evidenceSummary:EvidenceSummary}} InsightResult */
 
   function byKindCounts(events) {
@@ -52,8 +52,22 @@
     return surface === "api" || surface === "browser_api" || kind.startsWith("api.") || kind.startsWith("browser_api.");
   }
 
-  function getOtherBucketLabel(events) {
+  function getVisualCategoryBucket(ev) {
+    const mitigation = getMitigationBucket(ev);
+    if (mitigation === "blocked") return "blocked";
+    if (mitigation === "observed_only") return "observed";
+    if (isApiSignalEvent(ev)) return "api";
     return "other";
+  }
+
+  function buildCategorySummaryParts(summary) {
+    const parts = [
+      `${summary.blocked} blocked`,
+      `${summary.observed} observed`,
+    ];
+    if (summary.api > 0) parts.push(`${summary.api} API`);
+    if (summary.other > 0) parts.push(`${summary.other} other`);
+    return parts;
   }
 
   function makeEvidenceSummary(events) {
@@ -64,20 +78,22 @@
 
     let blocked = 0;
     let observed = 0;
+    let api = 0;
     for (const ev of list) {
-      const bucket = getDispositionBucket(ev);
+      const bucket = getVisualCategoryBucket(ev);
       if (bucket === "blocked") blocked += 1;
       else if (bucket === "observed") observed += 1;
+      else if (bucket === "api") api += 1;
     }
 
     const total = list.length;
-    const other = Math.max(0, total - blocked - observed);
+    const other = Math.max(0, total - blocked - observed - api);
     const kinds = Array.from(byKindCounts(list).entries())
       .sort((a, b) => b[1] - a[1])
       .slice(0, 3)
       .map(([kind, count]) => ({ kind, count }));
 
-    return { total, blocked, observed, other, firstTs, lastTs, dominantKinds: kinds };
+    return { total, blocked, observed, api, other, firstTs, lastTs, dominantKinds: kinds };
   }
 
   function estimateConfidence(events) {
@@ -99,6 +115,7 @@
     let moderateMode = 0;
     let cookieSnapshots = 0;
     let thirdPartyCookies = 0;
+    let apiSignals = 0;
     const blockedByDomain = new Map();
 
     for (const ev of list) {
@@ -108,6 +125,7 @@
       if (mode === "moderate") moderateMode += 1;
 
       if (ev?.data?.isThirdParty === true) thirdParty += 1;
+      if (isApiSignalEvent(ev)) apiSignals += 1;
 
       const rt = String(ev?.data?.resourceType || "").toLowerCase();
       if (rt.includes("script")) scripts += 1;
@@ -137,6 +155,7 @@
       moderateMode,
       cookieSnapshots,
       thirdPartyCookies,
+      apiSignals,
       maxBlockedDomain,
     };
   }
@@ -161,12 +180,13 @@
     const scopeLabel = vendorName ? `${vendorName} activity` : "selected activity";
     const blocked = summary.blocked;
     const observed = summary.observed;
+    const api = summary.api;
     const other = summary.other;
-    const otherLabel = getOtherBucketLabel(context?.events);
 
-    let summaryLine = `${scopeLabel} includes ${summary.total} events (${blocked} blocked, ${observed} observed`;
-    if (other > 0) summaryLine += `, ${other} ${otherLabel}`;
-    summaryLine += ").";
+    let summaryLine = `${scopeLabel} includes ${summary.total} events (${buildCategorySummaryParts(summary).join(", ")}).`;
+    if (api > 0) {
+      summaryLine += " This selection includes Browser API activity (e.g. Canvas, WebRTC, Clipboard).";
+    }
     if (vendorName && String(context?.selectedVendor?.vendorId || "") === "google") {
       summaryLine += " This likely reflects analytics/tag-manager and ad delivery infrastructure.";
     }
@@ -181,6 +201,9 @@
     if (stats.xhrFetch > 0) {
       why.push(`Data endpoint traffic exists (${stats.xhrFetch} XHR/fetch requests).`);
     }
+    if (api > 0) {
+      why.push("Includes API/other activity beyond standard blocked/observed network events.");
+    }
 
     return {
       title: vendorName ? `Insight: ${vendorName}` : "Insight: Selection",
@@ -193,6 +216,7 @@
     const warnings = [];
     if (stats.thirdParty > 0) warnings.push("Third-party data flow detected in this selection.");
     if (summary.observed > summary.blocked) warnings.push("More requests were observed than blocked in this scope.");
+    if (stats.apiSignals > 0) warnings.push("Browser API activity is present in this selection.");
     if (severity === "high") warnings.push("Risk level is high based on concentration and request type mix.");
     return warnings;
   }
@@ -203,6 +227,7 @@
     if (stats.scripts > 0) dangers.push("Third-party scripts can execute logic that increases fingerprinting and tracking surface.");
     if (stats.xhrFetch > 0) dangers.push("XHR/fetch traffic can carry behavioral telemetry to external endpoints.");
     if (stats.cookieSnapshots > 0 && stats.thirdPartyCookies > 0) dangers.push("Third-party cookie presence may increase persistent tracking capability.");
+    if (stats.apiSignals > 0) dangers.push("Browser API signals can expose device, browser, or session characteristics even without storing raw sensitive payloads.");
     return dangers;
   }
 

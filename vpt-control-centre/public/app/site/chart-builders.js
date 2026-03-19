@@ -7,6 +7,7 @@ export function createChartBuilders(deps) {
     getRangeWindow,
     buildVendorRollup,
     getKindBucket,
+    getVisualCategoryBucket: getVisualCategoryBucketFromDeps,
     getVendorMetricValue,
     getResourceBucket,
     getPartyBucket,
@@ -48,6 +49,14 @@ function buildSeries(name, data, { defaultType = "bar", stackKey = null } = {}) 
   const type = getSeriesType(defaultType);
   const series = { name, type, data };
   series.selectedMode = "single";
+  const categoryColor = CATEGORY_SERIES_COLORS[name];
+  if (categoryColor) {
+    series.itemStyle = { ...(series.itemStyle || {}), color: categoryColor };
+    series.lineStyle = { ...(series.lineStyle || {}), color: categoryColor };
+    if (type === "line") {
+      series.lineStyle = { ...(series.lineStyle || {}), width: 2 };
+    }
+  }
 
   series.emphasis = {
     focus: "none",
@@ -171,6 +180,12 @@ const TREND_LEGEND_TEXT_STYLE = Object.freeze({
   color: "#ffffff",
   fontSize: 14,
   fontWeight: 700,
+});
+const CATEGORY_SERIES_COLORS = Object.freeze({
+  Blocked: "#5470C6",
+  Observed: "#91CC75",
+  API: "#73C0DE",
+  Other: "#FAC858",
 });
 
 function buildTrendToolbox() {
@@ -395,6 +410,7 @@ function buildTimelineOption(events, options = {}) {
     const labels = [];
     const blocked = new Array(bins).fill(0);
     const observed = new Array(bins).fill(0);
+    const api = new Array(bins).fill(0);
     const other = new Array(bins).fill(0);
     const total = new Array(bins).fill(0);
     const binEvents = new Array(bins).fill(0).map(() => []);
@@ -408,6 +424,7 @@ function buildTimelineOption(events, options = {}) {
       const bucket = getBlockedObservedOtherBucket(ev);
       if (bucket === "blocked") blocked[idx] += 1;
       else if (bucket === "observed") observed[idx] += 1;
+      else if (bucket === "api") api[idx] += 1;
       else other[idx] += 1;
     }
 
@@ -415,7 +432,7 @@ function buildTimelineOption(events, options = {}) {
       labels.push(new Date(start + i * targetBinMs).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }));
     }
 
-    return { bins, labels, blocked, observed, other, total, binEvents };
+    return { bins, labels, blocked, observed, api, other, total, binEvents };
   };
 
   let effectiveBinMs = baseBinMs;
@@ -445,9 +462,11 @@ function buildTimelineOption(events, options = {}) {
     binEvents: timeline.binEvents,
     totalEvents: list.length,
   });
+  const hasApiCategory = list.some((ev) => getBlockedObservedOtherBucket(ev) === "api");
   const simplifiedSeries = densityAware
     && finalSignal.isLowSignal
-    && finalSignal.totalEvents <= LOW_SIGNAL_SIMPLE_SERIES_EVENT_THRESHOLD;
+    && finalSignal.totalEvents <= LOW_SIGNAL_SIMPLE_SERIES_EVENT_THRESHOLD
+    && !hasApiCategory;
   const focusedWindow = densityAware
     && finalSignal.isLowSignal
     && !!finalSignal.reasons?.includes("mostly-empty-timespan");
@@ -492,6 +511,7 @@ function buildTimelineOption(events, options = {}) {
         : [
           buildSeries("Blocked", timeline.blocked, { defaultType: "bar", stackKey: "total" }),
           buildSeries("Observed", timeline.observed, { defaultType: "bar", stackKey: "total" }),
+          buildSeries("API", timeline.api, { defaultType: "bar", stackKey: "total" }),
           buildSeries("Other", timeline.other, { defaultType: "bar", stackKey: "total" }),
         ],
     },
@@ -716,6 +736,9 @@ function buildForcedStackedBarSeries(name, data, stackKey) {
 }
 
 function getBlockedObservedOtherBucket(ev) {
+  if (typeof getVisualCategoryBucketFromDeps === "function") {
+    return getVisualCategoryBucketFromDeps(ev);
+  }
   return typeof getKindBucket === "function" ? getKindBucket(ev) : "other";
 }
 
@@ -746,9 +769,11 @@ function assessVendorBucketSignal(rows) {
 function buildVendorEndpointCompactSummaryOption({
   blockedTotal = 0,
   observedTotal = 0,
+  apiTotal = 0,
   otherTotal = 0,
   blockedTotalRaw = 0,
   observedTotalRaw = 0,
+  apiTotalRaw = 0,
   otherTotalRaw = 0,
   bucketCount = 0,
   displayLabelByBucketKey,
@@ -759,9 +784,10 @@ function buildVendorEndpointCompactSummaryOption({
   displayLabelByBucketKey.set(VENDOR_ENDPOINT_COMPACT_SUMMARY_KEY, summaryLabel);
   fullLabelByBucketKey.set(VENDOR_ENDPOINT_COMPACT_SUMMARY_KEY, summaryLabel);
   statsByBucketKey.set(VENDOR_ENDPOINT_COMPACT_SUMMARY_KEY, {
-    seen: Number(blockedTotalRaw + observedTotalRaw + otherTotalRaw),
+    seen: Number(blockedTotalRaw + observedTotalRaw + apiTotalRaw + otherTotalRaw),
     blocked: Number(blockedTotalRaw),
     observed: Number(observedTotalRaw),
+    api: Number(apiTotalRaw),
     other: Number(otherTotalRaw),
   });
 
@@ -778,10 +804,12 @@ function buildVendorEndpointCompactSummaryOption({
           if (vizOptions.normalize) {
             lines.push(`Blocked: ${Number(first?.seriesName === "Blocked" ? first?.value : (stats.blocked * 100) / Math.max(1, stats.seen)).toFixed(2)}% (${stats.blocked})`);
             lines.push(`Observed: ${Number(first?.seriesName === "Observed" ? first?.value : (stats.observed * 100) / Math.max(1, stats.seen)).toFixed(2)}% (${stats.observed})`);
+            lines.push(`API: ${Number(first?.seriesName === "API" ? first?.value : (stats.api * 100) / Math.max(1, stats.seen)).toFixed(2)}% (${stats.api})`);
             lines.push(`Other: ${Number(first?.seriesName === "Other" ? first?.value : (stats.other * 100) / Math.max(1, stats.seen)).toFixed(2)}% (${stats.other})`);
           } else {
             lines.push(`Blocked: ${stats.blocked}`);
             lines.push(`Observed: ${stats.observed}`);
+            lines.push(`API: ${stats.api}`);
             lines.push(`Other: ${stats.other}`);
           }
           lines.push(`Total: ${stats.seen}`);
@@ -808,6 +836,7 @@ function buildVendorEndpointCompactSummaryOption({
       series: [
         buildForcedStackedBarSeries("Blocked", [blockedTotal], "vendor-endpoint-compact"),
         buildForcedStackedBarSeries("Observed", [observedTotal], "vendor-endpoint-compact"),
+        buildForcedStackedBarSeries("API", [apiTotal], "vendor-endpoint-compact"),
         buildForcedStackedBarSeries("Other", [otherTotal], "vendor-endpoint-compact"),
       ],
     },
@@ -849,6 +878,7 @@ function buildVendorTopDomainsEndpointsOption(events, selectedVendor, metric = "
         seenCount: 0,
         blockedCount: 0,
         observedCount: 0,
+        apiCount: 0,
         otherCount: 0,
         events: [],
       });
@@ -856,8 +886,10 @@ function buildVendorTopDomainsEndpointsOption(events, selectedVendor, metric = "
 
     const row = map.get(bucketKey);
     row.seenCount += 1;
-    if (ev?.kind === "network.blocked") row.blockedCount += 1;
-    else if (ev?.kind === "network.observed") row.observedCount += 1;
+    const category = getBlockedObservedOtherBucket(ev);
+    if (category === "blocked") row.blockedCount += 1;
+    else if (category === "observed") row.observedCount += 1;
+    else if (category === "api") row.apiCount += 1;
     else row.otherCount += 1;
     row.events.push(ev);
   }
@@ -906,6 +938,7 @@ function buildVendorTopDomainsEndpointsOption(events, selectedVendor, metric = "
   let categoryKeys = ranked.map((row) => row.bucketKey);
   let blocked = new Array(categoryKeys.length).fill(0);
   let observed = new Array(categoryKeys.length).fill(0);
+  let api = new Array(categoryKeys.length).fill(0);
   let other = new Array(categoryKeys.length).fill(0);
   const evidenceByBucket = new Map();
   const bucketKeyByLabel = new Map();
@@ -920,10 +953,12 @@ function buildVendorTopDomainsEndpointsOption(events, selectedVendor, metric = "
     if (vizOptions.normalize) {
       blocked[i] = Number((((row.blockedCount || 0) * 100) / total).toFixed(2));
       observed[i] = Number((((row.observedCount || 0) * 100) / total).toFixed(2));
+      api[i] = Number((((row.apiCount || 0) * 100) / total).toFixed(2));
       other[i] = Number((((row.otherCount || 0) * 100) / total).toFixed(2));
     } else {
       blocked[i] = row.blockedCount || 0;
       observed[i] = row.observedCount || 0;
+      api[i] = row.apiCount || 0;
       other[i] = row.otherCount || 0;
     }
 
@@ -935,6 +970,7 @@ function buildVendorTopDomainsEndpointsOption(events, selectedVendor, metric = "
       seen: Number(row.seenCount || 0),
       blocked: Number(row.blockedCount || 0),
       observed: Number(row.observedCount || 0),
+      api: Number(row.apiCount || 0),
       other: Number(row.otherCount || 0),
     });
   }
@@ -942,6 +978,7 @@ function buildVendorTopDomainsEndpointsOption(events, selectedVendor, metric = "
   const stackKey = "total";
   let blockedSeries = buildForcedStackedBarSeries("Blocked", blocked, stackKey);
   let observedSeries = buildForcedStackedBarSeries("Observed", observed, stackKey);
+  let apiSeries = buildForcedStackedBarSeries("API", api, stackKey);
   let otherSeries = buildForcedStackedBarSeries("Other", other, stackKey);
 
   const topBucket = ranked[0] || null;
@@ -958,17 +995,19 @@ function buildVendorTopDomainsEndpointsOption(events, selectedVendor, metric = "
         const key = String(first?.axisValue ?? first?.name ?? "");
         if (!key) return "";
         const fullLabel = fullLabelByBucketKey.get(key) || key;
-        const stats = statsByBucketKey.get(key) || { seen: 0, blocked: 0, observed: 0, other: 0 };
+        const stats = statsByBucketKey.get(key) || { seen: 0, blocked: 0, observed: 0, api: 0, other: 0 };
         const lines = [`<strong>${fullLabel}</strong>`];
 
         if (vizOptions.normalize) {
           const bySeries = new Map(list.map((row) => [String(row?.seriesName || ""), Number(row?.value || 0)]));
           lines.push(`Blocked: ${Number(bySeries.get("Blocked") || 0).toFixed(2)}% (${stats.blocked})`);
           lines.push(`Observed: ${Number(bySeries.get("Observed") || 0).toFixed(2)}% (${stats.observed})`);
+          lines.push(`API: ${Number(bySeries.get("API") || 0).toFixed(2)}% (${stats.api})`);
           lines.push(`Other: ${Number(bySeries.get("Other") || 0).toFixed(2)}% (${stats.other})`);
         } else {
           lines.push(`Blocked: ${stats.blocked}`);
           lines.push(`Observed: ${stats.observed}`);
+          lines.push(`API: ${stats.api}`);
           lines.push(`Other: ${stats.other}`);
         }
 
@@ -1024,25 +1063,29 @@ function buildVendorTopDomainsEndpointsOption(events, selectedVendor, metric = "
         formatter: (value) => displayLabelByBucketKey.get(String(value || "")) || String(value || ""),
       },
     },
-    series: [blockedSeries, observedSeries, otherSeries],
+    series: [blockedSeries, observedSeries, apiSeries, otherSeries],
   };
 
   if (compactSummaryActive) {
     const blockedTotalRaw = ranked.reduce((acc, row) => acc + Number(row.blockedCount || 0), 0);
     const observedTotalRaw = ranked.reduce((acc, row) => acc + Number(row.observedCount || 0), 0);
+    const apiTotalRaw = ranked.reduce((acc, row) => acc + Number(row.apiCount || 0), 0);
     const otherTotalRaw = ranked.reduce((acc, row) => acc + Number(row.otherCount || 0), 0);
-    const totalRaw = Math.max(1, blockedTotalRaw + observedTotalRaw + otherTotalRaw);
+    const totalRaw = Math.max(1, blockedTotalRaw + observedTotalRaw + apiTotalRaw + otherTotalRaw);
 
     const blockedTotal = vizOptions.normalize ? Number(((blockedTotalRaw * 100) / totalRaw).toFixed(2)) : blockedTotalRaw;
     const observedTotal = vizOptions.normalize ? Number(((observedTotalRaw * 100) / totalRaw).toFixed(2)) : observedTotalRaw;
+    const apiTotal = vizOptions.normalize ? Number(((apiTotalRaw * 100) / totalRaw).toFixed(2)) : apiTotalRaw;
     const otherTotal = vizOptions.normalize ? Number(((otherTotalRaw * 100) / totalRaw).toFixed(2)) : otherTotalRaw;
 
     const compact = buildVendorEndpointCompactSummaryOption({
       blockedTotal,
       observedTotal,
+      apiTotal,
       otherTotal,
       blockedTotalRaw,
       observedTotalRaw,
+      apiTotalRaw,
       otherTotalRaw,
       bucketCount: bucketSignal.bucketCount,
       displayLabelByBucketKey,
@@ -1053,11 +1096,13 @@ function buildVendorTopDomainsEndpointsOption(events, selectedVendor, metric = "
     categoryKeys = compact.categoryKeys;
     blocked = [blockedTotal];
     observed = [observedTotal];
+    api = [apiTotal];
     other = [otherTotal];
     blockedSeries = buildForcedStackedBarSeries("Blocked", blocked, stackKey);
     observedSeries = buildForcedStackedBarSeries("Observed", observed, stackKey);
+    apiSeries = buildForcedStackedBarSeries("API", api, stackKey);
     otherSeries = buildForcedStackedBarSeries("Other", other, stackKey);
-    option.series = [blockedSeries, observedSeries, otherSeries];
+    option.series = [blockedSeries, observedSeries, apiSeries, otherSeries];
 
     const allEvidence = ranked.flatMap((row) => (Array.isArray(row.events) ? row.events : []));
     evidenceByBucket.set(VENDOR_ENDPOINT_COMPACT_SUMMARY_KEY, allEvidence);
@@ -1068,6 +1113,7 @@ function buildVendorTopDomainsEndpointsOption(events, selectedVendor, metric = "
       bucketCount: bucketSignal.bucketCount,
       blocked: blockedTotalRaw,
       observed: observedTotalRaw,
+      api: apiTotalRaw,
       other: otherTotalRaw,
     };
   }
@@ -1094,6 +1140,7 @@ function buildVendorTopDomainsEndpointsOption(events, selectedVendor, metric = "
           seen: Number(topBucket.seenCount || 0),
           blocked: Number(topBucket.blockedCount || 0),
           observed: Number(topBucket.observedCount || 0),
+          api: Number(topBucket.apiCount || 0),
           other: Number(topBucket.otherCount || 0),
         }
         : null,

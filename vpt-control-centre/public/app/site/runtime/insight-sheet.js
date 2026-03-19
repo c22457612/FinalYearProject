@@ -1,5 +1,6 @@
 import { getApiEventPresentation, isApiSignalEvent } from "../../api-event-presentation.js";
 import { getEventListContextText, getEventListKindText, getEventListMetaText } from "../utils.js";
+import { summarizeVisualCategoryCounts } from "../filter-state.js";
 
 export function createInsightSheet(deps) {
   const {
@@ -120,8 +121,14 @@ export function createInsightSheet(deps) {
     return "";
   }
 
-  function getOtherBucketLabel(events) {
-    return "other";
+  function buildCategorySummaryParts(counts) {
+    const parts = [
+      `${counts.blocked || 0} blocked`,
+      `${counts.observed || 0} observed`,
+    ];
+    if (Number(counts.api || 0) > 0) parts.push(`${counts.api} API`);
+    if (Number(counts.other || 0) > 0) parts.push(`${counts.other} other`);
+    return parts;
   }
 
   function setInsightSeverity(severity, confidence) {
@@ -280,14 +287,11 @@ export function createInsightSheet(deps) {
   }
 
   function buildFallbackInsight(selection, evidence) {
-    const total = evidence.length;
-    const blocked = evidence.filter((e) => e?.kind === "network.blocked").length;
-    const observed = evidence.filter((e) => e?.kind === "network.observed").length;
-    const other = Math.max(0, total - blocked - observed);
-    const otherLabel = getOtherBucketLabel(evidence);
+    const counts = summarizeVisualCategoryCounts(evidence);
+    const total = counts.total;
     return {
       title: selection?.title || "Insight",
-      summary: `${total} events selected (${blocked} blocked, ${observed} observed${other > 0 ? `, ${other} ${otherLabel}` : ""}).`,
+      summary: `${total} events selected (${buildCategorySummaryParts(counts).join(", ")}).`,
       severity: total >= 40 ? "caution" : "info",
       confidence: total >= 10 ? 0.72 : 0.45,
       warnings: ["Selection evidence is based on current filters and range."],
@@ -309,9 +313,10 @@ export function createInsightSheet(deps) {
       ],
       evidenceSummary: {
         total,
-        blocked,
-        observed,
-        other,
+        blocked: counts.blocked,
+        observed: counts.observed,
+        api: counts.api,
+        other: counts.other,
         firstTs: evidence[0]?.ts || null,
         lastTs: evidence[evidence.length - 1]?.ts || null,
         dominantKinds: [],
@@ -355,11 +360,11 @@ export function createInsightSheet(deps) {
     const dominant = Array.isArray(summary.dominantKinds) && summary.dominantKinds.length
       ? summary.dominantKinds.map((d) => `${d.kind}:${d.count}`).join(", ")
       : "-";
-    const otherLabel = getOtherBucketLabel(evs);
+    const categorySummary = buildCategorySummaryParts(summary).join(", ");
 
     if (qs("insightHow")) {
       const label = selection?.title || "current scope";
-      const evidenceLine = `From ${label}: total ${summary.total || 0}, blocked ${summary.blocked || 0}, observed ${summary.observed || 0}, ${otherLabel} ${summary.other || 0}, first ${firstText}, last ${lastText}, dominant ${dominant}.`;
+      const evidenceLine = `From ${label}: total ${summary.total || 0}, ${categorySummary}, first ${firstText}, last ${lastText}, dominant ${dominant}.`;
       const whatThisAnswers = getWhatThisAnswersLine(context.viewId);
       const apiHowLine = primaryEvent && isApiSignalEvent(primaryEvent)
         ? (() => {
