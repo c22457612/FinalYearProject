@@ -488,13 +488,13 @@
               <div>
                 <div class="panel-title">Browser API</div>
                 <div id="apiSignalsShellSubtitle" class="panel-subtitle">
-                  Insights and policy controls for the currently implemented Canvas and WebRTC gating surfaces.
+                  Insights and policy controls for the currently implemented Canvas, Clipboard, Geolocation, and WebRTC gating surfaces.
                 </div>
               </div>
             </div>
             <p class="api-signals-lead">
               Keep Browser API as one feature area: use <strong>Insights</strong> to review metadata-only detections and
-              <strong>Controls</strong> to change the current Canvas and WebRTC policy mode through the existing backend policy flow.
+              <strong>Controls</strong> to change the current Canvas, Clipboard, Geolocation, and WebRTC policy mode through the existing backend policy flow.
             </p>
             <div class="api-signals-subnav" role="tablist" aria-label="Browser API subviews">
               <button
@@ -524,7 +524,7 @@
                 <div>
                   <div class="panel-title">Insights</div>
                   <div id="apiSignalsSubtitle" class="panel-subtitle">
-                    Interpretable Canvas and WebRTC signals from the existing metadata-only <code>/api/events</code> flow.
+                    Interpretable Canvas, Clipboard, Geolocation, and WebRTC signals from the existing metadata-only <code>/api/events</code> flow.
                   </div>
                 </div>
               </div>
@@ -620,6 +620,7 @@
                 <ul class="api-signals-privacy-list">
                   <li>Detection is metadata-only: operation/action, coarse context, counts, states, and safe hostnames where available.</li>
                   <li>No raw canvas output is stored.</li>
+                  <li>No clipboard contents or copied/pasted binary payloads are stored.</li>
                   <li>No rendered text extraction is stored.</li>
                   <li>No SDP bodies are stored.</li>
                   <li>No ICE candidate strings are stored.</li>
@@ -655,7 +656,7 @@
                 </div>
                 <p class="api-policy-lead">
                   Each surface below uses the shared action model already implemented by the extension and backend policy feed.
-                  These controls cover only Canvas and WebRTC in this first wave.
+                  These controls cover the currently implemented Canvas, Clipboard, Geolocation, and WebRTC surfaces.
                 </p>
                 <div id="apiPolicyTrustedSitesNote" class="api-policy-trusted-note">
                   Trusted sites currently configured: 0
@@ -670,10 +671,10 @@
                   </div>
                 </div>
                 <ul class="api-signals-privacy-list api-policy-limits-list">
-                  <li>Controls in this view apply only to implemented surfaces: Canvas and WebRTC.</li>
+                  <li>Controls in this view apply only to implemented surfaces: Canvas, Clipboard, Geolocation, and WebRTC.</li>
                   <li>Current enforcement is top-frame-only in the repo today.</li>
-                  <li>Geolocation and Clipboard controls are planned later and intentionally not shown yet.</li>
-                  <li>Stored evidence remains metadata-only: no raw canvas output, no SDP bodies, no ICE candidate strings, and no IP addresses.</li>
+                  <li>Clipboard read paths are hard-blocked more strongly than write paths in this first wave; legacy document.execCommand clipboard flows remain out of scope.</li>
+                  <li>Stored evidence remains metadata-only: no raw canvas output, no clipboard contents, no SDP bodies, no ICE candidate strings, and no IP addresses.</li>
                   <li>Policy state is currently read from the existing live backend policy feed.</li>
                 </ul>
               </div>

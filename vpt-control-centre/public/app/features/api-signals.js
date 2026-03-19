@@ -7,6 +7,7 @@ const viewState = {
   latestPolicies: { latestTs: 0, items: [] },
   saves: {
     canvas: { pending: false, tone: "", message: "" },
+    clipboard: { pending: false, tone: "", message: "" },
     webrtc: { pending: false, tone: "", message: "" },
     geolocation: { pending: false, tone: "", message: "" },
   },
@@ -20,6 +21,22 @@ const PATTERN_PRESENTATION = Object.freeze({
   "api.canvas.repeated_readback": {
     label: "Repeated canvas readback",
     explanation: "The page read canvas output repeatedly in a short burst. Repetition makes the signal more notable.",
+  },
+  "api.clipboard.async_read_text": {
+    label: "Clipboard text read",
+    explanation: "The page asked to read plain text from the async Clipboard API. Clipboard reads can expose copied user data, so this is treated as a high-sensitivity signal.",
+  },
+  "api.clipboard.async_read": {
+    label: "Clipboard item read",
+    explanation: "The page asked to read Clipboard items through the async Clipboard API. VPT records only method-level metadata, not clipboard contents.",
+  },
+  "api.clipboard.async_write_text": {
+    label: "Clipboard text write",
+    explanation: "The page asked to write plain text to the async Clipboard API. This first wave records the write attempt without storing the text.",
+  },
+  "api.clipboard.async_write": {
+    label: "Clipboard item write",
+    explanation: "The page asked to write Clipboard items through the async Clipboard API. Only item-count and MIME-type metadata are recorded where available.",
   },
   "api.webrtc.peer_connection_setup": {
     label: "WebRTC peer connection setup",
@@ -49,13 +66,16 @@ const PATTERN_PRESENTATION = Object.freeze({
 
 const SIGNAL_TYPE_LABELS = Object.freeze({
   fingerprinting_signal: "Fingerprinting signal",
+  tracking_signal: "Tracking signal",
   device_probe: "Device probe",
   capability_probe: "Capability probe",
+  state_change: "State change",
   unknown: "Unknown signal type",
 });
 
 const SURFACE_LABELS = Object.freeze({
   canvas: "Canvas",
+  clipboard: "Clipboard",
   geolocation: "Geolocation",
   webrtc: "WebRTC",
   unknown: "Unknown surface",
@@ -82,6 +102,13 @@ const POLICY_SURFACES = Object.freeze([
     kicker: "Readback gating",
     summary: "Control the implemented Canvas readback points without affecting general drawing.",
     note: "Current Canvas enforcement covers getImageData, toDataURL, toBlob, and readPixels only.",
+  },
+  {
+    key: "clipboard",
+    title: "Clipboard",
+    kicker: "Async Clipboard gating",
+    summary: "Control async Clipboard API activity without storing copied or pasted contents.",
+    note: "Current Clipboard enforcement covers top-frame navigator.clipboard.read, readText, write, and writeText. Read paths hard-block under Block or untrusted Allow on trusted sites; write paths stay allowed-with-warning in this first wave.",
   },
   {
     key: "geolocation",
@@ -151,6 +178,9 @@ function patternPresentation(event) {
   if (surfaceDetail === "canvas") {
     return { label: "Unclassified canvas activity", explanation: "Canvas metadata was observed without a canonical backend pattern yet.", canonicalId: "", classified: false };
   }
+  if (surfaceDetail === "clipboard") {
+    return { label: "Unclassified clipboard activity", explanation: "Clipboard metadata was observed without a canonical backend pattern yet.", canonicalId: "", classified: false };
+  }
   if (surfaceDetail === "geolocation") {
     return { label: "Unclassified geolocation activity", explanation: "Geolocation metadata was observed without a canonical backend pattern yet.", canonicalId: "", classified: false };
   }
@@ -167,6 +197,12 @@ function summarizeEvent(event) {
     const size = data.width && data.height ? ` | ${data.width}x${data.height}` : "";
     const burst = Number(data.count || 0) > 1 ? ` | ${data.count} calls in one burst` : "";
     return `Observed ${normalizeValue(data.operation, "activity")}${data.contextType ? ` | ${data.contextType} canvas` : ""}${size}${burst}`;
+  }
+  if (surface === "clipboard") {
+    const access = data.accessType ? ` | ${data.accessType}` : "";
+    const items = typeof data.itemCount === "number" ? ` | ${data.itemCount} item${data.itemCount === 1 ? "" : "s"}` : "";
+    const mimeTypes = Array.isArray(data.mimeTypes) && data.mimeTypes.length ? ` | ${data.mimeTypes.join(", ")}` : "";
+    return `Observed ${normalizeValue(data.method, "clipboard access")}${access}${items}${mimeTypes}`;
   }
   if (surface === "geolocation") {
     const accuracy = data.requestedHighAccuracy === true ? " | high accuracy requested" : "";
@@ -244,7 +280,7 @@ function renderInsights(events) {
   const patterns = new Set(filtered.map((event) => normalizeOptional(event?.enrichment?.patternId)).filter(Boolean));
   const highConfidence = filtered.filter((event) => confidenceBand(event?.enrichment?.confidence) === "high").length;
   const filterNote = !allEvents.length
-    ? "Waiting for Canvas, Geolocation, or WebRTC signals from the existing /api/events feed."
+    ? "Waiting for Canvas, Clipboard, Geolocation, or WebRTC signals from the existing /api/events feed."
     : `Showing ${filtered.length} of ${allEvents.length} API signal${allEvents.length === 1 ? "" : "s"} from the current in-memory dashboard window.${describeActiveFilters() ? ` ${describeActiveFilters()}` : ""}`;
 
   const resultsMeta = !allEvents.length
@@ -279,7 +315,7 @@ function renderInsights(events) {
   const list = document.getElementById("apiSignalsEventsList");
   if (!allEvents.length) {
     empty.classList.remove("hidden");
-    empty.innerHTML = emptyStateHtml("No API signals captured in this window", "Browse a site with Canvas, Geolocation, or WebRTC activity while capture is enabled, then revisit this page.", "This view reflects the current /api/events dashboard window only.");
+    empty.innerHTML = emptyStateHtml("No API signals captured in this window", "Browse a site with Canvas, Clipboard, Geolocation, or WebRTC activity while capture is enabled, then revisit this page.", "This view reflects the current /api/events dashboard window only.");
     list.innerHTML = "";
     return;
   }
@@ -392,14 +428,14 @@ function eventCardHtml(event) {
 }
 
 function derivePolicySnapshot(policiesResponse) {
-  const snapshot = { trustedSites: new Set(), surfaces: { canvas: "observe", geolocation: "observe", webrtc: "observe" } };
+  const snapshot = { trustedSites: new Set(), surfaces: { canvas: "observe", clipboard: "observe", geolocation: "observe", webrtc: "observe" } };
   const items = Array.isArray(policiesResponse?.items) ? policiesResponse.items : [];
   items.forEach((item) => {
     const op = normalizeOptional(item?.op);
     const payload = item?.payload && typeof item.payload === "object" ? item.payload : {};
     if (op === "trust_site" && payload.site) snapshot.trustedSites.add(String(payload.site));
     if (op === "untrust_site" && payload.site) snapshot.trustedSites.delete(String(payload.site));
-    if ((op === "set_api_policy" || op === "set_api_surface_policy") && (payload.surface === "canvas" || payload.surface === "webrtc" || payload.surface === "geolocation")) {
+    if ((op === "set_api_policy" || op === "set_api_surface_policy") && (payload.surface === "canvas" || payload.surface === "clipboard" || payload.surface === "webrtc" || payload.surface === "geolocation")) {
       snapshot.surfaces[payload.surface] = normalizePolicyAction(payload.action);
     }
   });
@@ -472,6 +508,8 @@ async function submitSurfacePolicy(surface, action) {
   const api = window.VPT?.api;
   const surfaceKey = surface === "webrtc"
     ? "webrtc"
+    : surface === "clipboard"
+      ? "clipboard"
     : surface === "geolocation"
       ? "geolocation"
       : "canvas";
@@ -534,7 +572,7 @@ function bindControlEvents() {
     const target = event.target;
     if (!(target instanceof HTMLInputElement) || target.type !== "radio" || !target.checked) return;
     const surface = normalizeOptional(target.dataset.surface).toLowerCase();
-    if (surface !== "canvas" && surface !== "webrtc" && surface !== "geolocation") return;
+    if (surface !== "canvas" && surface !== "clipboard" && surface !== "webrtc" && surface !== "geolocation") return;
     submitSurfacePolicy(surface, target.value);
   });
   controlsBound = true;

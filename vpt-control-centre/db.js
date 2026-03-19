@@ -63,8 +63,8 @@ const SCHEMA_SQL = `
     value TEXT NOT NULL
   );
 
-  INSERT OR IGNORE INTO meta(key, value) VALUES ('schema_version', '5');
-  UPDATE meta SET value = '5' WHERE key = 'schema_version';
+  INSERT OR IGNORE INTO meta(key, value) VALUES ('schema_version', '6');
+  UPDATE meta SET value = '6' WHERE key = 'schema_version';
 
   -- Event-sourcing: immutable privacy events
   CREATE TABLE IF NOT EXISTS events (
@@ -116,6 +116,7 @@ const SCHEMA_SQL = `
         'indexeddb',
         'cache_api',
         'canvas',
+        'clipboard',
         'geolocation',
         'webgl',
         'webrtc',
@@ -202,6 +203,7 @@ const SCHEMA_SQL = `
     ('surface_detail', 'indexeddb', 'IndexedDB surface'),
     ('surface_detail', 'cache_api', 'Cache API surface'),
     ('surface_detail', 'canvas', 'Canvas API signal'),
+    ('surface_detail', 'clipboard', 'Clipboard API signal'),
     ('surface_detail', 'geolocation', 'Geolocation API signal'),
     ('surface_detail', 'webgl', 'WebGL API signal'),
     ('surface_detail', 'webrtc', 'WebRTC API signal'),
@@ -255,7 +257,7 @@ async function initDb(opts = {}) {
   );
 
   await exec(db, SCHEMA_SQL);
-  await ensureEventEnrichmentGeolocationSupport(db);
+  await ensureEventEnrichmentApiSurfaceSupport(db);
 
   return {
     db,
@@ -268,7 +270,7 @@ async function initDb(opts = {}) {
   };
 }
 
-async function ensureEventEnrichmentGeolocationSupport(db) {
+async function ensureEventEnrichmentApiSurfaceSupport(db) {
   const table = await get(
     db,
     `
@@ -279,7 +281,7 @@ async function ensureEventEnrichmentGeolocationSupport(db) {
   );
 
   const tableSql = String(table?.sql || "").toLowerCase();
-  if (!tableSql || tableSql.includes("'geolocation'")) {
+  if (!tableSql || tableSql.includes("'clipboard'")) {
     return;
   }
 
@@ -307,6 +309,7 @@ async function ensureEventEnrichmentGeolocationSupport(db) {
             'indexeddb',
             'cache_api',
             'canvas',
+            'clipboard',
             'geolocation',
             'webgl',
             'webrtc',
@@ -417,9 +420,10 @@ async function ensureEventEnrichmentGeolocationSupport(db) {
       CREATE INDEX IF NOT EXISTS idx_event_enrichment_site_vendor ON event_enrichment(first_party_site, vendor_id);
 
       INSERT OR IGNORE INTO enrichment_taxonomy(dimension, value, description) VALUES
+        ('surface_detail', 'clipboard', 'Clipboard API signal'),
         ('surface_detail', 'geolocation', 'Geolocation API signal');
 
-      UPDATE meta SET value = '5' WHERE key = 'schema_version';
+      UPDATE meta SET value = '6' WHERE key = 'schema_version';
 
       COMMIT;
     `

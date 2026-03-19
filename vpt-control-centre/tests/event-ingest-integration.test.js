@@ -176,7 +176,7 @@ test("extension-like event POST persists to DB and is retrievable via events API
   });
 });
 
-test("network/cookies paths remain intact when api canvas+webrtc events are ingested", async () => {
+test("network/cookies paths remain intact when api canvas+clipboard+webrtc events are ingested", async () => {
   await withTempApiServer(async ({ baseUrl }) => {
     const site = "api-mixed.example.com";
     const ts = Date.UTC(2026, 2, 7, 12, 0, 0);
@@ -235,6 +235,24 @@ test("network/cookies paths remain intact when api canvas+webrtc events are inge
         },
       },
       {
+        id: "integ-mixed-clipboard-1",
+        ts: ts + 2250,
+        source: "test-extension",
+        site,
+        kind: "api.clipboard.activity",
+        mode: "moderate",
+        data: {
+          surface: "api",
+          surfaceDetail: "clipboard",
+          method: "readText",
+          accessType: "read",
+          policyReady: true,
+          count: 1,
+          burstMs: 0,
+          sampleWindowMs: 1200,
+        },
+      },
+      {
         id: "integ-mixed-geo-1",
         ts: ts + 2500,
         source: "test-extension",
@@ -288,21 +306,23 @@ test("network/cookies paths remain intact when api canvas+webrtc events are inge
     assert.equal(postResponse.status, 202, `Expected HTTP 202 from POST /api/events: ${postBodyText}`);
     const postBody = JSON.parse(postBodyText);
     assert.equal(postBody.ok, true);
-    assert.equal(postBody.count, 5);
-    assert.equal(postBody.inserted, 5);
+    assert.equal(postBody.count, 6);
+    assert.equal(postBody.inserted, 6);
 
     const saved = await getJson(`${baseUrl}/api/events?site=${encodeURIComponent(site)}&limit=50`);
-    assert.equal(saved.length, 5);
+    assert.equal(saved.length, 6);
 
     const networkEv = saved.find((row) => row.id === "integ-mixed-network-1");
     const cookiesEv = saved.find((row) => row.id === "integ-mixed-cookies-1");
     const canvasEv = saved.find((row) => row.id === "integ-mixed-canvas-1");
+    const clipboardEv = saved.find((row) => row.id === "integ-mixed-clipboard-1");
     const geoEv = saved.find((row) => row.id === "integ-mixed-geo-1");
     const webrtcEv = saved.find((row) => row.id === "integ-mixed-webrtc-1");
 
     assert.ok(networkEv);
     assert.ok(cookiesEv);
     assert.ok(canvasEv);
+    assert.ok(clipboardEv);
     assert.ok(geoEv);
     assert.ok(webrtcEv);
 
@@ -321,6 +341,16 @@ test("network/cookies paths remain intact when api canvas+webrtc events are inge
     assert.equal(canvasEv.data?.signalType, "fingerprinting_signal");
     assert.equal(canvasEv.data?.patternId, "api.canvas.toDataURL");
     assert.equal(canvasEv.data?.confidence, 0.94);
+    assert.equal(clipboardEv.enrichment.surface, "api");
+    assert.equal(clipboardEv.enrichment.surfaceDetail, "clipboard");
+    assert.equal(clipboardEv.enrichment.privacyStatus, "high_risk");
+    assert.equal(clipboardEv.enrichment.mitigationStatus, "observed_only");
+    assert.equal(clipboardEv.enrichment.signalType, "tracking_signal");
+    assert.equal(clipboardEv.enrichment.patternId, "api.clipboard.async_read_text");
+    assert.equal(clipboardEv.enrichment.confidence, 0.99);
+    assert.equal(clipboardEv.data?.method, "readText");
+    assert.equal(clipboardEv.data?.accessType, "read");
+    assert.equal("text" in (clipboardEv.data || {}), false);
     assert.equal(geoEv.enrichment.surface, "api");
     assert.equal(geoEv.enrichment.surfaceDetail, "geolocation");
     assert.equal(geoEv.enrichment.privacyStatus, "signal_detected");
@@ -732,5 +762,134 @@ test("geolocation gate outcomes round-trip through events API with stable enrich
     assert.equal(byId.get("geo-gate-trusted-1")?.enrichment?.privacyStatus, "policy_allowed");
     assert.equal(byId.get("geo-gate-trusted-1")?.data?.frameScope, "top_frame");
     assert.equal("coords" in (byId.get("geo-gate-trusted-1")?.data || {}), false);
+  });
+});
+
+test("clipboard gate outcomes round-trip through events API with stable enrichment mapping", async () => {
+  await withTempApiServer(async ({ baseUrl }) => {
+    const site = "clipboard-gate.example.com";
+    const ts = Date.UTC(2026, 2, 15, 13, 0, 0);
+    const events = [
+      {
+        id: "clipboard-gate-observed-1",
+        ts,
+        source: "test-extension",
+        site,
+        kind: "api.clipboard.activity",
+        mode: "moderate",
+        data: {
+          surface: "api",
+          surfaceDetail: "clipboard",
+          method: "readText",
+          accessType: "read",
+          policyReady: true,
+          count: 1,
+          burstMs: 0,
+          sampleWindowMs: 1200,
+          gateOutcome: "observed",
+          gateAction: "observe",
+          trustedSite: false,
+          frameScope: "top_frame",
+        },
+      },
+      {
+        id: "clipboard-gate-warned-1",
+        ts: ts + 1000,
+        source: "test-extension",
+        site,
+        kind: "api.clipboard.activity",
+        mode: "moderate",
+        data: {
+          surface: "api",
+          surfaceDetail: "clipboard",
+          method: "writeText",
+          accessType: "write",
+          policyReady: true,
+          count: 1,
+          burstMs: 0,
+          sampleWindowMs: 1200,
+          gateOutcome: "warned",
+          gateAction: "block",
+          trustedSite: false,
+          frameScope: "top_frame",
+        },
+      },
+      {
+        id: "clipboard-gate-blocked-1",
+        ts: ts + 2000,
+        source: "test-extension",
+        site,
+        kind: "api.clipboard.activity",
+        mode: "moderate",
+        data: {
+          surface: "api",
+          surfaceDetail: "clipboard",
+          method: "read",
+          accessType: "read",
+          policyReady: true,
+          count: 1,
+          burstMs: 0,
+          sampleWindowMs: 1200,
+          gateOutcome: "blocked",
+          gateAction: "block",
+          trustedSite: false,
+          frameScope: "top_frame",
+        },
+      },
+      {
+        id: "clipboard-gate-trusted-1",
+        ts: ts + 3000,
+        source: "test-extension",
+        site,
+        kind: "api.clipboard.activity",
+        mode: "moderate",
+        data: {
+          surface: "api",
+          surfaceDetail: "clipboard",
+          method: "readText",
+          accessType: "read",
+          policyReady: true,
+          count: 1,
+          burstMs: 0,
+          sampleWindowMs: 1200,
+          gateOutcome: "trusted_allowed",
+          gateAction: "allow_trusted",
+          trustedSite: true,
+          frameScope: "top_frame",
+        },
+      },
+    ];
+
+    const postResponse = await fetch(`${baseUrl}/api/events`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(events),
+    });
+    const postBodyText = await postResponse.text();
+    assert.equal(postResponse.status, 202, `Expected HTTP 202 from POST /api/events: ${postBodyText}`);
+
+    const saved = await getJson(`${baseUrl}/api/events?site=${encodeURIComponent(site)}&limit=50`);
+    assert.equal(saved.length, 4);
+
+    const byId = new Map(saved.map((event) => [event.id, event]));
+
+    assert.equal(byId.get("clipboard-gate-observed-1")?.data?.gateOutcome, "observed");
+    assert.equal(byId.get("clipboard-gate-observed-1")?.enrichment?.mitigationStatus, "observed_only");
+    assert.equal(byId.get("clipboard-gate-observed-1")?.enrichment?.privacyStatus, "high_risk");
+
+    assert.equal(byId.get("clipboard-gate-warned-1")?.data?.gateOutcome, "warned");
+    assert.equal(byId.get("clipboard-gate-warned-1")?.data?.gateAction, "block");
+    assert.equal(byId.get("clipboard-gate-warned-1")?.enrichment?.mitigationStatus, "observed_only");
+    assert.equal(byId.get("clipboard-gate-warned-1")?.enrichment?.privacyStatus, "signal_detected");
+
+    assert.equal(byId.get("clipboard-gate-blocked-1")?.data?.gateOutcome, "blocked");
+    assert.equal(byId.get("clipboard-gate-blocked-1")?.enrichment?.mitigationStatus, "blocked");
+    assert.equal(byId.get("clipboard-gate-blocked-1")?.enrichment?.privacyStatus, "policy_blocked");
+
+    assert.equal(byId.get("clipboard-gate-trusted-1")?.data?.gateOutcome, "trusted_allowed");
+    assert.equal(byId.get("clipboard-gate-trusted-1")?.enrichment?.mitigationStatus, "allowed");
+    assert.equal(byId.get("clipboard-gate-trusted-1")?.enrichment?.privacyStatus, "policy_allowed");
+    assert.equal(byId.get("clipboard-gate-trusted-1")?.data?.frameScope, "top_frame");
+    assert.equal("text" in (byId.get("clipboard-gate-trusted-1")?.data || {}), false);
   });
 });

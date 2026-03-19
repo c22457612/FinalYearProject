@@ -10,17 +10,27 @@
   const PATCHED_FLAG = "__vpt_api_patched";
   const MAX_HOSTNAMES = 8;
   const WARN_THROTTLE_MS = 5000;
+  const MAX_CLIPBOARD_ITEMS = 32;
+  const MAX_CLIPBOARD_MIME_TYPES = 16;
 
   const burstMap = new Map(); // key -> { kind, payload, count, firstTs, lastTs, timerId }
   const canvasContextByElement = new WeakMap(); // canvas -> context type
   const webrtcMeta = new WeakMap(); // pc -> { stunTurnHostnames:Set<string> }
   const canvasWarnMap = new Map(); // key -> lastWarnTs
+  const clipboardWarnMap = new Map(); // key -> lastWarnTs
   const geolocationWarnMap = new Map(); // key -> lastWarnTs
   const webrtcWarnMap = new Map(); // key -> lastWarnTs
   const blockedWatchIds = new Set();
   let nextBlockedWatchId = -1;
   const canvasGateState = {
     canvasAction: "observe",
+    trustedSite: false,
+    siteBase: "",
+    frameScope: "top_frame",
+    ready: false,
+  };
+  const clipboardGateState = {
+    clipboardAction: "observe",
     trustedSite: false,
     siteBase: "",
     frameScope: "top_frame",
@@ -40,6 +50,32 @@
     frameScope: "top_frame",
     ready: false,
   };
+
+  function snapshotApiGateState() {
+    return {
+      canvasAction: canvasGateState.canvasAction,
+      canvasReady: canvasGateState.ready,
+      clipboardAction: clipboardGateState.clipboardAction,
+      clipboardReady: clipboardGateState.ready,
+      geolocationAction: geolocationGateState.geolocationAction,
+      geolocationReady: geolocationGateState.ready,
+      webrtcAction: webrtcGateState.webrtcAction,
+      webrtcReady: webrtcGateState.ready,
+      trustedSite: clipboardGateState.trustedSite,
+      siteBase: clipboardGateState.siteBase,
+      frameScope: clipboardGateState.frameScope,
+      sharedLoaded: Boolean(gateShared),
+    };
+  }
+
+  function publishApiGateDebugState() {
+    try {
+      window.__VPTApiGateStateDebug = snapshotApiGateState();
+      window.__VPTGetApiGateState = () => ({ ...window.__VPTApiGateStateDebug });
+    } catch {
+      // Ignore debug-state publication failures.
+    }
+  }
 
   function postSignal(kind, payload) {
     window.postMessage(
@@ -86,6 +122,14 @@
     return next === "warn" || next === "block" || next === "allow_trusted" ? next : "observe";
   }
 
+  function normalizeClipboardGateAction(value) {
+    if (gateShared?.normalizeClipboardGateAction) {
+      return gateShared.normalizeClipboardGateAction(value);
+    }
+    const next = String(value || "").trim().toLowerCase();
+    return next === "warn" || next === "block" || next === "allow_trusted" ? next : "observe";
+  }
+
   function normalizeWebrtcGateAction(value) {
     if (gateShared?.normalizeWebrtcGateAction) {
       return gateShared.normalizeWebrtcGateAction(value);
@@ -122,6 +166,100 @@
         : { policyAction, gateOutcome: "blocked", shouldBlock: true };
     }
     return { policyAction, gateOutcome: "observed", shouldBlock: false };
+  }
+
+  function getClipboardGateDecision(accessType) {
+    const normalizedAccessType = gateShared?.normalizeClipboardAccessType
+      ? gateShared.normalizeClipboardAccessType(accessType)
+      : (String(accessType || "").trim().toLowerCase() === "write" ? "write" : "read");
+
+    if (!clipboardGateState.ready) {
+      return normalizedAccessType === "write"
+        ? {
+          policyAction: "observe",
+          gateOutcome: "observed",
+          shouldBlock: false,
+          accessType: normalizedAccessType,
+          policyReady: false,
+        }
+        : {
+          policyAction: "block",
+          gateOutcome: "blocked",
+          shouldBlock: true,
+          accessType: normalizedAccessType,
+          policyReady: false,
+        };
+    }
+    if (gateShared?.deriveClipboardGateDecision) {
+      return {
+        ...gateShared.deriveClipboardGateDecision(
+          clipboardGateState.clipboardAction,
+          clipboardGateState.trustedSite,
+          normalizedAccessType
+        ),
+        policyReady: true,
+      };
+    }
+    const policyAction = normalizeClipboardGateAction(clipboardGateState.clipboardAction);
+    if (policyAction === "warn") {
+      return {
+        policyAction,
+        gateOutcome: "warned",
+        shouldBlock: false,
+        accessType: normalizedAccessType,
+        policyReady: true,
+      };
+    }
+    if (policyAction === "block") {
+      return normalizedAccessType === "write"
+        ? {
+          policyAction,
+          gateOutcome: "warned",
+          shouldBlock: false,
+          accessType: normalizedAccessType,
+          policyReady: true,
+        }
+        : {
+          policyAction,
+          gateOutcome: "blocked",
+          shouldBlock: true,
+          accessType: normalizedAccessType,
+          policyReady: true,
+        };
+    }
+    if (policyAction === "allow_trusted") {
+      if (clipboardGateState.trustedSite) {
+        return {
+          policyAction,
+          gateOutcome: "trusted_allowed",
+          shouldBlock: false,
+          accessType: normalizedAccessType,
+          policyReady: true,
+        };
+      }
+      return normalizedAccessType === "write"
+        ? {
+          policyAction,
+          gateOutcome: "warned",
+          shouldBlock: false,
+          accessType: normalizedAccessType,
+          policyReady: true,
+        }
+        : {
+          policyAction,
+          gateOutcome: "blocked",
+          shouldBlock: true,
+          accessType: normalizedAccessType,
+          policyReady: true,
+        };
+    }
+    return {
+      policyAction,
+      gateOutcome: "observed",
+      shouldBlock: false,
+      accessType: normalizedAccessType,
+      policyReady: true,
+    };
   }
 
   function getWebrtcGateDecision() {
@@ -200,6 +338,12 @@
     canvasGateState.frameScope = frameScope;
     canvasGateState.ready = true;
 
+    clipboardGateState.clipboardAction = normalizeClipboardGateAction(payload.clipboardAction);
+    clipboardGateState.trustedSite = trustedSite;
+    clipboardGateState.siteBase = siteBase;
+    clipboardGateState.frameScope = frameScope;
+    clipboardGateState.ready = true;
+
     webrtcGateState.webrtcAction = normalizeWebrtcGateAction(payload.webrtcAction);
     webrtcGateState.trustedSite = trustedSite;
     webrtcGateState.siteBase = siteBase;
@@ -211,6 +355,8 @@
     geolocationGateState.siteBase = siteBase;
     geolocationGateState.frameScope = frameScope;
     geolocationGateState.ready = true;
+
+    publishApiGateDebugState();
   }
 
   function requestApiGateState() {
@@ -428,6 +574,98 @@
       hasSuccessCallback: typeof success === "function",
       hasErrorCallback: typeof error === "function",
     };
+  }
+
+  function sanitizeMimeType(raw) {
+    const value = String(raw || "").trim().toLowerCase();
+    if (!value) return null;
+    return /^[a-z0-9!#$&^_.+-]+\/[a-z0-9!#$&^_.+-]+$/.test(value) ? value : null;
+  }
+
+  function collectClipboardMimeTypes(items) {
+    if (!Array.isArray(items)) return [];
+    const out = [];
+    const seen = new Set();
+    for (const item of items) {
+      const itemTypes = Array.isArray(item?.types) ? item.types : [];
+      for (const rawType of itemTypes) {
+        const type = sanitizeMimeType(rawType);
+        if (!type || seen.has(type)) continue;
+        seen.add(type);
+        out.push(type);
+        if (out.length >= MAX_CLIPBOARD_MIME_TYPES) return out;
+      }
+    }
+    return out;
+  }
+
+  function maybeWarnClipboardAccess(method, accessType, details) {
+    const decision = getClipboardGateDecision(accessType);
+    if (decision.gateOutcome !== "warned") return;
+
+    const key = buildBurstKey("api.clipboard.warn", [
+      method,
+      accessType,
+      String(details.itemCount ?? ""),
+      Array.isArray(details.mimeTypes) ? details.mimeTypes.join(",") : "",
+      String(decision.policyAction),
+    ]);
+    const now = Date.now();
+    const lastWarnTs = clipboardWarnMap.get(key) || 0;
+    if ((now - lastWarnTs) < WARN_THROTTLE_MS) return;
+
+    clipboardWarnMap.set(key, now);
+    console.warn("[VPT] Clipboard access allowed with warning", {
+      method,
+      accessType,
+      itemCount: typeof details.itemCount === "number" ? details.itemCount : undefined,
+      mimeTypes: Array.isArray(details.mimeTypes) ? details.mimeTypes : [],
+      site: clipboardGateState.siteBase || window.location.hostname || "",
+    });
+  }
+
+  function recordClipboardSignal(method, details = {}) {
+    const cleanMethod = String(method || "").trim();
+    if (!cleanMethod) return;
+    const accessType = cleanMethod.startsWith("write") ? "write" : "read";
+    const decision = getClipboardGateDecision(accessType);
+    const payload = {
+      method: cleanMethod,
+      accessType,
+      itemCount: toNonNegativeInt(details.itemCount),
+      mimeTypes: Array.isArray(details.mimeTypes) ? details.mimeTypes.slice(0, MAX_CLIPBOARD_MIME_TYPES) : [],
+      gateOutcome: decision.gateOutcome,
+      gateAction: decision.policyAction,
+      policyReady: decision.policyReady !== false,
+      trustedSite: clipboardGateState.trustedSite,
+      frameScope: clipboardGateState.frameScope,
+      siteBase: clipboardGateState.siteBase || undefined,
+    };
+
+    maybeWarnClipboardAccess(cleanMethod, accessType, payload);
+
+    const key = buildBurstKey("api.clipboard.activity", [
+      cleanMethod,
+      accessType,
+      String(payload.itemCount ?? ""),
+      payload.mimeTypes.join(","),
+      decision.policyAction,
+      decision.gateOutcome,
+    ]);
+    recordBurst("api.clipboard.activity", payload, key);
+    return decision;
+  }
+
+  function createBlockedClipboardError() {
+    if (typeof window.DOMException === "function") {
+      return new window.DOMException(
+        "Blocked by Visual Privacy Toolkit Clipboard policy",
+        "NotAllowedError"
+      );
+    }
+    const error = new Error("Blocked by Visual Privacy Toolkit Clipboard policy");
+    error.name = "NotAllowedError";
+    return error;
   }
 
   function recordGeolocationSignal(method, options, success, error) {
@@ -792,6 +1030,42 @@
     });
   }
 
+  function patchClipboardApis() {
+    const clipboardTarget = (window.Clipboard && window.Clipboard.prototype)
+      || (window.navigator && window.navigator.clipboard);
+    if (!clipboardTarget) return;
+
+    patchMethod(clipboardTarget, "readText", function wrapReadText(original, args) {
+      const decision = recordClipboardSignal("readText");
+      if (decision?.shouldBlock) {
+        return Promise.reject(createBlockedClipboardError());
+      }
+      return original.apply(this, args);
+    });
+
+    patchMethod(clipboardTarget, "read", function wrapRead(original, args) {
+      const decision = recordClipboardSignal("read");
+      if (decision?.shouldBlock) {
+        return Promise.reject(createBlockedClipboardError());
+      }
+      return original.apply(this, args);
+    });
+
+    patchMethod(clipboardTarget, "writeText", function wrapWriteText(original, args) {
+      recordClipboardSignal("writeText");
+      return original.apply(this, args);
+    });
+
+    patchMethod(clipboardTarget, "write", function wrapWrite(original, args) {
+      const items = Array.isArray(args[0]) ? args[0].slice(0, MAX_CLIPBOARD_ITEMS) : [];
+      recordClipboardSignal("write", {
+        itemCount: items.length,
+        mimeTypes: collectClipboardMimeTypes(items),
+      });
+      return original.apply(this, args);
+    });
+  }
+
   function attachPeerConnectionListeners(pc) {
     if (!pc || typeof pc.addEventListener !== "function") return;
 
@@ -923,8 +1197,10 @@
   }
 
   try {
+    publishApiGateDebugState();
     requestApiGateState();
     patchCanvasApis();
+    patchClipboardApis();
     patchGeolocationApis();
     patchWebrtcApis();
   } catch {

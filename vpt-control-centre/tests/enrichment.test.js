@@ -419,6 +419,158 @@ test("api.geolocation trusted-site allowed outcome maps to policy_allowed", () =
   assert.equal(rawContext.frameScope, "top_frame");
 });
 
+test("api.clipboard readText requests map to canonical backend semantics without clipboard contents", () => {
+  const ev = {
+    id: "evt-api-clipboard-readtext-1",
+    ts: 1700000004899,
+    site: "docs.example.com",
+    kind: "api.clipboard.activity",
+    mode: "moderate",
+    source: "extension",
+    data: {
+      method: "readText",
+      accessType: "read",
+      policyReady: true,
+      count: 1,
+      burstMs: 0,
+      sampleWindowMs: 1200,
+    },
+  };
+
+  const row = buildEnrichmentRecord(ev, ev.site);
+  assert.equal(row.surface, "api");
+  assert.equal(row.surfaceDetail, "clipboard");
+  assert.equal(row.privacyStatus, "high_risk");
+  assert.equal(row.signalType, "tracking_signal");
+  assert.equal(row.patternId, "api.clipboard.async_read_text");
+  assert.equal(row.confidence, 0.99);
+  assert.equal(row.requestDomain, null);
+
+  const rawContext = JSON.parse(row.rawContext);
+  assert.equal(rawContext.method, "readText");
+  assert.equal(rawContext.accessType, "read");
+  assert.equal("text" in rawContext, false);
+  assert.equal("contents" in rawContext, false);
+});
+
+test("api.clipboard write requests keep MIME metadata only and never payloads", () => {
+  const ev = {
+    id: "evt-api-clipboard-write-1",
+    ts: 1700000004900,
+    site: "docs.example.com",
+    kind: "api.clipboard.activity",
+    mode: "moderate",
+    source: "extension",
+    data: {
+      method: "write",
+      accessType: "write",
+      itemCount: 2,
+      mimeTypes: ["text/plain", "image/png"],
+      policyReady: true,
+      count: 1,
+      burstMs: 0,
+      sampleWindowMs: 1200,
+    },
+  };
+
+  const row = buildEnrichmentRecord(ev, ev.site);
+  assert.equal(row.surface, "api");
+  assert.equal(row.surfaceDetail, "clipboard");
+  assert.equal(row.privacyStatus, "signal_detected");
+  assert.equal(row.signalType, "state_change");
+  assert.equal(row.patternId, "api.clipboard.async_write");
+  assert.equal(row.confidence, 0.93);
+
+  const rawContext = JSON.parse(row.rawContext);
+  assert.equal(rawContext.method, "write");
+  assert.equal(rawContext.accessType, "write");
+  assert.equal(rawContext.itemCount, 2);
+  assert.deepEqual(rawContext.mimeTypes, ["text/plain", "image/png"]);
+  assert.equal("text" in rawContext, false);
+  assert.equal("items" in rawContext, false);
+});
+
+test("api.clipboard blocked read outcome maps to policy_blocked", () => {
+  const ev = {
+    id: "evt-api-clipboard-block-1",
+    ts: 1700000004901,
+    site: "docs.example.com",
+    kind: "api.clipboard.activity",
+    mode: "moderate",
+    source: "extension",
+    data: {
+      method: "read",
+      accessType: "read",
+      gateOutcome: "blocked",
+      gateAction: "block",
+      trustedSite: false,
+      frameScope: "top_frame",
+      policyReady: true,
+    },
+  };
+
+  const row = buildEnrichmentRecord(ev, ev.site);
+  assert.equal(row.privacyStatus, "policy_blocked");
+  assert.equal(row.mitigationStatus, "blocked");
+  assert.equal(row.patternId, "api.clipboard.async_read");
+});
+
+test("api.clipboard soft write warning under block keeps observed-only semantics", () => {
+  const ev = {
+    id: "evt-api-clipboard-write-warn-1",
+    ts: 1700000004902,
+    site: "docs.example.com",
+    kind: "api.clipboard.activity",
+    mode: "moderate",
+    source: "extension",
+    data: {
+      method: "writeText",
+      accessType: "write",
+      gateOutcome: "warned",
+      gateAction: "block",
+      trustedSite: false,
+      frameScope: "top_frame",
+      policyReady: true,
+    },
+  };
+
+  const row = buildEnrichmentRecord(ev, ev.site);
+  assert.equal(row.privacyStatus, "signal_detected");
+  assert.equal(row.mitigationStatus, "observed_only");
+
+  const rawContext = JSON.parse(row.rawContext);
+  assert.equal(rawContext.gateOutcome, "warned");
+  assert.equal(rawContext.gateAction, "block");
+});
+
+test("api.clipboard trusted-site allowed read outcome maps to policy_allowed", () => {
+  const ev = {
+    id: "evt-api-clipboard-trusted-1",
+    ts: 1700000004903,
+    site: "docs.example.com",
+    kind: "api.clipboard.activity",
+    mode: "moderate",
+    source: "extension",
+    data: {
+      method: "readText",
+      accessType: "read",
+      gateOutcome: "trusted_allowed",
+      gateAction: "allow_trusted",
+      trustedSite: true,
+      frameScope: "top_frame",
+      policyReady: true,
+    },
+  };
+
+  const row = buildEnrichmentRecord(ev, ev.site);
+  assert.equal(row.privacyStatus, "policy_allowed");
+  assert.equal(row.mitigationStatus, "allowed");
+
+  const rawContext = JSON.parse(row.rawContext);
+  assert.equal(rawContext.trustedSite, true);
+  assert.equal(rawContext.frameScope, "top_frame");
+});
+
 test("api.webrtc peer connection setup stays a capability probe", () => {
   const ev = {
     id: "evt-api-webrtc-setup-1",

@@ -6,6 +6,8 @@
   const SOURCE_TAG = "vpt_api_signal";
   const GATE_SOURCE_TAG = gateShared?.CONFIG_SOURCE_TAG || "vpt_api_gate";
   const CANVAS_OPS = new Set(["getImageData", "toDataURL", "toBlob", "readPixels"]);
+  const CLIPBOARD_METHODS = new Set(["read", "readText", "write", "writeText"]);
+  const CLIPBOARD_ACCESS_TYPES = new Set(gateShared?.CLIPBOARD_ACCESS_TYPES || ["read", "write"]);
   const GEOLOCATION_METHODS = new Set(["getCurrentPosition", "watchPosition"]);
   const WEBRTC_ACTIONS = new Set([
     "peer_connection_created",
@@ -24,6 +26,8 @@
   const API_GATE_OUTCOMES = new Set(gateShared?.GATE_OUTCOMES || ["observed", "warned", "blocked", "trusted_allowed"]);
   const FRAME_SCOPES = new Set(["top_frame"]);
   const MAX_GEOLOCATION_OPTION_MS = 86_400_000;
+  const MAX_CLIPBOARD_ITEM_COUNT = 32;
+  const MAX_CLIPBOARD_MIME_TYPES = 16;
 
   function asSafeInt(value, min, max) {
     const n = Number(value);
@@ -75,6 +79,14 @@
     return next === "warn" || next === "block" || next === "allow_trusted" ? next : "observe";
   }
 
+  function normalizeClipboardGateAction(value) {
+    if (gateShared?.normalizeClipboardGateAction) {
+      return gateShared.normalizeClipboardGateAction(value);
+    }
+    const next = asSafeString(value, 32);
+    return next === "warn" || next === "block" || next === "allow_trusted" ? next : "observe";
+  }
+
   function normalizeWebrtcGateAction(value) {
     if (gateShared?.normalizeWebrtcGateAction) {
       return gateShared.normalizeWebrtcGateAction(value);
@@ -112,6 +124,7 @@
 
     return {
       canvasAction: normalizeCanvasGateAction(snapshot?.apiGatePolicy?.canvas),
+      clipboardAction: normalizeClipboardGateAction(snapshot?.apiGatePolicy?.clipboard),
       webrtcAction: normalizeWebrtcGateAction(snapshot?.apiGatePolicy?.webrtc),
       geolocationAction: normalizeGeolocationGateAction(snapshot?.apiGatePolicy?.geolocation),
       trustedSite,
@@ -194,6 +207,49 @@
     };
   }
 
+  function sanitizeMimeType(raw) {
+    const value = asSafeString(raw, 96);
+    if (!value) return null;
+    const normalized = value.toLowerCase();
+    return /^[a-z0-9!#$&^_.+-]+\/[a-z0-9!#$&^_.+-]+$/.test(normalized) ? normalized : null;
+  }
+
+  function deriveClipboardAccessType(method) {
+    return String(method || "").toLowerCase().startsWith("write") ? "write" : "read";
+  }
+
+  function sanitizeClipboardSignal(payload) {
+    const method = asSafeString(payload.method, 32);
+    if (!method || !CLIPBOARD_METHODS.has(method)) return null;
+    const accessTypeRaw = asSafeString(payload.accessType, 16) || deriveClipboardAccessType(method);
+    const accessType = CLIPBOARD_ACCESS_TYPES.has(accessTypeRaw) ? accessTypeRaw : deriveClipboardAccessType(method);
+    const mimeTypes = Array.isArray(payload.mimeTypes)
+      ? payload.mimeTypes.map(sanitizeMimeType).filter(Boolean).slice(0, MAX_CLIPBOARD_MIME_TYPES)
+      : [];
+
+    return {
+      surface: "api",
+      surfaceDetail: "clipboard",
+      method,
+      accessType,
+      itemCount: asSafeInt(payload.itemCount, 0, MAX_CLIPBOARD_ITEM_COUNT),
+      mimeTypes,
+      policyReady: payload.policyReady !== false,
+      count: asSafeInt(payload.count, 1, MAX_COUNT) || 1,
+      burstMs: asSafeInt(payload.burstMs, 0, MAX_BURST_MS) || 0,
+      sampleWindowMs: asSafeInt(payload.sampleWindowMs, 100, MAX_BURST_MS) || 1200,
+      gateOutcome: API_GATE_OUTCOMES.has(asSafeString(payload.gateOutcome, 32) || "")
+        ? asSafeString(payload.gateOutcome, 32)
+        : "observed",
+      gateAction: normalizeClipboardGateAction(payload.gateAction),
+      trustedSite: typeof payload.trustedSite === "boolean" ? payload.trustedSite : undefined,
+      frameScope: FRAME_SCOPES.has(asSafeString(payload.frameScope, 32) || "")
+        ? asSafeString(payload.frameScope, 32)
+        : "top_frame",
+      siteBase: toBaseDomain(window.location.hostname) || undefined,
+    };
+  }
+
   function sanitizeWebrtcSignal(payload) {
     const action = asSafeString(payload.action, 48);
     if (!action || !WEBRTC_ACTIONS.has(action)) return null;
@@ -265,6 +321,7 @@
     if (!kind || typeof payload !== "object" || !payload) return null;
 
     if (kind.startsWith("api.canvas.")) return sanitizeCanvasSignal(payload);
+    if (kind.startsWith("api.clipboard.")) return sanitizeClipboardSignal(payload);
     if (kind.startsWith("api.geolocation.")) return sanitizeGeolocationSignal(payload);
     if (kind.startsWith("api.webrtc.")) return sanitizeWebrtcSignal(payload);
     return null;
@@ -293,7 +350,7 @@
   function sanitizeImmediatePolicyUpdate(payload) {
     const data = payload && typeof payload === "object" ? payload : {};
     const surface = asSafeString(data.surface, 32);
-    if (surface !== "canvas" && surface !== "webrtc" && surface !== "geolocation") return null;
+    if (surface !== "canvas" && surface !== "clipboard" && surface !== "webrtc" && surface !== "geolocation") return null;
     const rawAction = asSafeString(data.action, 32);
     const action = rawAction === "warn" || rawAction === "block" || rawAction === "allow_trusted"
       ? rawAction

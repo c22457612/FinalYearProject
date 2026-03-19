@@ -248,6 +248,8 @@ function isThirdParty(initiator, requestUrl) {
 }
 
 const API_CANVAS_OPERATIONS = new Set(["getImageData", "toDataURL", "toBlob", "readPixels"]);
+const API_CLIPBOARD_METHODS = new Set(["read", "readText", "write", "writeText"]);
+const API_CLIPBOARD_ACCESS_TYPES = new Set(["read", "write"]);
 const API_GEOLOCATION_METHODS = new Set(["getCurrentPosition", "watchPosition"]);
 const API_GATE_ACTIONS = new Set(["observe", "warn", "block", "allow_trusted"]);
 const API_GATE_OUTCOMES = new Set(["observed", "warned", "blocked", "trusted_allowed"]);
@@ -266,6 +268,8 @@ const API_MAX_COUNT = 5000;
 const API_MAX_BURST_MS = 60_000;
 const API_MAX_DIMENSION = 16_384;
 const API_MAX_GEOLOCATION_OPTION_MS = 86_400_000;
+const API_MAX_CLIPBOARD_ITEM_COUNT = 32;
+const API_MAX_CLIPBOARD_MIME_TYPES = 16;
 
 function asSafeInt(value, min, max) {
   const n = Number(value);
@@ -291,6 +295,7 @@ function sanitizeApiGatePolicy(policy) {
   const source = policy && typeof policy === "object" ? policy : {};
   return {
     canvas: normalizeApiGateAction(source.canvas),
+    clipboard: normalizeApiGateAction(source.clipboard),
     webrtc: normalizeApiGateAction(source.webrtc),
     geolocation: normalizeApiGateAction(source.geolocation),
   };
@@ -327,6 +332,27 @@ function sanitizeHostnames(values) {
   return out;
 }
 
+function sanitizeMimeType(raw) {
+  const value = asSafeString(raw, 96);
+  if (!value) return null;
+  const normalized = value.toLowerCase();
+  return /^[a-z0-9!#$&^_.+-]+\/[a-z0-9!#$&^_.+-]+$/.test(normalized) ? normalized : null;
+}
+
+function sanitizeMimeTypes(values) {
+  if (!Array.isArray(values)) return [];
+  const out = [];
+  const seen = new Set();
+  for (const raw of values) {
+    const value = sanitizeMimeType(raw);
+    if (!value || seen.has(value)) continue;
+    seen.add(value);
+    out.push(value);
+    if (out.length >= API_MAX_CLIPBOARD_MIME_TYPES) break;
+  }
+  return out;
+}
+
 function getCanvasDefaults(operation, gateOutcome = "observed") {
   const op = String(operation || "");
   let confidence = 0.9;
@@ -350,6 +376,55 @@ function getCanvasDefaults(operation, gateOutcome = "observed") {
     mitigationStatus,
     patternId: `api.canvas.${op || "operation"}`,
     confidence,
+  };
+}
+
+function getClipboardDefaults(method, accessType, gateOutcome = "observed") {
+  const nextMethod = String(method || "");
+  const nextAccessType = String(accessType || "").toLowerCase() === "write" ? "write" : "read";
+  let privacyStatus = nextAccessType === "read" ? "high_risk" : "signal_detected";
+  let mitigationStatus = "observed_only";
+  if (gateOutcome === "blocked") {
+    privacyStatus = "policy_blocked";
+    mitigationStatus = "blocked";
+  } else if (gateOutcome === "trusted_allowed") {
+    privacyStatus = "policy_allowed";
+    mitigationStatus = "allowed";
+  }
+
+  if (nextMethod === "readText") {
+    return {
+      signalType: "tracking_signal",
+      privacyStatus,
+      mitigationStatus,
+      patternId: "api.clipboard.async_read_text",
+      confidence: 0.99,
+    };
+  }
+  if (nextMethod === "read") {
+    return {
+      signalType: "tracking_signal",
+      privacyStatus,
+      mitigationStatus,
+      patternId: "api.clipboard.async_read",
+      confidence: 0.98,
+    };
+  }
+  if (nextMethod === "writeText") {
+    return {
+      signalType: "state_change",
+      privacyStatus,
+      mitigationStatus,
+      patternId: "api.clipboard.async_write_text",
+      confidence: 0.94,
+    };
+  }
+  return {
+    signalType: "state_change",
+    privacyStatus,
+    mitigationStatus,
+    patternId: "api.clipboard.async_write",
+    confidence: 0.93,
   };
 }
 
@@ -412,6 +487,39 @@ function getGeolocationDefaults(method, gateOutcome = "observed") {
       ? "api.geolocation.watch_request"
       : "api.geolocation.current_position_request",
     confidence: nextMethod === "watchPosition" ? 0.98 : 0.97,
+  };
+}
+
+function sanitizeClipboardSignal(data) {
+  if (!data || typeof data !== "object") return null;
+  const method = asSafeString(data.method, 32);
+  if (!method || !API_CLIPBOARD_METHODS.has(method)) return null;
+  const gateOutcomeRaw = asSafeString(data.gateOutcome, 32);
+  const gateOutcome = gateOutcomeRaw && API_GATE_OUTCOMES.has(gateOutcomeRaw)
+    ? gateOutcomeRaw
+    : "observed";
+  const accessTypeRaw = asSafeString(data.accessType, 16);
+  const accessType = accessTypeRaw && API_CLIPBOARD_ACCESS_TYPES.has(accessTypeRaw)
+    ? accessTypeRaw
+    : (method.startsWith("write") ? "write" : "read");
+
+  return {
+    surface: "api",
+    surfaceDetail: "clipboard",
+    method,
+    accessType,
+    itemCount: asSafeInt(data.itemCount, 0, API_MAX_CLIPBOARD_ITEM_COUNT),
+    mimeTypes: sanitizeMimeTypes(data.mimeTypes),
+    policyReady: data.policyReady !== false,
+    count: asSafeInt(data.count, 1, API_MAX_COUNT) || 1,
+    burstMs: asSafeInt(data.burstMs, 0, API_MAX_BURST_MS) || 0,
+    sampleWindowMs: asSafeInt(data.sampleWindowMs, 100, API_MAX_BURST_MS) || 1200,
+    gateOutcome,
+    gateAction: normalizeApiGateAction(data.gateAction),
+    trustedSite: typeof data.trustedSite === "boolean" ? data.trustedSite : undefined,
+    frameScope: asSafeString(data.frameScope, 32) === "top_frame" ? "top_frame" : "top_frame",
+    siteBase: asSafeString(data.siteBase, 128) || undefined,
+    ...getClipboardDefaults(method, accessType, gateOutcome),
   };
 }
 
@@ -518,6 +626,12 @@ function sanitizeApiSignalPayload(payload) {
     return { kind, data: cleanData };
   }
 
+  if (kind.startsWith("api.clipboard.")) {
+    const cleanData = sanitizeClipboardSignal(data);
+    if (!cleanData) return null;
+    return { kind, data: cleanData };
+  }
+
   if (kind.startsWith("api.geolocation.")) {
     const cleanData = sanitizeGeolocationSignal(data);
     if (!cleanData) return null;
@@ -617,7 +731,7 @@ async function loadApiGatePolicy() {
 
 async function updateApiSurfacePolicy(surface, action) {
   const surfaceKey = asSafeString(surface, 32);
-  if (surfaceKey !== "canvas" && surfaceKey !== "webrtc" && surfaceKey !== "geolocation") {
+  if (surfaceKey !== "canvas" && surfaceKey !== "clipboard" && surfaceKey !== "webrtc" && surfaceKey !== "geolocation") {
     throw new Error("invalid_api_surface");
   }
   const nextAction = normalizeApiGateAction(action);

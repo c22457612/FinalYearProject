@@ -161,6 +161,7 @@ function deriveSurfaceDetail(kind = "") {
   if (kind.startsWith("storage.session")) return "session_storage";
   if (kind.startsWith("storage.indexeddb")) return "indexeddb";
   if (kind.startsWith("storage.cache")) return "cache_api";
+  if (kind.includes("clipboard")) return "clipboard";
   if (kind.includes("canvas")) return "canvas";
   if (kind.includes("webgl")) return "webgl";
   if (kind.includes("webrtc")) return "webrtc";
@@ -416,8 +417,9 @@ const API_GATE_ACTION_VALUES = new Set([
 
 function deriveApiSurfaceDetail(kind, data = {}) {
   const explicit = String(data.surfaceDetail || "").trim().toLowerCase();
-  if (explicit === "canvas" || explicit === "webrtc" || explicit === "geolocation") return explicit;
+  if (explicit === "canvas" || explicit === "clipboard" || explicit === "webrtc" || explicit === "geolocation") return explicit;
   if (kind.includes("canvas")) return "canvas";
+  if (kind.includes("clipboard")) return "clipboard";
   if (kind.includes("geolocation")) return "geolocation";
   if (kind.includes("webrtc")) return "webrtc";
   return "unknown";
@@ -441,6 +443,14 @@ const WEBRTC_ICE_ACTIONS = new Set([
 
 const GEOLOCATION_WATCH_METHODS = new Set([
   "watchposition",
+]);
+const CLIPBOARD_READ_METHODS = new Set([
+  "read",
+  "readtext",
+]);
+const CLIPBOARD_WRITE_METHODS = new Set([
+  "write",
+  "writetext",
 ]);
 
 function normalizeApiToken(value) {
@@ -540,6 +550,47 @@ function deriveApiClassification(kind, surfaceDetail, data = {}, stunTurnHostnam
     };
   }
 
+  if (surfaceDetail === "clipboard") {
+    const method = normalizeApiToken(data.method);
+    const accessType = normalizeApiToken(data.accessType)
+      || (CLIPBOARD_WRITE_METHODS.has(method) ? "write" : "read");
+    const isRead = accessType !== "write";
+
+    if (method === "readtext") {
+      return {
+        signalType: "tracking_signal",
+        patternId: "api.clipboard.async_read_text",
+        confidence: 0.99,
+        privacyStatus: "high_risk",
+      };
+    }
+
+    if (method === "read") {
+      return {
+        signalType: "tracking_signal",
+        patternId: "api.clipboard.async_read",
+        confidence: 0.98,
+        privacyStatus: "high_risk",
+      };
+    }
+
+    if (method === "writetext") {
+      return {
+        signalType: "state_change",
+        patternId: "api.clipboard.async_write_text",
+        confidence: 0.94,
+        privacyStatus: "signal_detected",
+      };
+    }
+
+    return {
+      signalType: isRead ? "tracking_signal" : "state_change",
+      patternId: isRead ? "api.clipboard.async_read" : "api.clipboard.async_write",
+      confidence: isRead ? 0.97 : 0.93,
+      privacyStatus: isRead ? "high_risk" : "signal_detected",
+    };
+  }
+
   return {
     signalType: "capability_probe",
     patternId: kind.startsWith("api.") || kind.startsWith("browser_api.") ? kind : null,
@@ -549,6 +600,15 @@ function deriveApiClassification(kind, surfaceDetail, data = {}, stunTurnHostnam
 
 function buildApiEnrichment(ev, site, data, kind) {
   const surfaceDetail = deriveApiSurfaceDetail(kind, data);
+  const stunTurnHostnames = Array.isArray(data.stunTurnHostnames)
+    ? data.stunTurnHostnames.map((h) => normalizeHost(h)).filter(Boolean).slice(0, 8)
+    : [];
+  const apiClassification = deriveApiClassification(
+    kind,
+    surfaceDetail,
+    data,
+    stunTurnHostnames
+  );
   const gateOutcome = pickAllowedString(
     data.gateOutcome,
     API_GATE_OUTCOME_VALUES,
@@ -579,7 +639,7 @@ function buildApiEnrichment(ev, site, data, kind) {
         ? "policy_blocked"
         : mitigationStatus === "allowed"
           ? "policy_allowed"
-          : "signal_detected";
+          : apiClassification.privacyStatus || "signal_detected";
 
   const privacyStatus = pickAllowedString(
     data.privacyStatus,
@@ -604,23 +664,20 @@ function buildApiEnrichment(ev, site, data, kind) {
   const offerType = String(data.offerType || "").trim() || null;
   const candidateType = String(data.candidateType || "").trim() || null;
   const method = String(data.method || "").trim() || null;
+  const accessType = String(data.accessType || "").trim() || null;
+  const itemCount = toSafeNumber(data.itemCount, null);
+  const mimeTypes = Array.isArray(data.mimeTypes)
+    ? data.mimeTypes.map((type) => String(type || "").trim().toLowerCase()).filter(Boolean).slice(0, 16)
+    : [];
   const requestedHighAccuracy = data.requestedHighAccuracy === true;
   const timeoutMs = toSafeNumber(data.timeoutMs, null);
   const maximumAgeMs = toSafeNumber(data.maximumAgeMs, null);
   const hasSuccessCallback = data.hasSuccessCallback !== false;
   const hasErrorCallback = data.hasErrorCallback === true;
   const policyReady = data.policyReady !== false;
-  const stunTurnHostnames = Array.isArray(data.stunTurnHostnames)
-    ? data.stunTurnHostnames.map((h) => normalizeHost(h)).filter(Boolean).slice(0, 8)
-    : [];
   const trustedSite = typeof data.trustedSite === "boolean" ? data.trustedSite : null;
   const frameScope = String(data.frameScope || "").trim() === "top_frame" ? "top_frame" : null;
-  const { signalType, patternId, confidence } = deriveApiClassification(
-    kind,
-    surfaceDetail,
-    data,
-    stunTurnHostnames
-  );
+  const { signalType, patternId, confidence } = apiClassification;
 
   return {
     enrichedTs: Number(ev?.ts) || Date.now(),
@@ -646,10 +703,13 @@ function buildApiEnrichment(ev, site, data, kind) {
       source: ev?.source || null,
       operation,
       method,
+      accessType,
       action,
       contextType,
       width: Number.isFinite(width) ? width : null,
       height: Number.isFinite(height) ? height : null,
+      itemCount: Number.isFinite(itemCount) ? itemCount : null,
+      mimeTypes,
       state,
       offerType,
       candidateType,
