@@ -10,6 +10,7 @@
   const PATCHED_FLAG = "__vpt_api_patched";
   const MAX_HOSTNAMES = 8;
   const WARN_THROTTLE_MS = 5000;
+  const PATCH_RETRY_DELAYS_MS = [50, 150, 400, 1000, 2000];
   const MAX_CLIPBOARD_ITEMS = 32;
   const MAX_CLIPBOARD_MIME_TYPES = 16;
 
@@ -1196,13 +1197,35 @@
     });
   }
 
-  try {
-    publishApiGateDebugState();
-    requestApiGateState();
+  function patchAllApiSurfaces() {
     patchCanvasApis();
     patchClipboardApis();
     patchGeolocationApis();
     patchWebrtcApis();
+  }
+
+  function schedulePatchRetries() {
+    const rerun = () => {
+      try {
+        patchAllApiSurfaces();
+      } catch {
+        // Never block page execution on instrumentation retries.
+      }
+    };
+
+    for (const delay of PATCH_RETRY_DELAYS_MS) {
+      setTimeout(rerun, delay);
+    }
+
+    document.addEventListener("readystatechange", rerun, { passive: true });
+    window.addEventListener("load", rerun, { once: true });
+  }
+
+  try {
+    publishApiGateDebugState();
+    requestApiGateState();
+    patchAllApiSurfaces();
+    schedulePatchRetries();
   } catch {
     // Never block page execution on instrumentation issues.
   }

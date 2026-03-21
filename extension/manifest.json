@@ -24,13 +24,17 @@
     {
       "matches": ["<all_urls>"],
       "js": ["api-gate-shared.js", "api-signal-bridge.js"],
-      "run_at": "document_start"
+      "run_at": "document_start",
+      "all_frames": true,
+      "match_about_blank": true
     },
     {
       "matches": ["<all_urls>"],
       "js": ["api-gate-shared.js", "api-signal-main.js"],
       "run_at": "document_start",
-      "world": "MAIN"
+      "world": "MAIN",
+      "all_frames": true,
+      "match_about_blank": true
     }
   ]
 }
