@@ -290,6 +290,8 @@ app.get("/api/events", async (req, res) => {
 
     const site = req.query.site || null;
     const kind = req.query.kind || null;
+    const vendorParam = String(req.query.vendor || "").trim().toLowerCase();
+    const vendor = vendorParam || null;
     const from = req.query.from ? Number(req.query.from) : null;
     const to = req.query.to ? Number(req.query.to) : null;
 
@@ -311,12 +313,13 @@ app.get("/api/events", async (req, res) => {
         LEFT JOIN event_enrichment ee ON ee.event_pk = e.pk
         WHERE (? IS NULL OR e.site = ?)
           AND (? IS NULL OR e.kind = ?)
+          AND (? IS NULL OR COALESCE(NULLIF(LOWER(TRIM(ee.vendor_id)), ''), 'unknown') = ?)
           AND (? IS NULL OR e.ts >= ?)
           AND (? IS NULL OR e.ts <= ?)
         ORDER BY e.ts ASC
         LIMIT ?
       `,
-      [site, site, kind, kind, from, from, to, to, limit]
+      [site, site, kind, kind, vendor, vendor, from, from, to, to, limit]
     );
 
     const parsed = rows

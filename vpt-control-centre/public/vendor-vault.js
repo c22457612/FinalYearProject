@@ -134,6 +134,7 @@ const KEY_HINT_RULES = [
 
 let latestExposureRequestId = 0;
 let latestSummaryRequestId = 0;
+let latestApiEvidenceRequestId = 0;
 const SCOPE_SITE = "site";
 const SCOPE_ALL = "all";
 const vaultScopeState = {
@@ -156,6 +157,60 @@ const landingDirectoryState = {
 };
 const EXPORT_APP_NAME = "Visual Privacy Toolkit - Vendor Vault";
 const EXPORT_DATA_SOURCE_NOTE = "Derived from captured browser signals (request metadata). Keys/categories only; not proof of vendor storage; no raw values exported.";
+const API_EVIDENCE_ALLOWED_WEBRTC_PATTERNS = new Set([
+  "api.webrtc.peer_connection_setup",
+  "api.webrtc.offer_probe",
+  "api.webrtc.ice_probe",
+  "api.webrtc.stun_turn_assisted_probe",
+]);
+const API_EVIDENCE_ALLOWED_CANVAS_PATTERNS = new Set([
+  "api.canvas.readback",
+  "api.canvas.repeated_readback",
+]);
+const API_EVIDENCE_SECTION_VENDOR = "vendor";
+const API_EVIDENCE_SECTION_CONTEXTUAL = "contextual";
+const API_EVIDENCE_GROUP_META = Object.freeze({
+  "api.canvas.readback": {
+    label: "Canvas readback",
+    whatThisMeans: "This can be used to help identify your device or browser.",
+    actionSurfaceLabel: "Canvas",
+  },
+  "api.canvas.repeated_readback": {
+    label: "Repeated canvas readback",
+    whatThisMeans: "This can be used to help identify your device or browser. Repetition makes the signal more notable.",
+    actionSurfaceLabel: "Canvas",
+  },
+  "api.webrtc.peer_connection_setup": {
+    label: "WebRTC connection setup",
+    whatThisMeans: "This can be used to prepare network or device probing from the browser.",
+    actionSurfaceLabel: "WebRTC",
+  },
+  "api.webrtc.offer_probe": {
+    label: "WebRTC offer probing",
+    whatThisMeans: "This can be used to infer network or device characteristics.",
+    actionSurfaceLabel: "WebRTC",
+  },
+  "api.webrtc.ice_probe": {
+    label: "WebRTC network probing",
+    whatThisMeans: "This can be used to infer network or device characteristics.",
+    actionSurfaceLabel: "WebRTC",
+  },
+  "api.webrtc.stun_turn_assisted_probe": {
+    label: "WebRTC STUN/TURN probing",
+    whatThisMeans: "This can be used to infer network or device characteristics. STUN or TURN assistance makes the probe more notable.",
+    actionSurfaceLabel: "WebRTC",
+  },
+  geolocation: {
+    label: "Location access request",
+    whatThisMeans: "This may allow a site to access your location if permission is granted.",
+    actionSurfaceLabel: "Geolocation",
+  },
+  "clipboard.read": {
+    label: "Clipboard read attempt",
+    whatThisMeans: "This may allow access to copied content if permission is granted.",
+    actionSurfaceLabel: "Clipboard",
+  },
+});
 
 function buildSiteInsightsHref(site) {
   if (!String(site || "").trim()) return "/";
@@ -664,6 +719,7 @@ function setScope(nextScope, opts = {}) {
   if (opts.reload !== false) {
     loadExposureInventory();
     loadVendorVaultSummary();
+    loadVendorApiEvidence();
   }
 }
 
@@ -678,6 +734,14 @@ function toSafeCount(value) {
   const n = Number(value);
   if (!Number.isFinite(n) || n <= 0) return 0;
   return Math.floor(n);
+}
+
+function normalizeVendorId(value) {
+  return String(value || "").trim().toLowerCase();
+}
+
+function normalizeApiEvidenceToken(value) {
+  return String(value || "").trim().toLowerCase();
 }
 
 function formatDateTime(ts) {
@@ -1618,6 +1682,473 @@ function renderInventoryEntries(itemModels) {
   }
 }
 
+function hasValidVendorScopeForApiEvidence() {
+  const vendorId = normalizeVendorId(vaultScopeState.vendor);
+  return Boolean(vendorId && vendorId !== "unknown");
+}
+
+function getApiEvidenceSectionKey(groupKey) {
+  const key = String(groupKey || "").trim();
+  if (API_EVIDENCE_ALLOWED_WEBRTC_PATTERNS.has(key)) return API_EVIDENCE_SECTION_VENDOR;
+  if (API_EVIDENCE_ALLOWED_CANVAS_PATTERNS.has(key) || key === "geolocation" || key === "clipboard.read") {
+    return API_EVIDENCE_SECTION_CONTEXTUAL;
+  }
+  return "";
+}
+
+function filterApiEvidenceGroupsBySection(groups, sectionKey) {
+  const safeGroups = Array.isArray(groups) ? groups : [];
+  return safeGroups.filter((group) => getApiEvidenceSectionKey(group && group.key) === sectionKey);
+}
+
+function rewriteApiMeaningForVendor(text) {
+  const value = String(text || "").trim();
+  if (!value) return "";
+  if (/^This can be used/i.test(value)) {
+    return value.replace(/^This can be used/i, "This activity may be used");
+  }
+  if (/^This can/i.test(value)) {
+    return value.replace(/^This can/i, "This activity may");
+  }
+  if (/^This may/i.test(value)) {
+    return value.replace(/^This may/i, "This activity may");
+  }
+  return value;
+}
+
+function rewriteApiMeaningForContextual(text) {
+  const value = String(text || "").trim();
+  if (!value) return "";
+  if (/^This can be used/i.test(value)) {
+    return value.replace(/^This can be used/i, "Observed on this page, this can be used");
+  }
+  if (/^This can/i.test(value)) {
+    return value.replace(/^This can/i, "Observed on this page, this can");
+  }
+  if (/^This may/i.test(value)) {
+    return value.replace(/^This may/i, "Observed on this page, this may");
+  }
+  return value;
+}
+
+function buildApiEvidenceNarrative(group) {
+  const sectionKey = getApiEvidenceSectionKey(group && group.key);
+  if (sectionKey === API_EVIDENCE_SECTION_VENDOR) {
+    return {
+      summaryLine: `This vendor used ${group.label}.`,
+      meaningLine: `This vendor used ${group.label}. ${rewriteApiMeaningForVendor(group.whatThisMeans)}`,
+    };
+  }
+
+  return {
+    summaryLine: `This site used ${group.label}. Observed on this page, this is not directly linked to this vendor.`,
+    meaningLine: `This site used ${group.label}. ${rewriteApiMeaningForContextual(group.whatThisMeans)} Not directly linked to this vendor.`,
+  };
+}
+
+function getApiEvidenceGroupKey(event) {
+  const enrichment = event && typeof event.enrichment === "object" ? event.enrichment : {};
+  const data = event && typeof event.data === "object" ? event.data : {};
+  const surfaceDetail = normalizeApiEvidenceToken(enrichment.surfaceDetail || data.surfaceDetail);
+  const patternId = String(enrichment.patternId || "").trim();
+
+  if (surfaceDetail === "canvas") {
+    return API_EVIDENCE_ALLOWED_CANVAS_PATTERNS.has(patternId) ? patternId : "";
+  }
+
+  if (surfaceDetail === "webrtc") {
+    return API_EVIDENCE_ALLOWED_WEBRTC_PATTERNS.has(patternId) ? patternId : "";
+  }
+
+  if (surfaceDetail === "geolocation") {
+    return "geolocation";
+  }
+
+  if (surfaceDetail === "clipboard") {
+    if (patternId === "api.clipboard.async_read" || patternId === "api.clipboard.async_read_text") {
+      return "clipboard.read";
+    }
+
+    const method = normalizeApiEvidenceToken(data.method);
+    const accessType = normalizeApiEvidenceToken(data.accessType);
+    if (method === "read" || method === "readtext" || accessType === "read") {
+      return "clipboard.read";
+    }
+  }
+
+  return "";
+}
+
+function getApiEvidenceOutcomeKey(event) {
+  const data = event && typeof event.data === "object" ? event.data : {};
+  const enrichment = event && typeof event.enrichment === "object" ? event.enrichment : {};
+  const gateOutcome = normalizeApiEvidenceToken(data.gateOutcome);
+  if (gateOutcome === "blocked") return "blocked";
+  if (gateOutcome === "trusted_allowed") return "trusted_allowed";
+  if (gateOutcome === "observed" || gateOutcome === "warned") return "observed_warned";
+
+  const mitigationStatus = normalizeApiEvidenceToken(enrichment.mitigationStatus);
+  if (mitigationStatus === "blocked") return "blocked";
+  if (mitigationStatus === "allowed") return "trusted_allowed";
+  return "observed_warned";
+}
+
+function buildApiEvidenceActions(group, site, vendor) {
+  const actions = [];
+  const inspectAction = makeOpenInSiteInsightsAction(site, vendor);
+  inspectAction.text = "Inspect in Site Insights";
+
+  if (inspectAction.href) {
+    actions.push(inspectAction);
+  }
+
+  actions.push({
+    key: `review_api_controls_${group.key}`,
+    text: "Review Browser API Controls",
+    href: "/?view=api-signals",
+    guidance: `Review the ${group.actionSurfaceLabel} control for this activity.`,
+  });
+
+  actions.push({
+    key: `block_api_surface_${group.key}`,
+    text: `Block ${group.actionSurfaceLabel} in Browser API Controls if this vendor does not need it.`,
+  });
+
+  if (group.counts.trusted_allowed > 0) {
+    actions.push({
+      key: `trusted_sites_${group.key}`,
+      text: "Remove from trusted sites",
+      href: "/?view=trusted-sites",
+      guidance: "Trusted-site allowance can let this API run there.",
+    });
+  }
+
+  if (!inspectAction.href) {
+    actions.push({
+      key: `inspect_site_insights_guidance_${group.key}`,
+      text: inspectAction.guidance || "Open Site Insights from a specific site to inspect this vendor there.",
+    });
+  }
+
+  const deduped = [];
+  const seen = new Set();
+  for (const action of actions) {
+    const key = String(action && action.key ? action.key : action && action.text ? action.text : "");
+    if (!key || seen.has(key)) continue;
+    deduped.push(action);
+    seen.add(key);
+  }
+  return deduped.slice(0, 4);
+}
+
+function buildVendorApiEvidenceGroups(events, site, vendor) {
+  if (!hasValidVendorScopeForApiEvidence()) return [];
+
+  const groups = new Map();
+  const safeEvents = Array.isArray(events) ? events : [];
+  for (const event of safeEvents) {
+    const groupKey = getApiEvidenceGroupKey(event);
+    const meta = API_EVIDENCE_GROUP_META[groupKey];
+    if (!groupKey || !meta) continue;
+
+    const ts = Number(event && event.ts) || 0;
+    const outcomeKey = getApiEvidenceOutcomeKey(event);
+    if (!groups.has(groupKey)) {
+      groups.set(groupKey, {
+        key: groupKey,
+        label: meta.label,
+        whatThisMeans: meta.whatThisMeans,
+        actionSurfaceLabel: meta.actionSurfaceLabel,
+        count: 0,
+        lastSeenTs: 0,
+        counts: {
+          observed_warned: 0,
+          blocked: 0,
+          trusted_allowed: 0,
+        },
+      });
+    }
+
+    const group = groups.get(groupKey);
+    group.count += 1;
+    if (ts > group.lastSeenTs) group.lastSeenTs = ts;
+    if (outcomeKey === "blocked" || outcomeKey === "trusted_allowed") {
+      group.counts[outcomeKey] += 1;
+    } else {
+      group.counts.observed_warned += 1;
+    }
+  }
+
+  return Array.from(groups.values())
+    .map((group) => ({
+      ...group,
+      lastSeen: formatDateTime(group.lastSeenTs),
+      limitation: "This signal does not prove data was received. It indicates capability or attempt based on observed activity.",
+      actions: buildApiEvidenceActions(group, site, vendor),
+    }))
+    .sort((a, b) => (
+      (b.lastSeenTs - a.lastSeenTs) ||
+      (b.count - a.count) ||
+      a.label.localeCompare(b.label)
+    ));
+}
+
+function renderVendorApiEvidenceGroups(list, groups) {
+  if (!list) return;
+  list.innerHTML = "";
+
+  const safeGroups = Array.isArray(groups) ? groups : [];
+  for (const group of safeGroups) {
+    const narrative = buildApiEvidenceNarrative(group);
+    const card = document.createElement("details");
+    card.className = "vendor-vault-entry vendor-vault-api-entry";
+    card.setAttribute("role", "listitem");
+
+    const summary = document.createElement("summary");
+    summary.className = "vendor-vault-row-summary";
+
+    const rowMain = document.createElement("div");
+    rowMain.className = "vendor-vault-row-main";
+
+    const head = document.createElement("div");
+    head.className = "vendor-vault-entry-title-row";
+
+    const title = document.createElement("span");
+    title.className = "vendor-vault-entry-title";
+    title.textContent = group.label;
+    head.appendChild(title);
+
+    const countPill = document.createElement("span");
+    countPill.className = "vendor-vault-api-count-pill";
+    countPill.textContent = `${group.count} event${group.count === 1 ? "" : "s"}`;
+    head.appendChild(countPill);
+
+    rowMain.appendChild(head);
+
+    const meta = document.createElement("div");
+    meta.className = "vendor-vault-entry-meta";
+    meta.textContent = `Last seen: ${group.lastSeen} | Observed/warned: ${group.counts.observed_warned} | Blocked: ${group.counts.blocked} | Allowed on trusted site: ${group.counts.trusted_allowed}`;
+    rowMain.appendChild(meta);
+
+    summary.appendChild(rowMain);
+
+    const chevron = document.createElement("span");
+    chevron.className = "vendor-vault-row-chevron";
+    chevron.setAttribute("aria-hidden", "true");
+    chevron.textContent = ">";
+    summary.appendChild(chevron);
+
+    const panel = document.createElement("div");
+    panel.className = "vendor-vault-entry-panel";
+
+    const summaryLine = document.createElement("p");
+    summaryLine.className = "vendor-vault-expanded-summary";
+    summaryLine.textContent = narrative.summaryLine;
+    panel.appendChild(summaryLine);
+
+    const layout = document.createElement("div");
+    layout.className = "vendor-vault-expanded-layout";
+
+    const left = document.createElement("div");
+    left.className = "vendor-vault-expanded-main";
+
+    const meaningHeading = document.createElement("h4");
+    meaningHeading.className = "vendor-vault-expanded-heading";
+    meaningHeading.textContent = "What this means";
+    left.appendChild(meaningHeading);
+
+    const meaningBlock = document.createElement("div");
+    meaningBlock.className = "vendor-vault-plain-block";
+
+    const meaningLine = document.createElement("p");
+    meaningLine.className = "vendor-vault-plain-line";
+    meaningLine.textContent = narrative.meaningLine;
+    meaningBlock.appendChild(meaningLine);
+    left.appendChild(meaningBlock);
+
+    const limitationHeading = document.createElement("h4");
+    limitationHeading.className = "vendor-vault-expanded-heading";
+    limitationHeading.textContent = "Important limitation";
+    left.appendChild(limitationHeading);
+
+    const limitationText = document.createElement("p");
+    limitationText.className = "vendor-vault-plain-line vendor-vault-plain-note";
+    limitationText.textContent = group.limitation;
+    left.appendChild(limitationText);
+
+    const actionsHeading = document.createElement("h4");
+    actionsHeading.className = "vendor-vault-expanded-heading";
+    actionsHeading.textContent = "What you can do";
+    left.appendChild(actionsHeading);
+
+    const actionWrap = document.createElement("div");
+    actionWrap.className = "vendor-vault-guided-actions";
+    renderGuidedActions(actionWrap, group.actions);
+    left.appendChild(actionWrap);
+
+    layout.appendChild(left);
+
+    const right = document.createElement("aside");
+    right.className = "vendor-vault-evidence-compact";
+
+    const evidenceHeading = document.createElement("h4");
+    evidenceHeading.className = "vendor-vault-evidence-heading";
+    evidenceHeading.textContent = "What we observed";
+    right.appendChild(evidenceHeading);
+
+    const evidenceList = document.createElement("dl");
+    evidenceList.className = "vendor-vault-evidence-kv";
+    appendEvidenceField(evidenceList, "Observed", String(group.counts.observed_warned));
+    appendEvidenceField(evidenceList, "Blocked", String(group.counts.blocked));
+    appendEvidenceField(evidenceList, "Allowed on trusted site", String(group.counts.trusted_allowed));
+    appendEvidenceField(evidenceList, "Count", String(group.count));
+    appendEvidenceField(evidenceList, "Last seen", group.lastSeen);
+    right.appendChild(evidenceList);
+
+    layout.appendChild(right);
+    panel.appendChild(layout);
+
+    card.appendChild(summary);
+    card.appendChild(panel);
+    list.appendChild(card);
+  }
+}
+
+function clearVendorApiEvidenceSubsection(sectionKey) {
+  const section = sectionKey === API_EVIDENCE_SECTION_VENDOR
+    ? qs("vendorApiEvidenceVendorSection")
+    : qs("vendorApiEvidenceContextualSection");
+  const list = sectionKey === API_EVIDENCE_SECTION_VENDOR
+    ? qs("vendorApiEvidenceVendorList")
+    : qs("vendorApiEvidenceContextualList");
+  const empty = sectionKey === API_EVIDENCE_SECTION_VENDOR
+    ? qs("vendorApiEvidenceVendorEmpty")
+    : qs("vendorApiEvidenceContextualEmpty");
+
+  if (list) {
+    list.innerHTML = "";
+    list.classList.add("hidden");
+  }
+  if (empty) {
+    empty.textContent = "";
+    empty.classList.add("hidden");
+  }
+  if (section) section.classList.add("hidden");
+}
+
+function renderVendorApiEvidenceSubsection(sectionKey, groups, opts = {}) {
+  const section = sectionKey === API_EVIDENCE_SECTION_VENDOR
+    ? qs("vendorApiEvidenceVendorSection")
+    : qs("vendorApiEvidenceContextualSection");
+  const list = sectionKey === API_EVIDENCE_SECTION_VENDOR
+    ? qs("vendorApiEvidenceVendorList")
+    : qs("vendorApiEvidenceContextualList");
+  const empty = sectionKey === API_EVIDENCE_SECTION_VENDOR
+    ? qs("vendorApiEvidenceVendorEmpty")
+    : qs("vendorApiEvidenceContextualEmpty");
+  if (!section || !list || !empty) return;
+
+  const safeGroups = Array.isArray(groups) ? groups : [];
+  section.classList.remove("hidden");
+  renderVendorApiEvidenceGroups(list, safeGroups);
+  list.classList.toggle("hidden", safeGroups.length === 0);
+  empty.classList.toggle("hidden", safeGroups.length !== 0);
+  empty.textContent = safeGroups.length === 0 ? String(opts.emptyText || "") : "";
+}
+
+function syncContextualApiEvidenceCopy() {
+  const intro = qs("vendorApiEvidenceContextualIntro");
+  const note = qs("vendorApiEvidenceContextualNote");
+  const hasSiteScope = Boolean(getScopedSiteValue());
+  if (!intro || !note) return hasSiteScope;
+
+  if (hasSiteScope) {
+    intro.textContent = "Other Browser API activity observed on this site (not directly attributable to this vendor)";
+    note.textContent = "These signals are not directly attributable to this vendor, but may still contribute to tracking or profiling on this page.";
+  } else {
+    intro.textContent = "Other Browser API activity is shown only in This site view because it is not directly attributable to this vendor.";
+    note.textContent = "These signals are page-level context rather than vendor responsibility.";
+  }
+
+  return hasSiteScope;
+}
+
+function renderVendorApiEvidenceSections(vendorGroups, contextualGroups) {
+  const hasSiteScope = syncContextualApiEvidenceCopy();
+  renderVendorApiEvidenceSubsection(API_EVIDENCE_SECTION_VENDOR, vendorGroups, {
+    emptyText: "No vendor-attributed Browser API activity observed for this vendor.",
+  });
+  renderVendorApiEvidenceSubsection(API_EVIDENCE_SECTION_CONTEXTUAL, contextualGroups, {
+    emptyText: hasSiteScope
+      ? "No other Browser API activity observed on this site."
+      : "Switch to This site to review page-level Browser API activity that is not directly attributable to this vendor.",
+  });
+}
+
+function setVendorApiEvidenceState(state) {
+  const loading = qs("vendorApiEvidenceLoadingState");
+  const error = qs("vendorApiEvidenceErrorState");
+  const empty = qs("vendorApiEvidenceEmptyState");
+  const success = qs("vendorApiEvidenceSuccessState");
+  if (!loading || !error || !empty || !success) return;
+
+  loading.classList.toggle("hidden", state !== "loading");
+  error.classList.toggle("hidden", state !== "error");
+  empty.classList.toggle("hidden", state !== "empty");
+  success.classList.toggle("hidden", state !== "success");
+}
+
+function clearVendorApiEvidenceContent() {
+  clearVendorApiEvidenceSubsection(API_EVIDENCE_SECTION_VENDOR);
+  clearVendorApiEvidenceSubsection(API_EVIDENCE_SECTION_CONTEXTUAL);
+}
+
+function setVendorApiEvidenceLoadingView() {
+  setVendorApiEvidenceState("loading");
+  clearVendorApiEvidenceContent();
+}
+
+async function loadVendorApiEvidence() {
+  const requestId = ++latestApiEvidenceRequestId;
+  setVendorApiEvidenceLoadingView();
+
+  if (!hasValidVendorScopeForApiEvidence()) {
+    setVendorApiEvidenceState("empty");
+    return;
+  }
+
+  try {
+    const contextualUrl = buildContextualApiEvidenceUrl();
+    const [vendorPayload, contextualPayload] = await Promise.all([
+      fetchJsonOrThrow(buildVendorApiEvidenceUrl(), "api_evidence"),
+      contextualUrl ? fetchJsonOrThrow(contextualUrl, "api_evidence_contextual") : Promise.resolve([]),
+    ]);
+    if (requestId !== latestApiEvidenceRequestId) return;
+
+    const scopedSite = getScopedSiteValue();
+    const vendorGroups = filterApiEvidenceGroupsBySection(
+      buildVendorApiEvidenceGroups(vendorPayload, scopedSite, vaultScopeState.vendor),
+      API_EVIDENCE_SECTION_VENDOR
+    );
+    const contextualGroups = filterApiEvidenceGroupsBySection(
+      buildVendorApiEvidenceGroups(contextualPayload, scopedSite, vaultScopeState.vendor),
+      API_EVIDENCE_SECTION_CONTEXTUAL
+    );
+
+    if (!vendorGroups.length && !contextualGroups.length) {
+      setVendorApiEvidenceState("empty");
+      return;
+    }
+
+    renderVendorApiEvidenceSections(vendorGroups, contextualGroups);
+    setVendorApiEvidenceState("success");
+  } catch (err) {
+    if (requestId !== latestApiEvidenceRequestId) return;
+    console.error("Vendor Vault API evidence fetch failed:", err);
+    setVendorApiEvidenceState("error");
+  }
+}
+
 function setInventoryState(state) {
   const loading = qs("exposureLoadingState");
   const error = qs("exposureErrorState");
@@ -1657,6 +2188,27 @@ function buildExposureInventoryUrl() {
     return `/api/exposure-inventory?vendor=${encodeURIComponent(vendor)}`;
   }
   return `/api/exposure-inventory?site=${encodeURIComponent(site)}&vendor=${encodeURIComponent(vendor)}`;
+}
+
+function buildVendorApiEvidenceUrl() {
+  const vendor = String(vaultScopeState.vendor || "").trim();
+  const site = String(vaultScopeState.site || "").trim();
+  const params = new URLSearchParams();
+  params.set("vendor", vendor);
+  params.set("limit", "20000");
+  if (vaultScopeState.scope !== SCOPE_ALL && site) {
+    params.set("site", site);
+  }
+  return `/api/events?${params.toString()}`;
+}
+
+function buildContextualApiEvidenceUrl() {
+  const site = getScopedSiteValue();
+  if (!site) return "";
+  const params = new URLSearchParams();
+  params.set("site", site);
+  params.set("limit", "20000");
+  return `/api/events?${params.toString()}`;
 }
 
 async function fetchJsonOrThrow(url, label) {
@@ -1959,6 +2511,14 @@ function bootVendorVault() {
     retryButton.addEventListener("click", () => {
       loadExposureInventory();
       loadVendorVaultSummary();
+      loadVendorApiEvidence();
+    });
+  }
+
+  const apiEvidenceRetryButton = qs("vendorApiEvidenceRetryButton");
+  if (apiEvidenceRetryButton) {
+    apiEvidenceRetryButton.addEventListener("click", () => {
+      loadVendorApiEvidence();
     });
   }
 
@@ -1991,6 +2551,7 @@ function bootVendorVault() {
 
   loadExposureInventory();
   loadVendorVaultSummary();
+  loadVendorApiEvidence();
 }
 
 window.addEventListener("load", bootVendorVault);

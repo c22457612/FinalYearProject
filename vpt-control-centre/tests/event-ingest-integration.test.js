@@ -176,6 +176,87 @@ test("extension-like event POST persists to DB and is retrievable via events API
   });
 });
 
+test("events API supports vendor filtering for vendor-attributed API activity", async () => {
+  await withTempApiServer(async ({ baseUrl }) => {
+    const site = "vendor-api.example.com";
+    const ts = Date.UTC(2026, 2, 19, 9, 0, 0);
+    const events = [
+      {
+        id: "vendor-api-google-1",
+        ts,
+        source: "test-extension",
+        site,
+        kind: "api.canvas.activity",
+        mode: "strict",
+        data: {
+          surface: "api",
+          surfaceDetail: "canvas",
+          domain: "www.google-analytics.com",
+          url: "https://www.google-analytics.com/g/collect?v=2",
+          operation: "getImageData",
+          count: 2,
+          gateOutcome: "observed",
+        },
+      },
+      {
+        id: "vendor-api-meta-1",
+        ts: ts + 1_000,
+        source: "test-extension",
+        site,
+        kind: "api.geolocation.activity",
+        mode: "strict",
+        data: {
+          surface: "api",
+          surfaceDetail: "geolocation",
+          domain: "connect.facebook.net",
+          url: "https://connect.facebook.net/en_US/sdk.js",
+          method: "getCurrentPosition",
+          gateOutcome: "blocked",
+        },
+      },
+      {
+        id: "vendor-api-unknown-1",
+        ts: ts + 2_000,
+        source: "test-extension",
+        site,
+        kind: "api.clipboard.activity",
+        mode: "strict",
+        data: {
+          surface: "api",
+          surfaceDetail: "clipboard",
+          method: "readText",
+          accessType: "read",
+          gateOutcome: "observed",
+        },
+      },
+    ];
+
+    const postResponse = await fetch(`${baseUrl}/api/events`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(events),
+    });
+    const postBodyText = await postResponse.text();
+    assert.equal(postResponse.status, 202, `Expected HTTP 202 from POST /api/events: ${postBodyText}`);
+
+    const googleEvents = await getJson(
+      `${baseUrl}/api/events?site=${encodeURIComponent(site)}&vendor=${encodeURIComponent("google")}&limit=50`
+    );
+
+    assert.equal(googleEvents.length, 1);
+    assert.equal(googleEvents[0]?.id, "vendor-api-google-1");
+    assert.equal(googleEvents[0]?.enrichment?.surface, "api");
+    assert.equal(googleEvents[0]?.enrichment?.patternId, "api.canvas.repeated_readback");
+
+    const metaEvents = await getJson(
+      `${baseUrl}/api/events?vendor=${encodeURIComponent("meta")}&limit=50`
+    );
+    assert.equal(metaEvents.length, 1);
+    assert.equal(metaEvents[0]?.id, "vendor-api-meta-1");
+    assert.equal(metaEvents[0]?.enrichment?.surfaceDetail, "geolocation");
+  });
+});
+
 test("network/cookies paths remain intact when api canvas+clipboard+webrtc events are ingested", async () => {
   await withTempApiServer(async ({ baseUrl }) => {
     const site = "api-mixed.example.com";

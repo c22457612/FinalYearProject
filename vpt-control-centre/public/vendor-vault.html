@@ -159,6 +159,63 @@
             </div>
           </section>
 
+          <section class="panel vendor-vault-api-panel">
+            <div class="panel-header">
+              <div>
+                <div class="panel-title">Browser API activity related to this vendor</div>
+                <div class="vendor-vault-disclaimer">
+                  This section separates vendor-attributed Browser API activity from other page-level Browser API signals that may still contribute to privacy risk.
+                </div>
+              </div>
+            </div>
+
+            <div id="vendorApiEvidenceLoadingState" class="vendor-vault-state">
+              Loading relevant Browser API activity...
+            </div>
+
+            <div id="vendorApiEvidenceErrorState" class="vendor-vault-state hidden" role="alert">
+              <div>Could not load relevant Browser API activity for this vendor.</div>
+              <div>
+                <button id="vendorApiEvidenceRetryButton" type="button" class="viz-nav">Retry</button>
+              </div>
+            </div>
+
+            <div id="vendorApiEvidenceEmptyState" class="vendor-vault-state hidden">
+              No relevant Browser API activity observed for this vendor.
+            </div>
+
+            <div id="vendorApiEvidenceSuccessState" class="hidden">
+              <div class="vendor-vault-api-box">
+                <section id="vendorApiEvidenceVendorSection" class="vendor-vault-api-subsection hidden" aria-labelledby="vendorApiEvidenceVendorHeading">
+                  <div class="vendor-vault-api-subsection-head">
+                    <div class="vendor-vault-api-subsection-kicker">This vendor did X</div>
+                    <h3 id="vendorApiEvidenceVendorHeading" class="vendor-vault-api-subsection-title">Vendor-attributed Browser API activity</h3>
+                    <p class="vendor-vault-api-subsection-copy">
+                      Only vendor-attributed WebRTC activity is shown here.
+                    </p>
+                  </div>
+                  <div id="vendorApiEvidenceVendorEmpty" class="vendor-vault-panel-empty hidden"></div>
+                  <div id="vendorApiEvidenceVendorList" class="vendor-vault-inventory-list hidden" role="list"></div>
+                </section>
+
+                <section id="vendorApiEvidenceContextualSection" class="vendor-vault-api-subsection hidden" aria-labelledby="vendorApiEvidenceContextualHeading">
+                  <div class="vendor-vault-api-subsection-head">
+                    <div class="vendor-vault-api-subsection-kicker">This site also did Y</div>
+                    <h3 id="vendorApiEvidenceContextualHeading" class="vendor-vault-api-subsection-title">Other API activity on this site</h3>
+                    <p id="vendorApiEvidenceContextualIntro" class="vendor-vault-api-subsection-copy">
+                      Other Browser API activity observed on this site (not directly attributable to this vendor)
+                    </p>
+                    <p id="vendorApiEvidenceContextualNote" class="vendor-vault-api-subsection-note">
+                      These signals are not directly attributable to this vendor, but may still contribute to tracking or profiling on this page.
+                    </p>
+                  </div>
+                  <div id="vendorApiEvidenceContextualEmpty" class="vendor-vault-panel-empty hidden"></div>
+                  <div id="vendorApiEvidenceContextualList" class="vendor-vault-inventory-list hidden" role="list"></div>
+                </section>
+              </div>
+            </div>
+          </section>
+
           <div class="summary vendor-vault-secondary-panels">
             <div class="summary-card">
               <h2>Activity summary</h2>
