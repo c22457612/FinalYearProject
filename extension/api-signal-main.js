@@ -3,6 +3,7 @@
   window.__vptApiSignalMainInstalled = true;
 
   const gateShared = globalThis.__VPTApiGateShared || null;
+  const canvasPatchShared = globalThis.__VPTCanvasPatchShared || null;
   const SOURCE_TAG = "vpt_api_signal";
   const GATE_SOURCE_TAG = gateShared?.CONFIG_SOURCE_TAG || "vpt_api_gate";
   const BURST_WINDOW_MS = 1200;
@@ -10,9 +11,12 @@
   const PATCHED_FLAG = "__vpt_api_patched";
   const MAX_HOSTNAMES = 8;
   const WARN_THROTTLE_MS = 5000;
-  const PATCH_RETRY_DELAYS_MS = [50, 150, 400, 1000, 2000];
+  const PATCH_RETRY_DELAYS_MS = [25, 75, 150, 400, 1000, 2000, 5000, 10000, 20000];
   const MAX_CLIPBOARD_ITEMS = 32;
   const MAX_CLIPBOARD_MIME_TYPES = 16;
+  const canvasPatchController = canvasPatchShared?.createMethodPatchController
+    ? canvasPatchShared.createMethodPatchController({ patchedFlag: PATCHED_FLAG })
+    : null;
 
   const burstMap = new Map(); // key -> { kind, payload, count, firstTs, lastTs, timerId }
   const canvasContextByElement = new WeakMap(); // canvas -> context type
@@ -846,8 +850,15 @@
     proto[methodName] = wrapped;
   }
 
+  function patchCanvasMethod(proto, methodName, wrapFn) {
+    if (canvasPatchController?.patchMethod(proto, methodName, wrapFn)) {
+      return;
+    }
+    patchMethod(proto, methodName, wrapFn);
+  }
+
   function patchCanvasApis() {
-    patchMethod(window.HTMLCanvasElement && window.HTMLCanvasElement.prototype, "getContext", function wrapGetContext(original, args) {
+    patchCanvasMethod(window.HTMLCanvasElement && window.HTMLCanvasElement.prototype, "getContext", function wrapGetContext(original, args) {
       const result = original.apply(this, args);
       try {
         const type = normalizeContextType(args[0]);
@@ -860,7 +871,7 @@
       return result;
     });
 
-    patchMethod(window.CanvasRenderingContext2D && window.CanvasRenderingContext2D.prototype, "getImageData", function wrapGetImageData(original, args) {
+    patchCanvasMethod(window.CanvasRenderingContext2D && window.CanvasRenderingContext2D.prototype, "getImageData", function wrapGetImageData(original, args) {
       const width = toPositiveInt(args[2], toPositiveInt(this?.canvas?.width));
       const height = toPositiveInt(args[3], toPositiveInt(this?.canvas?.height));
       const decision = getCanvasGateDecision();
@@ -883,7 +894,7 @@
       return result;
     });
 
-    patchMethod(window.HTMLCanvasElement && window.HTMLCanvasElement.prototype, "toDataURL", function wrapToDataUrl(original, args) {
+    patchCanvasMethod(window.HTMLCanvasElement && window.HTMLCanvasElement.prototype, "toDataURL", function wrapToDataUrl(original, args) {
       const contextType = normalizeContextType(canvasContextByElement.get(this));
       const width = toPositiveInt(this?.width);
       const height = toPositiveInt(this?.height);
@@ -907,7 +918,7 @@
       return result;
     });
 
-    patchMethod(window.HTMLCanvasElement && window.HTMLCanvasElement.prototype, "toBlob", function wrapToBlob(original, args) {
+    patchCanvasMethod(window.HTMLCanvasElement && window.HTMLCanvasElement.prototype, "toBlob", function wrapToBlob(original, args) {
       const contextType = normalizeContextType(canvasContextByElement.get(this));
       const width = toPositiveInt(this?.width);
       const height = toPositiveInt(this?.height);
@@ -965,11 +976,11 @@
       return result;
     };
 
-    patchMethod(window.WebGLRenderingContext && window.WebGLRenderingContext.prototype, "readPixels", function wrapWebGlReadPixels(original, args) {
+    patchCanvasMethod(window.WebGLRenderingContext && window.WebGLRenderingContext.prototype, "readPixels", function wrapWebGlReadPixels(original, args) {
       return wrapReadPixels.call(this, original, args, "webgl");
     });
 
-    patchMethod(window.WebGL2RenderingContext && window.WebGL2RenderingContext.prototype, "readPixels", function wrapWebGl2ReadPixels(original, args) {
+    patchCanvasMethod(window.WebGL2RenderingContext && window.WebGL2RenderingContext.prototype, "readPixels", function wrapWebGl2ReadPixels(original, args) {
       return wrapReadPixels.call(this, original, args, "webgl2");
     });
   }

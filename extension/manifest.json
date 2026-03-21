@@ -30,7 +30,7 @@
     },
     {
       "matches": ["<all_urls>"],
-      "js": ["api-gate-shared.js", "api-signal-main.js"],
+      "js": ["api-signal-canvas-bootstrap.js", "api-gate-shared.js", "api-signal-canvas-patch.js", "api-signal-main.js"],
       "run_at": "document_start",
       "world": "MAIN",
       "all_frames": true,
