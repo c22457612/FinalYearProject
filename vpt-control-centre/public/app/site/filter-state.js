@@ -89,9 +89,12 @@ export function isApiSurfaceEvent(ev) {
 
 export function getVisualCategoryBucket(ev) {
   const mitigation = getMitigationStatusBucket(ev);
+  if (isApiSurfaceEvent(ev)) {
+    if (mitigation === "blocked") return "blocked_api";
+    return "observed_api";
+  }
   if (mitigation === "blocked") return "blocked";
   if (mitigation === "observed_only") return "observed";
-  if (isApiSurfaceEvent(ev)) return "api";
   return "other";
 }
 
@@ -100,6 +103,8 @@ export function summarizeVisualCategoryCounts(events) {
     total: 0,
     blocked: 0,
     observed: 0,
+    blockedApi: 0,
+    observedApi: 0,
     api: 0,
     other: 0,
   };
@@ -111,9 +116,11 @@ export function summarizeVisualCategoryCounts(events) {
     const bucket = getVisualCategoryBucket(ev);
     if (bucket === "blocked") counts.blocked += 1;
     else if (bucket === "observed") counts.observed += 1;
-    else if (bucket === "api") counts.api += 1;
+    else if (bucket === "blocked_api") counts.blockedApi += 1;
+    else if (bucket === "observed_api") counts.observedApi += 1;
     else counts.other += 1;
   }
+  counts.api = counts.blockedApi + counts.observedApi;
 
   return counts;
 }

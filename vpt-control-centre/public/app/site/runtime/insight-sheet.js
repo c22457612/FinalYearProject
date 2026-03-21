@@ -126,7 +126,8 @@ export function createInsightSheet(deps) {
       `${counts.blocked || 0} blocked`,
       `${counts.observed || 0} observed`,
     ];
-    if (Number(counts.api || 0) > 0) parts.push(`${counts.api} API`);
+    if (Number(counts.blockedApi || 0) > 0) parts.push(`${counts.blockedApi} blocked API`);
+    if (Number(counts.observedApi || 0) > 0) parts.push(`${counts.observedApi} observed API`);
     if (Number(counts.other || 0) > 0) parts.push(`${counts.other} other`);
     return parts;
   }
@@ -315,6 +316,8 @@ export function createInsightSheet(deps) {
         total,
         blocked: counts.blocked,
         observed: counts.observed,
+        blockedApi: counts.blockedApi,
+        observedApi: counts.observedApi,
         api: counts.api,
         other: counts.other,
         firstTs: evidence[0]?.ts || null,

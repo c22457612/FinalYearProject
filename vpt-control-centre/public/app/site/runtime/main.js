@@ -837,7 +837,8 @@ function renderTopBucketSummary(viewId, meta = null) {
       `${counts.blocked || 0} blocked`,
       `${counts.observed || 0} observed`,
     ];
-    if (Number(counts.api || 0) > 0) parts.push(`${counts.api} API`);
+    if (Number(counts.blockedApi || 0) > 0) parts.push(`${counts.blockedApi} blocked API`);
+    if (Number(counts.observedApi || 0) > 0) parts.push(`${counts.observedApi} observed API`);
     if (Number(counts.other || 0) > 0) parts.push(`${counts.other} other`);
     return parts.join(", ");
   };
@@ -1567,7 +1568,7 @@ function ensureChart() {
         fromTs: startTs,
         toTs: endTs,
         title: `Selected window ${new Date(startTs).toLocaleTimeString()}-${new Date(endTs).toLocaleTimeString()}`,
-        summaryHtml: `<div class="muted">${selected.length} events - blocked ${counts.blocked} - observed ${counts.observed}${counts.api ? ` - API ${counts.api}` : ""}${counts.other ? ` - other ${counts.other}` : ""}</div>`,
+        summaryHtml: `<div class="muted">${selected.length} events - ${formatCounts(counts)}</div>`,
         events: selected,
         scrollMode: "never",
       });

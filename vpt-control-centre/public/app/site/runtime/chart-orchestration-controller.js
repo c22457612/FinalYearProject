@@ -68,6 +68,8 @@ export function createChartOrchestrationController(deps) {
       seen: counts.total,
       blocked: counts.blocked,
       observed: counts.observed,
+      blockedApi: counts.blockedApi,
+      observedApi: counts.observedApi,
       api: counts.api,
       other: counts.other,
     };
@@ -78,7 +80,8 @@ export function createChartOrchestrationController(deps) {
       `${counts.blocked || 0} blocked`,
       `${counts.observed || 0} observed`,
     ];
-    if (Number(counts.api || 0) > 0) parts.push(`${counts.api} API`);
+    if (Number(counts.blockedApi || 0) > 0) parts.push(`${counts.blockedApi} blocked API`);
+    if (Number(counts.observedApi || 0) > 0) parts.push(`${counts.observedApi} observed API`);
     if (Number(counts.other || 0) > 0) parts.push(`${counts.other} other`);
     return `<div class="muted">${lead} (${parts.join("; ")}).</div>`;
   }
@@ -238,7 +241,7 @@ export function createChartOrchestrationController(deps) {
         type: "vendorBlockRate",
         value: label || "",
         title: label || "Vendor",
-        summaryHtml: `<div class="muted">Block rate ${rate}% (${counts.blocked || 0} blocked of ${counts.seen || 0} total${counts.api ? `; ${counts.api} API` : ""}).</div>`,
+        summaryHtml: buildCategorySummaryHtml(counts, `Block rate ${rate}% (${counts.blocked || 0} blocked of ${counts.seen || 0} total)`),
         events: evs,
         chartPoint,
         scrollMode: wasAllVendors ? "never" : "force",
@@ -286,11 +289,13 @@ export function createChartOrchestrationController(deps) {
         seen: counts.seen,
         blocked: counts.blocked,
         observed: counts.observed,
+        blockedApi: counts.blockedApi,
+        observedApi: counts.observedApi,
         api: counts.api,
         other: counts.other,
         bucketExample,
         title,
-        summaryHtml: `<div class="muted">Selected bucket: ${title} (${counts.seen} total; ${counts.blocked} blocked; ${counts.observed} observed${counts.api ? `; ${counts.api} API` : ""}${counts.other ? `; ${counts.other} other` : ""}).</div>`,
+        summaryHtml: buildCategorySummaryHtml(counts, `Selected bucket: ${title} (${counts.seen} total)`),
         events: evs,
         chartPoint,
         scrollMode: "force",

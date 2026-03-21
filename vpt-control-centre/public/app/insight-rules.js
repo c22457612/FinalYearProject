@@ -54,9 +54,12 @@
 
   function getVisualCategoryBucket(ev) {
     const mitigation = getMitigationBucket(ev);
+    if (isApiSignalEvent(ev)) {
+      if (mitigation === "blocked") return "blocked_api";
+      return "observed_api";
+    }
     if (mitigation === "blocked") return "blocked";
     if (mitigation === "observed_only") return "observed";
-    if (isApiSignalEvent(ev)) return "api";
     return "other";
   }
 
@@ -65,7 +68,8 @@
       `${summary.blocked} blocked`,
       `${summary.observed} observed`,
     ];
-    if (summary.api > 0) parts.push(`${summary.api} API`);
+    if (summary.blockedApi > 0) parts.push(`${summary.blockedApi} blocked API`);
+    if (summary.observedApi > 0) parts.push(`${summary.observedApi} observed API`);
     if (summary.other > 0) parts.push(`${summary.other} other`);
     return parts;
   }
@@ -78,13 +82,17 @@
 
     let blocked = 0;
     let observed = 0;
+    let blockedApi = 0;
+    let observedApi = 0;
     let api = 0;
     for (const ev of list) {
       const bucket = getVisualCategoryBucket(ev);
       if (bucket === "blocked") blocked += 1;
       else if (bucket === "observed") observed += 1;
-      else if (bucket === "api") api += 1;
+      else if (bucket === "blocked_api") blockedApi += 1;
+      else if (bucket === "observed_api") observedApi += 1;
     }
+    api = blockedApi + observedApi;
 
     const total = list.length;
     const other = Math.max(0, total - blocked - observed - api);
@@ -93,7 +101,7 @@
       .slice(0, 3)
       .map(([kind, count]) => ({ kind, count }));
 
-    return { total, blocked, observed, api, other, firstTs, lastTs, dominantKinds: kinds };
+    return { total, blocked, observed, blockedApi, observedApi, api, other, firstTs, lastTs, dominantKinds: kinds };
   }
 
   function estimateConfidence(events) {
@@ -202,7 +210,7 @@
       why.push(`Data endpoint traffic exists (${stats.xhrFetch} XHR/fetch requests).`);
     }
     if (api > 0) {
-      why.push("Includes API/other activity beyond standard blocked/observed network events.");
+      why.push("Includes Browser API activity beyond the general blocked and observed event buckets.");
     }
 
     return {

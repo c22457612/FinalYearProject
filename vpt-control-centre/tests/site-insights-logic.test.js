@@ -518,7 +518,7 @@ test("site filter logic keeps API events compatible with surface and mitigation 
   };
 
   assert.equal(getKindBucket(apiEvent), "blocked");
-  assert.equal(getVisualCategoryBucket(apiEvent), "blocked");
+  assert.equal(getVisualCategoryBucket(apiEvent), "blocked_api");
   assert.equal(getSurfaceBucket(apiEvent), "api");
   assert.equal(getMitigationStatusBucket(apiEvent), "blocked");
   assert.equal(getPrivacyStatusBucket(apiEvent), "policy_blocked");
@@ -531,7 +531,7 @@ test("site filter logic keeps API events compatible with surface and mitigation 
       surface: "api",
       mitigationStatus: "allowed",
     },
-  }), "api");
+  }), "observed_api");
 
   assert.equal(matchesFilters(apiEvent, {
     kind: { blocked: true, observed: false, other: false },
@@ -581,9 +581,11 @@ test("insight evidence summary counts API events by mitigation semantics", () =>
   ]);
 
   assert.equal(summary.total, 3);
-  assert.equal(summary.blocked, 1);
-  assert.equal(summary.observed, 1);
-  assert.equal(summary.api, 1);
+  assert.equal(summary.blocked, 0);
+  assert.equal(summary.observed, 0);
+  assert.equal(summary.blockedApi, 1);
+  assert.equal(summary.observedApi, 2);
+  assert.equal(summary.api, 3);
   assert.equal(summary.other, 0);
 });
 
@@ -627,7 +629,7 @@ test("insight summary text calls out browser API activity for API-only selection
     },
   });
 
-  assert.match(insight.summary, /0 blocked, 0 observed, 2 API/i);
+  assert.match(insight.summary, /0 blocked, 0 observed, 2 observed API/i);
   assert.match(insight.summary, /Browser API activity/i);
 });
 
@@ -660,9 +662,12 @@ test("timeline chart counts API blocked and observed buckets from semantic statu
     },
     getVisualCategoryBucket: (ev) => {
       const mitigation = String(ev?.enrichment?.mitigationStatus || "");
+      if (String(ev?.enrichment?.surface || "") === "api") {
+        if (mitigation === "blocked") return "blocked_api";
+        return "observed_api";
+      }
       if (mitigation === "blocked") return "blocked";
       if (mitigation === "observed_only") return "observed";
-      if (String(ev?.enrichment?.surface || "") === "api") return "api";
       return "other";
     },
     getVendorMetricValue: () => 0,
@@ -681,9 +686,10 @@ test("timeline chart counts API blocked and observed buckets from semantic statu
   ], { viewMode: "power", densityAware: false });
 
   const seriesByName = new Map((built.option.series || []).map((series) => [series.name, series.data]));
-  assert.equal(seriesByName.get("Blocked")?.[0], 1);
-  assert.equal(seriesByName.get("Observed")?.[0], 1);
-  assert.equal(seriesByName.get("API")?.[0], 1);
+  assert.equal(seriesByName.get("Blocked")?.[0], 0);
+  assert.equal(seriesByName.get("Observed")?.[0], 0);
+  assert.equal(seriesByName.get("Blocked API")?.[0], 1);
+  assert.equal(seriesByName.get("Observed API")?.[0], 2);
   assert.equal(seriesByName.get("Other")?.[0], 0);
 });
 
@@ -709,7 +715,7 @@ test("timeline keeps API as a first-class series in easy low-signal scopes", () 
     getRangeWindow: () => ({ from: 1_000, to: 10_000 }),
     buildVendorRollup: () => [],
     getKindBucket: () => "other",
-    getVisualCategoryBucket: (ev) => String(ev?.enrichment?.surface || "") === "api" ? "api" : "other",
+    getVisualCategoryBucket: (ev) => String(ev?.enrichment?.surface || "") === "api" ? "observed_api" : "other",
     getVendorMetricValue: () => 0,
     getResourceBucket: () => "other",
     getPartyBucket: () => "first_or_unknown",
@@ -726,5 +732,5 @@ test("timeline keeps API as a first-class series in easy low-signal scopes", () 
 
   const seriesNames = (built.option.series || []).map((series) => series.name);
   assert.equal(seriesNames.includes("Events"), false);
-  assert.equal(seriesNames.includes("API"), true);
+  assert.equal(seriesNames.includes("Observed API"), true);
 });

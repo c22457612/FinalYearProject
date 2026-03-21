@@ -3,7 +3,7 @@ const CHART_GUIDE_BY_VIEW_ID = Object.freeze({
     what: "Which vendors are most active in this scope.",
     how: [
       "Each bar is one vendor; taller bars mean more events.",
-      "Blocked, observed, and other segments show outcome mix.",
+      "Blocked, observed, blocked API, observed API, and other segments show outcome mix.",
       "Use vendor focus chips to inspect one vendor.",
     ],
     bestFor: [
@@ -59,7 +59,7 @@ const CHART_GUIDE_BY_VIEW_ID = Object.freeze({
     what: "Where the selected vendor connects most (domains and endpoint buckets).",
     how: [
       "Each row is a domain-endpoint bucket.",
-      "Stacked segments show blocked, observed, API, and other counts.",
+      "Stacked segments show blocked, observed, blocked API, observed API, and other counts.",
       "Click a row to scope evidence to that bucket.",
     ],
     bestFor: [
@@ -101,7 +101,7 @@ const CHART_GUIDE_BY_VIEW_ID = Object.freeze({
     what: "When total activity happened across the selected range.",
     how: [
       "X-axis is time; Y-axis is event count.",
-      "Blocked, observed, and other show per-bin mix.",
+      "Blocked, observed, blocked API, observed API, and other show per-bin mix.",
       "Brush to lock a period and inspect its evidence.",
     ],
     bestFor: [
