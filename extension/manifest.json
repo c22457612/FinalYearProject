@@ -8,6 +8,7 @@
     "storage",
     "declarativeNetRequest",
     "declarativeNetRequestFeedback",
+    "notifications",
     "webNavigation",
     "tabs",
     "webRequest",

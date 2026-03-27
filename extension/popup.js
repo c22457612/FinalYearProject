@@ -7,6 +7,7 @@ const captureStateLabel = document.getElementById("captureStateLabel");
 const captureEnabledChk = document.getElementById("captureEnabled");
 const promptOnNewSitesChk = document.getElementById("promptOnNewSites");
 const trustedSitesEnabledChk = document.getElementById("trustedSitesEnabled");
+const apiNotificationsEnabledChk = document.getElementById("apiNotificationsEnabled");
 const cookieSnapshotBtn = document.getElementById("cookieSnapshotBtn");
 const clearCookiesBtn = document.getElementById("clearCookiesBtn");
 const currentSiteTrustBtn = document.getElementById("currentSiteTrustBtn");
@@ -42,6 +43,7 @@ let currentSiteTrustState = {
   site: "",
   isTrusted: false,
   enabled: true,
+  syncPending: false,
 };
 let captureEnabled = true;
 
@@ -89,6 +91,7 @@ function setCurrentSiteTrustUi(state = {}) {
   const busy = !!state.busy;
   const isTrusted = !!state.isTrusted;
   const enabled = state.enabled !== false;
+  const syncPending = !!state.syncPending;
 
   if (loading) {
     currentSiteTrustSite.textContent = "Checking current site...";
@@ -114,9 +117,11 @@ function setCurrentSiteTrustUi(state = {}) {
   }
 
   currentSiteTrustSite.textContent = site;
-  currentSiteTrustStatus.textContent = enabled
-    ? "Trusted-site allow rules are active."
-    : "Trusted-site allow rules are currently paused.";
+  currentSiteTrustStatus.textContent = syncPending
+    ? "Saved locally. Control Centre sync is pending."
+    : enabled
+      ? "Trusted-site allow rules are active."
+      : "Trusted-site allow rules are currently paused.";
   currentSiteTrustHeadline.textContent = isTrusted
     ? `${site} is trusted`
     : `${site} is not trusted`;
@@ -163,6 +168,7 @@ async function refreshCurrentSiteTrust() {
       site: res.site || "",
       isTrusted: !!res.isTrusted,
       enabled: res.enabled !== false,
+      syncPending: !!res.syncPending,
     };
     setCurrentSiteTrustUi(currentSiteTrustState);
   } catch (error) {
@@ -224,12 +230,14 @@ async function load() {
     stats,
     promptOnNewSites,
     trustedSitesEnabled,
+    apiNotificationsEnabled,
     captureEnabled: storedCaptureEnabled,
   } = await chrome.storage.local.get([
     "privacyMode",
     "stats",
     "promptOnNewSites",
     "trustedSitesEnabled",
+    "apiNotificationsEnabled",
     "captureEnabled",
   ]);
 
@@ -239,6 +247,9 @@ async function load() {
   thirdEl.textContent = String(stats?.thirdParty || 0);
   promptOnNewSitesChk.checked = promptOnNewSites !== false;
   trustedSitesEnabledChk.checked = trustedSitesEnabled !== false;
+  if (apiNotificationsEnabledChk) {
+    apiNotificationsEnabledChk.checked = apiNotificationsEnabled !== false;
+  }
   syncCaptureUi();
   renderApiPolicySummary({});
 
@@ -289,6 +300,16 @@ trustedSitesEnabledChk?.addEventListener("change", async () => {
       ? "Trusted-site allow rules enabled."
       : "Trusted-site allow rules paused. Saved trusted sites were kept.",
     trustedSitesEnabledChk.checked ? "success" : "warn"
+  );
+});
+
+apiNotificationsEnabledChk?.addEventListener("change", async () => {
+  await chrome.storage.local.set({ apiNotificationsEnabled: apiNotificationsEnabledChk.checked });
+  setStatus(
+    apiNotificationsEnabledChk.checked
+      ? "Browser API detection notifications enabled."
+      : "Browser API detection notifications paused.",
+    apiNotificationsEnabledChk.checked ? "success" : "warn"
   );
 });
 
@@ -353,14 +374,20 @@ if (currentSiteTrustBtn) {
         site: res.site || "",
         isTrusted: !!res.isTrusted,
         enabled: res.enabled !== false,
+        syncPending: !!res.syncPending,
       };
       trustedSitesEnabledChk.checked = res.enabled !== false;
       setCurrentSiteTrustUi(currentSiteTrustState);
+      const synced = res.synced !== false;
       setStatus(
-        nextTrusted
-          ? `${currentSiteTrustState.site} is now trusted.`
-          : `${currentSiteTrustState.site} is no longer trusted.`,
-        "success"
+        synced
+          ? (nextTrusted
+            ? `${currentSiteTrustState.site} is now trusted.`
+            : `${currentSiteTrustState.site} is no longer trusted.`)
+          : (nextTrusted
+            ? `${currentSiteTrustState.site} is trusted locally. Backend sync is pending.`
+            : `${currentSiteTrustState.site} was removed from local trust. Backend sync is pending.`),
+        synced ? "success" : "warn"
       );
     } catch (error) {
       console.error("Failed to update current-site trust", error);

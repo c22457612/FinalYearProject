@@ -20,7 +20,7 @@
     return parts.slice(-2).join(".");
   }
 
-  function setTrustUi({ siteBase, isTrusted, enabled }) {
+  function setTrustUi({ siteBase, isTrusted, enabled, syncPending }) {
     if (!siteBase) {
       trustHeadlineEl.textContent = "Trust unavailable";
       trustCopyEl.textContent = "Open a normal http or https page to use the site trust shortcut.";
@@ -31,14 +31,15 @@
     const allowRulesText = enabled === false
       ? "Trusted-site allow rules are currently paused in the popup."
       : "Trusted sites also allow any Browser API surfaces currently set to Allow on trusted sites.";
+    const syncText = syncPending ? " Control Centre sync is pending." : "";
 
     if (isTrusted) {
       trustHeadlineEl.textContent = `${siteBase} is already trusted`;
-      trustCopyEl.textContent = `Opening it now will keep using the saved trust state. ${allowRulesText}`;
+      trustCopyEl.textContent = `Opening it now will keep using the saved trust state. ${allowRulesText}${syncText}`;
       trustBtn.textContent = "Keep this site trusted";
     } else {
       trustHeadlineEl.textContent = `${siteBase} is not trusted yet`;
-      trustCopyEl.textContent = `Trusting this site skips this prompt on later visits. ${allowRulesText}`;
+      trustCopyEl.textContent = `Trusting this site skips this prompt on later visits. ${allowRulesText}${syncText}`;
       trustBtn.textContent = "Trust this site";
     }
     trustBtn.disabled = false;
@@ -76,6 +77,7 @@
       siteBase: response.site || siteBase,
       isTrusted: !!response.isTrusted,
       enabled: response.enabled !== false,
+      syncPending: !!response.syncPending,
     });
   }).catch((error) => {
     console.error("Could not load interstitial trust state", error);

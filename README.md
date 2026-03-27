@@ -82,6 +82,8 @@ The extension keeps the shipped permission set minimal for its current feature s
   - captures the limited preview-first request summary used by the interstitial receipt
 - `cookies`
   - powers cookie count, cookie snapshot, and clear-cookies actions for the current site
+- `notifications`
+  - powers optional local notifications for Browser API detections; users can turn these off in the popup
 
 Host permissions:
 

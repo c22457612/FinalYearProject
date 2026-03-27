@@ -11,6 +11,7 @@ const BACKEND_URL = "http://127.0.0.1:4141";
 const MAX_STORED_EVENTS = 500;
 const API_EVENT_DEDUPE_WINDOW_MS = 1500;
 const API_EVENT_DEDUPE_LIMIT = 250;
+const API_NOTIFICATION_THROTTLE_MS = 45_000;
 
 let lastPolicyTs = 0;
 let customFilters = []; // extra domains to block via policies
@@ -22,7 +23,9 @@ let promptOnNewSites = true;   // default ON
 let trustedDomains = [];       // base domains user trusts
 let trustedSitesEnabled = true;
 let captureEnabled = true;
+let apiNotificationsEnabled = true;
 let backendTrustedDomains = new Set();
+let pendingTrustOps = {};
 let enterOnce = null; // { siteBase, ts }
 
 let previewReq = null;             // { siteBase, dest, ts }
@@ -30,6 +33,7 @@ let previewActive = null;          // { siteBase, tabId, timerId }
 const previewObserved = new Map(); // reqBase -> { blocked: boolean, allowed: boolean }
 const locationCache = {};          // tabId -> last main-frame URL
 const recentApiEventKeys = new Map();
+const lastApiNotificationByKey = new Map();
 
 let lastCommandId = 0;
 
@@ -92,6 +96,7 @@ async function logEvent(kind, data = {}, tabId = null) {
     }
 
     await chrome.storage.local.set({ events });
+    maybeNotifyApiDetection(event);
     // Fire-and-forget: send to local backend if it's running
     try {
       fetch(`${BACKEND_URL}/api/events`, {
@@ -128,6 +133,7 @@ function siteBaseFromUrl(url) {
 
 function buildTrustedSiteState(site) {
   const normalizedSite = String(site || "");
+  const pendingOp = normalizedSite ? pendingTrustOps[normalizedSite] : "";
   return {
     ok: true,
     supported: !!normalizedSite,
@@ -135,7 +141,75 @@ function buildTrustedSiteState(site) {
     isTrusted: !!normalizedSite && trustedDomains.includes(normalizedSite),
     enabled: trustedSitesEnabled,
     trustedCount: trustedDomains.length,
+    syncPending: pendingOp === "trust_site" || pendingOp === "untrust_site",
   };
+}
+
+function normalizeTrustPolicyOp(value) {
+  return value === "untrust_site" ? "untrust_site" : "trust_site";
+}
+
+function getPendingTrustPolicyOp(site) {
+  const normalizedSite = String(site || "");
+  if (!normalizedSite) return "";
+  const value = pendingTrustOps[normalizedSite];
+  if (value !== "trust_site" && value !== "untrust_site") return "";
+  return value;
+}
+
+async function persistPendingTrustOps() {
+  await chrome.storage.local.set({ pendingTrustOps });
+}
+
+async function queuePendingTrustPolicyOp(site, op) {
+  const normalizedSite = String(site || "");
+  if (!normalizedSite) return;
+  pendingTrustOps = {
+    ...pendingTrustOps,
+    [normalizedSite]: normalizeTrustPolicyOp(op),
+  };
+  await persistPendingTrustOps();
+}
+
+async function clearPendingTrustPolicyOp(site) {
+  const normalizedSite = String(site || "");
+  if (!normalizedSite || !Object.prototype.hasOwnProperty.call(pendingTrustOps, normalizedSite)) return;
+  const next = { ...pendingTrustOps };
+  delete next[normalizedSite];
+  pendingTrustOps = next;
+  await persistPendingTrustOps();
+}
+
+function shouldIgnoreBackendTrustPolicy(policy) {
+  if (!policy || typeof policy !== "object") return false;
+  const op = normalizeTrustPolicyOp(policy.op);
+  const site = String(policy.payload?.site || "");
+  if (!site) return false;
+  const pendingOp = getPendingTrustPolicyOp(site);
+  return !!pendingOp && pendingOp !== op;
+}
+
+function setTrustedDomainsInMemory(nextTrusted) {
+  trustedDomains = Array.isArray(nextTrusted)
+    ? nextTrusted.map((site) => String(site || "")).filter(Boolean)
+    : [];
+}
+
+async function setLocalTrustState(site, shouldTrust) {
+  const normalizedSite = String(site || "");
+  if (!normalizedSite) return [];
+
+  const set = new Set(trustedDomains);
+  if (shouldTrust) {
+    set.add(normalizedSite);
+  } else {
+    set.delete(normalizedSite);
+  }
+
+  const nextTrusted = [...set];
+  setTrustedDomainsInMemory(nextTrusted);
+  await chrome.storage.local.set({ trusted: nextTrusted });
+  return nextTrusted;
 }
 
 function cleanupRecentApiEventKeys(now) {
@@ -179,6 +253,68 @@ function shouldSkipRecentApiEvent(event, now) {
   const lastSeen = recentApiEventKeys.get(fingerprint) || 0;
   recentApiEventKeys.set(fingerprint, now);
   return (now - lastSeen) < API_EVENT_DEDUPE_WINDOW_MS;
+}
+
+function cleanupApiNotificationKeys(now) {
+  for (const [key, ts] of lastApiNotificationByKey.entries()) {
+    if ((now - ts) > API_NOTIFICATION_THROTTLE_MS) {
+      lastApiNotificationByKey.delete(key);
+    }
+  }
+}
+
+function getApiSurfaceNotificationLabel(surfaceDetail) {
+  const detail = String(surfaceDetail || "").toLowerCase();
+  if (detail === "canvas") return "Canvas";
+  if (detail === "clipboard") return "Clipboard";
+  if (detail === "geolocation") return "Geolocation";
+  if (detail === "webrtc") return "WebRTC";
+  return "Browser API";
+}
+
+function getApiDetectionNotificationMessage(event) {
+  const site = event.site || "this site";
+  const surfaceLabel = getApiSurfaceNotificationLabel(event.data?.surfaceDetail);
+  const gateOutcome = String(event.data?.gateOutcome || "observed");
+
+  if (gateOutcome === "blocked") {
+    return `${surfaceLabel} activity was blocked on ${site}.`;
+  }
+  if (gateOutcome === "warned") {
+    return `${surfaceLabel} activity was allowed with a warning on ${site}.`;
+  }
+  if (gateOutcome === "trusted_allowed") {
+    return `${surfaceLabel} activity was allowed on trusted site ${site}.`;
+  }
+  return `${surfaceLabel} activity was detected on ${site}.`;
+}
+
+function maybeNotifyApiDetection(event) {
+  if (!apiNotificationsEnabled) return;
+  if (!event || typeof event !== "object") return;
+  if (!String(event.kind || "").startsWith("api.")) return;
+
+  const now = Date.now();
+  cleanupApiNotificationKeys(now);
+
+  const key = [
+    event.site || "",
+    event.data?.surfaceDetail || "",
+    event.data?.gateOutcome || "",
+  ].join("|");
+  const last = lastApiNotificationByKey.get(key) || 0;
+  if ((now - last) < API_NOTIFICATION_THROTTLE_MS) return;
+
+  lastApiNotificationByKey.set(key, now);
+  const id = `api-detect-${now}-${Math.random().toString(16).slice(2, 8)}`;
+  chrome.notifications.create(id, {
+    type: "basic",
+    iconUrl: "icons/icon128.png",
+    title: "Visual Privacy Toolkit",
+    message: getApiDetectionNotificationMessage(event),
+  }, () => {
+    setTimeout(() => chrome.notifications.clear(id), 5000);
+  });
 }
 
 async function postPolicies(commands) {
@@ -750,10 +886,28 @@ async function loadTrustAndPromptFlag() {
     "promptOnNewSites",
     "trustedSitesEnabled"
   ]);
-  trustedDomains = Array.isArray(trusted) ? trusted : [];
+  setTrustedDomainsInMemory(trusted);
   // default to true unless explicitly false
   promptOnNewSites = flag !== false;
   trustedSitesEnabled = trustedFlag !== false;
+}
+
+async function loadExtensionFlags() {
+  const {
+    captureEnabled: storedCaptureEnabled,
+    apiNotificationsEnabled: storedApiNotificationsEnabled,
+    pendingTrustOps: storedPendingTrustOps,
+  } = await chrome.storage.local.get([
+    "captureEnabled",
+    "apiNotificationsEnabled",
+    "pendingTrustOps",
+  ]);
+
+  captureEnabled = storedCaptureEnabled !== false;
+  apiNotificationsEnabled = storedApiNotificationsEnabled !== false;
+  pendingTrustOps = storedPendingTrustOps && typeof storedPendingTrustOps === "object"
+    ? storedPendingTrustOps
+    : {};
 }
 // sibling helper to loadTrustAndPromptFlag()
 async function loadCustomFilters() {
@@ -794,20 +948,20 @@ async function applyPolicy(policy) {
     case "trust_site": {
       const site = payload.site;
       if (!site) break;
-      const { trusted = [] } = await chrome.storage.local.get("trusted");
-      const set = new Set(trusted);
-      set.add(site);
-      await chrome.storage.local.set({ trusted: [...set] });
+      if (shouldIgnoreBackendTrustPolicy(policy)) {
+        break;
+      }
+      await setLocalTrustState(site, true);
       break;
     }
 
     case "untrust_site": {
       const site = payload.site;
       if (!site) break;
-      const { trusted = [] } = await chrome.storage.local.get("trusted");
-      const set = new Set(trusted);
-      set.delete(site);
-      await chrome.storage.local.set({ trusted: [...set] });
+      if (shouldIgnoreBackendTrustPolicy(policy)) {
+        break;
+      }
+      await setLocalTrustState(site, false);
       break;
     }
 
@@ -850,7 +1004,7 @@ function replayBackendPolicyState(policy) {
 async function syncLocalTrustedSitesToBackend() {
   if (!trustedDomains.length) return;
 
-  const missing = trustedDomains.filter((site) => site && !backendTrustedDomains.has(site));
+  const missing = trustedDomains.filter((site) => site && !backendTrustedDomains.has(site) && !getPendingTrustPolicyOp(site));
   if (!missing.length) return;
 
   try {
@@ -866,6 +1020,29 @@ async function syncLocalTrustedSitesToBackend() {
     }
   } catch {
     // backend may not be running yet; ignore and let later polls retry
+  }
+}
+
+async function flushPendingTrustPolicyOps() {
+  const queued = Object.entries(pendingTrustOps).filter(([site, op]) => site && (op === "trust_site" || op === "untrust_site"));
+  if (!queued.length) return;
+
+  try {
+    const created = await postPolicies(queued.map(([site, op]) => ({
+      op,
+      payload: { site },
+    })));
+    for (const item of created) {
+      replayBackendPolicyState(item);
+      if (typeof item?.ts === "number" && item.ts > lastPolicyTs) {
+        lastPolicyTs = item.ts;
+      }
+    }
+
+    pendingTrustOps = {};
+    await persistPendingTrustOps();
+  } catch {
+    // backend may not be running yet; keep the queue for the next poll
   }
 }
 
@@ -886,6 +1063,7 @@ async function pollPolicies() {
       lastPolicyTs = latestTs;
     }
 
+    await flushPendingTrustPolicyOps();
     await syncLocalTrustedSitesToBackend();
   } catch (e) {
     // backend may not be running; ignore
@@ -952,16 +1130,15 @@ async function endPreview() {
 
 //Boot & reactions
 async function init() {
+  await loadExtensionFlags();
   await loadTrustAndPromptFlag();
   await loadCustomFilters(); 
   await loadApiGatePolicy();
   await pollPolicies();
   setInterval(pollPolicies, 10000); // poll every 10s
-  const { privacyMode, captureEnabled: storedCaptureEnabled } = await chrome.storage.local.get([
+  const { privacyMode } = await chrome.storage.local.get([
     "privacyMode",
-    "captureEnabled"
   ]);
-  captureEnabled = storedCaptureEnabled !== false;
   await applyRules(privacyMode || "moderate");
 }
 
@@ -976,6 +1153,17 @@ chrome.storage.onChanged.addListener(async ch => {
     if (!captureEnabled) {
       recentApiEventKeys.clear();
     }
+  }
+  if ("apiNotificationsEnabled" in ch) {
+    apiNotificationsEnabled = ch.apiNotificationsEnabled.newValue !== false;
+    if (!apiNotificationsEnabled) {
+      lastApiNotificationByKey.clear();
+    }
+  }
+  if ("pendingTrustOps" in ch) {
+    pendingTrustOps = ch.pendingTrustOps.newValue && typeof ch.pendingTrustOps.newValue === "object"
+      ? ch.pendingTrustOps.newValue
+      : {};
   }
 
   // trust list or interstitial flag changed
@@ -1164,12 +1352,35 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
           return;
         }
 
-        const created = await postPolicies({
-          op: shouldTrust ? "trust_site" : "untrust_site",
-          payload: { site },
-        });
-        await applyCreatedPolicies(created);
-        sendResponse(buildTrustedSiteState(site));
+        const nextOp = shouldTrust ? "trust_site" : "untrust_site";
+        await setLocalTrustState(site, shouldTrust);
+        await queuePendingTrustPolicyOp(site, nextOp);
+        await applyRules(currentMode);
+
+        try {
+          const created = await postPolicies({
+            op: nextOp,
+            payload: { site },
+          });
+          for (const item of created) {
+            replayBackendPolicyState(item);
+            if (typeof item?.ts === "number" && item.ts > lastPolicyTs) {
+              lastPolicyTs = item.ts;
+            }
+          }
+          await clearPendingTrustPolicyOp(site);
+          sendResponse({
+            ...buildTrustedSiteState(site),
+            synced: true,
+          });
+        } catch (syncError) {
+          console.warn("trustedSites:setCurrentSiteTrust backend sync deferred", syncError);
+          sendResponse({
+            ...buildTrustedSiteState(site),
+            synced: false,
+            warning: "Saved locally. Will sync to the Control Centre when the backend is reachable.",
+          });
+        }
       } catch (e) {
         console.error("trustedSites:setCurrentSiteTrust failed", e);
         sendResponse({ ok: false, error: e.message || String(e) });
