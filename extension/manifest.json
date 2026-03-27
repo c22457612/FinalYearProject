@@ -1,14 +1,13 @@
 {
   "manifest_version": 3,
-  "name": "Visual Privacy Toolkit (Prototype)",
-  "version": "0.0.3",
-  "description": "Privacy Mode selector",
+  "name": "Visual Privacy Toolkit",
+  "version": "0.1.0",
+  "description": "Local extension for Visual Privacy Toolkit capture, site trust flow, and Browser API signals.",
   "action": { "default_popup": "popup.html" },
   "permissions": [
     "storage",
     "declarativeNetRequest",
     "declarativeNetRequestFeedback",
-    "notifications",
     "webNavigation",
     "tabs",
     "webRequest",

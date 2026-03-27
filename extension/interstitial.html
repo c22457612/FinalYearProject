@@ -2,139 +2,232 @@
 <html>
   <head>
     <meta charset="utf-8" />
-    <title>Privacy Check</title>
+    <title>Visual Privacy Toolkit</title>
     <style>
       :root {
-        --space-sm: 0.5rem;
-        --space-md: 0.75rem;
-        --space-lg: 1.5rem;
-        --radius-sm: 0.5rem;
-        --radius-md: 0.75rem;
+        --space-sm: 0.6rem;
+        --space-md: 0.9rem;
+        --space-lg: 1.35rem;
+        --radius-sm: 0.65rem;
+        --radius-md: 1rem;
 
         --color-bg: #0f172a;
-        --color-bg-panel: #020617;
-        --color-text-main: #e5e7eb;
-        --color-text-muted: #9ca3af;
-        --color-border: #1f2937;
-        --color-accent: #3b82f6;
+        --color-panel: #07111f;
+        --color-panel-soft: #111c30;
+        --color-text: #e2e8f0;
+        --color-muted: #9fb0c9;
+        --color-border: #243449;
+        --color-accent: #34d399;
+        --color-accent-soft: rgba(52, 211, 153, 0.16);
+      }
+
+      * {
+        box-sizing: border-box;
       }
 
       body {
         margin: 0;
         min-height: 100vh;
-        font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-        background: var(--color-bg);
-        color: var(--color-text-main);
+        font: 15px/1.5 "Segoe UI", "Helvetica Neue", sans-serif;
+        background:
+          radial-gradient(circle at top right, rgba(52, 211, 153, 0.12), transparent 32%),
+          linear-gradient(180deg, #101a2d 0%, #091220 100%);
+        color: var(--color-text);
         display: flex;
         align-items: center;
         justify-content: center;
         padding: var(--space-lg) var(--space-md);
       }
 
-      .interstitial-card {
-        background: var(--color-bg-panel);
-        border-radius: var(--radius-md);
+      .card {
+        width: min(760px, 100%);
+        display: grid;
+        gap: var(--space-md);
+        background: rgba(7, 17, 31, 0.92);
         border: 1px solid var(--color-border);
-        max-width: 720px;
-        width: 100%;
+        border-radius: var(--radius-md);
         padding: var(--space-lg);
-        box-shadow: 0 18px 40px rgba(15, 23, 42, 0.85);
+        box-shadow: 0 20px 44px rgba(2, 6, 23, 0.42);
+      }
+
+      .eyebrow {
+        margin: 0;
+        font-size: 12px;
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+        color: var(--color-accent);
+        font-weight: 700;
       }
 
       h1 {
-        margin: 0 0 0.5rem 0;
-        font-size: 1.25rem;
+        margin: 0.15rem 0 0;
+        font-size: 28px;
+        line-height: 1.15;
       }
 
-      .muted {
-        color: var(--color-text-muted);
-        font-size: 0.8rem;
-        margin-bottom: 1rem;
+      p {
+        margin: 0;
       }
 
-      .row {
-        display: flex;
-        gap: 0.75rem;
-        align-items: center;
-        margin: 0.35rem 0;
-        font-size: 0.9rem;
+      .lead,
+      .muted,
+      .receipt-copy,
+      .status-copy {
+        color: var(--color-muted);
       }
 
-      .list {
-        margin: 0.5rem 0 0;
-        padding-left: 1.1rem;
-        font-size: 0.85rem;
+      .summary-grid {
+        display: grid;
+        gap: var(--space-sm);
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+      }
+
+      .summary-card,
+      .panel {
+        padding: 0.8rem 0.9rem;
+        border-radius: var(--radius-sm);
+        border: 1px solid var(--color-border);
+        background: var(--color-panel-soft);
+      }
+
+      .summary-label {
+        display: block;
+        font-size: 11px;
+        text-transform: uppercase;
+        letter-spacing: 0.06em;
+        color: var(--color-muted);
+      }
+
+      .summary-value {
+        display: block;
+        margin-top: 0.2rem;
+        font-size: 18px;
+        font-weight: 700;
+      }
+
+      .two-up {
+        display: grid;
+        gap: var(--space-sm);
+        grid-template-columns: minmax(0, 1.2fr) minmax(0, 0.8fr);
+      }
+
+      .status-title {
+        font-size: 17px;
+        font-weight: 700;
+      }
+
+      .receipt-list {
+        margin: 0.6rem 0 0;
+        padding-left: 1.15rem;
+      }
+
+      .receipt-list li + li {
+        margin-top: 0.25rem;
+      }
+
+      .receipt-empty {
+        margin-top: 0.6rem;
+        color: var(--color-muted);
       }
 
       .actions {
         display: flex;
         flex-wrap: wrap;
-        gap: 0.5rem;
-        margin-top: 1.25rem;
+        gap: 0.55rem;
       }
 
-      .btn {
-        padding: 0.5rem 0.9rem;
-        border-radius: 999px;
+      button {
         border: 1px solid var(--color-border);
+        border-radius: 999px;
+        background: var(--color-panel-soft);
+        color: var(--color-text);
+        padding: 0.65rem 1rem;
+        font: inherit;
         cursor: pointer;
-        background: #020617;
-        color: var(--color-text-main);
-        font-size: 0.85rem;
       }
 
-      .btn.primary {
-        background: var(--color-accent);
-        border-color: var(--color-accent);
-        color: #ffffff;
+      button:hover {
+        border-color: #43617f;
       }
 
-      .btn:hover {
-        border-color: #4b5563;
+      button:disabled {
+        opacity: 0.62;
+        cursor: default;
       }
 
-      @media (max-width: 600px) {
-        .interstitial-card {
-          padding: var(--space-md);
+      .btn-primary {
+        border-color: rgba(52, 211, 153, 0.55);
+        background: linear-gradient(180deg, rgba(52, 211, 153, 0.24), rgba(16, 185, 129, 0.18));
+      }
+
+      .inline-note {
+        padding: 0.75rem 0.9rem;
+        border-radius: var(--radius-sm);
+        border: 1px solid rgba(52, 211, 153, 0.35);
+        background: var(--color-accent-soft);
+        color: #d1fae5;
+      }
+
+      @media (max-width: 720px) {
+        .summary-grid,
+        .two-up {
+          grid-template-columns: 1fr;
+        }
+
+        h1 {
+          font-size: 24px;
         }
       }
     </style>
-
   </head>
   <body>
-    <div class="interstitial-card">
-      <h1>Before you visit</h1>
-      <p class="muted">
-        You’re seeing this because this is your first visit to this site.
-      </p>
-
-      <div class="row">
-        <div>Site:</div>
-        <strong id="site">-</strong>
+    <div class="card">
+      <div>
+        <p class="eyebrow">Site Trust Flow</p>
+        <h1>Choose how to open this site</h1>
       </div>
-      <div class="row" style="margin-top:6px">
-        <div>Current mode:</div>
-        <strong id="mode">-</strong>
+      <p class="lead">This is the navigation-time trust prompt. It is separate from Browser API policy controls and appears only for first visits when that shortcut is enabled.</p>
+
+      <div class="summary-grid">
+        <div class="summary-card">
+          <span class="summary-label">Site</span>
+          <span id="site" class="summary-value">-</span>
+        </div>
+        <div class="summary-card">
+          <span class="summary-label">Current protection mode</span>
+          <span id="mode" class="summary-value">-</span>
+        </div>
+        <div class="summary-card">
+          <span class="summary-label">Capture</span>
+          <span id="captureState" class="summary-value">On</span>
+        </div>
       </div>
 
-      <div style="margin-top:16px">
-        <strong>Mini privacy receipt (will update after preview):</strong>
-        <ul id="receipt" class="list"></ul>
-        <p class="muted">
-          Tip: Use “Preview first” to load with strict blocking and collect what this
-          site tries to contact.
-        </p>
+      <div class="two-up">
+        <section class="panel">
+          <div id="trustHeadline" class="status-title">Checking trust state</div>
+          <p id="trustCopy" class="status-copy">Loading current-site trust details.</p>
+          <div id="captureNotice" class="inline-note" hidden>
+            Capture is paused in the popup. Resume capture before using Preview first so the receipt can update.
+          </div>
+        </section>
+
+        <section class="panel">
+          <div class="status-title">Preview receipt</div>
+          <p class="receipt-copy">Preview first opens the site once and updates a small per-domain receipt so you can see the main third-party contacts before trusting it.</p>
+          <ul id="receipt" class="receipt-list"></ul>
+          <p id="receiptEmpty" class="receipt-empty">No preview receipt has been stored for this site yet.</p>
+        </section>
       </div>
 
       <div class="actions">
-        <button id="enter" class="btn primary">Enter with current mode</button>
-        <button id="preview" class="btn">Preview first</button>
-        <button id="trust" class="btn">Always allow for this site</button>
-        <button id="back" class="btn">Back</button>
+        <button id="enter" class="btn-primary">Open once with current mode</button>
+        <button id="preview">Preview first</button>
+        <button id="trust">Trust this site</button>
+        <button id="back">Go back</button>
       </div>
     </div>
 
     <script src="interstitial.js"></script>
   </body>
-
 </html>

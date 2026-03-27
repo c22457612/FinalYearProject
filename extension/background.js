@@ -7,8 +7,10 @@ const FILTERS = [
   "matomo.org"
 ];
 
-//State
 const BACKEND_URL = "http://127.0.0.1:4141";
+const MAX_STORED_EVENTS = 500;
+const API_EVENT_DEDUPE_WINDOW_MS = 1500;
+const API_EVENT_DEDUPE_LIMIT = 250;
 
 let lastPolicyTs = 0;
 let customFilters = []; // extra domains to block via policies
@@ -16,11 +18,10 @@ let customFilters = []; // extra domains to block via policies
 let currentMode = "moderate";
 let blockedFirst = 0;
 let blockedThird = 0;
-let notifyEnabled = false;
-const lastNotifyByDomain = new Map(); // throttle toasts
 let promptOnNewSites = true;   // default ON 
 let trustedDomains = [];       // base domains user trusts
 let trustedSitesEnabled = true;
+let captureEnabled = true;
 let backendTrustedDomains = new Set();
 let enterOnce = null; // { siteBase, ts }
 
@@ -28,6 +29,7 @@ let previewReq = null;             // { siteBase, dest, ts }
 let previewActive = null;          // { siteBase, tabId, timerId }
 const previewObserved = new Map(); // reqBase -> { blocked: boolean, allowed: boolean }
 const locationCache = {};          // tabId -> last main-frame URL
+const recentApiEventKeys = new Map();
 
 let lastCommandId = 0;
 
@@ -35,6 +37,10 @@ let lastCommandId = 0;
 // ---- Privacy event logger ----
 async function logEvent(kind, data = {}, tabId = null) {
   try {
+    if (!captureEnabled) {
+      return;
+    }
+
     const ts = Date.now();
 
     let topLevelUrl = null;
@@ -73,13 +79,16 @@ async function logEvent(kind, data = {}, tabId = null) {
       data
     };
 
+    if (shouldSkipRecentApiEvent(event, ts)) {
+      return;
+    }
+
     const result = await chrome.storage.local.get("events");
     const events = Array.isArray(result.events) ? result.events : [];
     events.push(event);
 
-    const MAX = 500;
-    if (events.length > MAX) {
-      events.splice(0, events.length - MAX);
+    if (events.length > MAX_STORED_EVENTS) {
+      events.splice(0, events.length - MAX_STORED_EVENTS);
     }
 
     await chrome.storage.local.set({ events });
@@ -127,6 +136,49 @@ function buildTrustedSiteState(site) {
     enabled: trustedSitesEnabled,
     trustedCount: trustedDomains.length,
   };
+}
+
+function cleanupRecentApiEventKeys(now) {
+  for (const [key, ts] of recentApiEventKeys.entries()) {
+    if ((now - ts) > API_EVENT_DEDUPE_WINDOW_MS) {
+      recentApiEventKeys.delete(key);
+    }
+  }
+
+  if (recentApiEventKeys.size <= API_EVENT_DEDUPE_LIMIT) {
+    return;
+  }
+
+  const overflow = recentApiEventKeys.size - API_EVENT_DEDUPE_LIMIT;
+  let removed = 0;
+  for (const key of recentApiEventKeys.keys()) {
+    recentApiEventKeys.delete(key);
+    removed += 1;
+    if (removed >= overflow) break;
+  }
+}
+
+function shouldSkipRecentApiEvent(event, now) {
+  if (!event || typeof event !== "object") return false;
+  if (!String(event.kind || "").startsWith("api.")) return false;
+
+  cleanupRecentApiEventKeys(now);
+
+  let fingerprint = "";
+  try {
+    fingerprint = JSON.stringify([
+      event.kind,
+      event.site || "",
+      event.tabId ?? null,
+      event.data || {},
+    ]);
+  } catch {
+    return false;
+  }
+
+  const lastSeen = recentApiEventKeys.get(fingerprint) || 0;
+  recentApiEventKeys.set(fingerprint, now);
+  return (now - lastSeen) < API_EVENT_DEDUPE_WINDOW_MS;
 }
 
 async function postPolicies(commands) {
@@ -692,21 +744,6 @@ async function applyRules(mode = "moderate") {
 }
 
 
-function maybeNotify(host) {
-  if (!notifyEnabled) return;
-  const now = Date.now();
-  const last = lastNotifyByDomain.get(host) || 0;
-  if (now - last < 60_000) return; // 1 min per-domain
-  const id = `block-${host}-${now}`;
-  chrome.notifications.create(id, {
-    type: "basic",
-    iconUrl: "icons/icon128.png",
-    title: "Tracker blocked",
-    message: `${host} (${currentMode})`
-  }, () => setTimeout(() => chrome.notifications.clear(id), 3000));
-  lastNotifyByDomain.set(host, now);
-}
-
 async function loadTrustAndPromptFlag() {
   const { trusted = [], promptOnNewSites: flag, trustedSitesEnabled: trustedFlag } = await chrome.storage.local.get([
     "trusted",
@@ -856,6 +893,11 @@ async function pollPolicies() {
 }
 
 function startPreview(siteBase, tabId) {
+  if (!captureEnabled) {
+    previewReq = null;
+    return;
+  }
+
   // reset any prior preview
   if (previewActive?.timerId) clearTimeout(previewActive.timerId);
   previewObserved.clear();
@@ -915,11 +957,11 @@ async function init() {
   await loadApiGatePolicy();
   await pollPolicies();
   setInterval(pollPolicies, 10000); // poll every 10s
-  const { privacyMode, notifyEnabled: storedNotify } = await chrome.storage.local.get([
+  const { privacyMode, captureEnabled: storedCaptureEnabled } = await chrome.storage.local.get([
     "privacyMode",
-    "notifyEnabled"
+    "captureEnabled"
   ]);
-  notifyEnabled = !!storedNotify;
+  captureEnabled = storedCaptureEnabled !== false;
   await applyRules(privacyMode || "moderate");
 }
 
@@ -929,7 +971,12 @@ chrome.runtime.onStartup.addListener(init);
 
 chrome.storage.onChanged.addListener(async ch => {
   if ("privacyMode" in ch) await applyRules(ch.privacyMode.newValue);
-  if ("notifyEnabled" in ch) notifyEnabled = !!ch.notifyEnabled.newValue;
+  if ("captureEnabled" in ch) {
+    captureEnabled = ch.captureEnabled.newValue !== false;
+    if (!captureEnabled) {
+      recentApiEventKeys.clear();
+    }
+  }
 
   // trust list or interstitial flag changed
   if ("trusted" in ch || "promptOnNewSites" in ch || "trustedSitesEnabled" in ch) {
@@ -1185,11 +1232,19 @@ chrome.declarativeNetRequest.onRuleMatchedDebug.addListener((info) => {
   persistStats();
 
   const host = hostFromUrl(info.request.url);
-  maybeNotify(host);
 
   // Work out the top-level site base from the initiator, if we can
   const topHost = hostFromOrigin(info.request.initiator || "");
   const siteBase = base(topHost);
+
+  if (previewActive && info.tabId === previewActive.tabId) {
+    const blockedBase = base(host);
+    if (blockedBase && blockedBase !== previewActive.siteBase) {
+      const rec = previewObserved.get(blockedBase) || { blocked: false, allowed: false };
+      rec.blocked = true;
+      previewObserved.set(blockedBase, rec);
+    }
+  }
 
   // Log a network.blocked event; logEvent will use siteBase as a fallback
   logEvent(
@@ -1216,8 +1271,13 @@ chrome.webRequest.onBeforeRequest.addListener((details) => {
   if (!reqBase || reqBase === siteBase) return; // only care about 3rd-party
 
   const rec = previewObserved.get(reqBase) || { blocked: false, allowed: false };
+  const firstObservedForDomain = !rec.allowed;
   rec.allowed = true;
   previewObserved.set(reqBase, rec);
+
+  if (!firstObservedForDomain) {
+    return;
+  }
 
   // log a network.observed event (attempted request during preview)
   logEvent("network.observed", {
