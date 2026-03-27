@@ -1,4 +1,5 @@
 import { getApiEventPresentation, isApiSignalEvent } from "../../api-event-presentation.js";
+import { buildSiteBrowserApiNarrative } from "../../browser-api-narratives.js";
 import { getEventListContextText, getEventListKindText, getEventListMetaText } from "../utils.js";
 import { summarizeVisualCategoryCounts } from "../filter-state.js";
 
@@ -86,6 +87,33 @@ export function createInsightSheet(deps) {
     for (const item of list) {
       const li = document.createElement("li");
       li.textContent = item;
+      el.appendChild(li);
+    }
+  }
+
+  function renderActionListItems(el, items, emptyText) {
+    if (!el) return;
+    const list = Array.isArray(items) ? items.filter((item) => item && item.text) : [];
+    el.innerHTML = "";
+    if (!list.length) {
+      const li = document.createElement("li");
+      li.className = "muted";
+      li.textContent = emptyText;
+      el.appendChild(li);
+      return;
+    }
+
+    for (const item of list) {
+      const li = document.createElement("li");
+      if (item.href) {
+        const link = document.createElement("a");
+        link.href = item.href;
+        link.className = "insight-inline-link";
+        link.textContent = item.text;
+        li.appendChild(link);
+      } else {
+        li.textContent = item.text;
+      }
       el.appendChild(li);
     }
   }
@@ -327,6 +355,37 @@ export function createInsightSheet(deps) {
     };
   }
 
+  function renderBrowserApiNarrative(events) {
+    const container = qs("insightApiNarrative");
+    const concern = qs("insightApiNarrativeConcern");
+    const headline = qs("insightApiNarrativeHeadline");
+    const detail = qs("insightApiNarrativeDetail");
+    const whyList = qs("insightApiNarrativeWhy");
+    const actionsList = qs("insightApiNarrativeActions");
+    if (!container || !concern || !headline || !detail || !whyList || !actionsList) return;
+
+    const subject = getSelectedVendor() ? "this vendor-focused scope" : "this site";
+    const narrative = buildSiteBrowserApiNarrative(events, { subject });
+    if (!narrative) {
+      container.classList.add("hidden");
+      concern.className = "insight-api-narrative-concern";
+      concern.textContent = "";
+      headline.textContent = "";
+      detail.textContent = "";
+      renderListItems(whyList, [], "No Browser API-specific privacy meaning in the current scope.");
+      renderActionListItems(actionsList, [], "No Browser API-specific actions for the current scope.");
+      return;
+    }
+
+    container.classList.remove("hidden");
+    concern.className = `insight-api-narrative-concern insight-api-narrative-concern-${narrative.concern.level}`;
+    concern.textContent = narrative.concern.label;
+    headline.textContent = narrative.headline;
+    detail.textContent = narrative.detail;
+    renderListItems(whyList, narrative.whyItMatters, "No Browser API-specific privacy meaning in the current scope.");
+    renderActionListItems(actionsList, narrative.actions, "No Browser API-specific actions for the current scope.");
+  }
+
   function openInsightSheet(selection, evidence, {
     forceScroll = false,
     allowAutoScroll = true,
@@ -504,6 +563,7 @@ export function createInsightSheet(deps) {
     closeDrawer,
     resetInsightSection,
     closeInsightSheet,
+    renderBrowserApiNarrative,
     showToast,
     closeConfirmModal,
     confirmPendingAction,

@@ -1,3 +1,5 @@
+import { buildVendorBrowserApiNarrative } from "./app/browser-api-narratives.js";
+
 function qs(id) {
   return document.getElementById(id);
 }
@@ -1701,48 +1703,18 @@ function filterApiEvidenceGroupsBySection(groups, sectionKey) {
   return safeGroups.filter((group) => getApiEvidenceSectionKey(group && group.key) === sectionKey);
 }
 
-function rewriteApiMeaningForVendor(text) {
-  const value = String(text || "").trim();
-  if (!value) return "";
-  if (/^This can be used/i.test(value)) {
-    return value.replace(/^This can be used/i, "This activity may be used");
-  }
-  if (/^This can/i.test(value)) {
-    return value.replace(/^This can/i, "This activity may");
-  }
-  if (/^This may/i.test(value)) {
-    return value.replace(/^This may/i, "This activity may");
-  }
-  return value;
-}
-
-function rewriteApiMeaningForContextual(text) {
-  const value = String(text || "").trim();
-  if (!value) return "";
-  if (/^This can be used/i.test(value)) {
-    return value.replace(/^This can be used/i, "Observed on this page, this can be used");
-  }
-  if (/^This can/i.test(value)) {
-    return value.replace(/^This can/i, "Observed on this page, this can");
-  }
-  if (/^This may/i.test(value)) {
-    return value.replace(/^This may/i, "Observed on this page, this may");
-  }
-  return value;
-}
-
 function buildApiEvidenceNarrative(group) {
   const sectionKey = getApiEvidenceSectionKey(group && group.key);
   if (sectionKey === API_EVIDENCE_SECTION_VENDOR) {
     return {
       summaryLine: `This vendor used ${group.label}.`,
-      meaningLine: `This vendor used ${group.label}. ${rewriteApiMeaningForVendor(group.whatThisMeans)}`,
+      meaningLine: `This vendor used ${group.label}. This activity may be used to infer network, browser, or device characteristics.`,
     };
   }
 
   return {
     summaryLine: `This site used ${group.label}. Observed on this page, this is not directly linked to this vendor.`,
-    meaningLine: `This site used ${group.label}. ${rewriteApiMeaningForContextual(group.whatThisMeans)} Not directly linked to this vendor.`,
+    meaningLine: `This site used ${group.label}. Observed on this page, this may still contribute to fingerprinting, probing, or sensitive-access risk, but it is not directly linked to this vendor.`,
   };
 }
 
@@ -2014,10 +1986,92 @@ function renderVendorApiEvidenceGroups(list, groups) {
   }
 }
 
+function renderVendorApiNarrative(sectionKey, groups) {
+  const container = sectionKey === API_EVIDENCE_SECTION_VENDOR
+    ? qs("vendorApiEvidenceVendorNarrative")
+    : qs("vendorApiEvidenceContextualNarrative");
+  if (!container) return;
+
+  const narrative = buildVendorBrowserApiNarrative(groups, {
+    section: sectionKey === API_EVIDENCE_SECTION_VENDOR ? "vendor" : "contextual",
+  });
+  if (!narrative) {
+    container.innerHTML = "";
+    container.classList.add("hidden");
+    return;
+  }
+
+  container.innerHTML = "";
+  container.classList.remove("hidden");
+
+  const concern = document.createElement("div");
+  concern.className = `vendor-vault-api-narrative-concern vendor-vault-api-narrative-concern-${narrative.concern.level}`;
+  concern.textContent = narrative.concern.label;
+  container.appendChild(concern);
+
+  const headline = document.createElement("p");
+  headline.className = "vendor-vault-api-narrative-headline";
+  headline.textContent = narrative.headline;
+  container.appendChild(headline);
+
+  const detail = document.createElement("p");
+  detail.className = "vendor-vault-api-narrative-detail";
+  detail.textContent = narrative.detail;
+  container.appendChild(detail);
+
+  const grid = document.createElement("div");
+  grid.className = "vendor-vault-api-narrative-grid";
+
+  const whyBlock = document.createElement("div");
+  whyBlock.className = "vendor-vault-api-narrative-block";
+  const whyHeading = document.createElement("div");
+  whyHeading.className = "vendor-vault-api-narrative-label";
+  whyHeading.textContent = "Why it matters";
+  whyBlock.appendChild(whyHeading);
+  const whyList = document.createElement("ul");
+  whyList.className = "vendor-vault-api-narrative-list";
+  for (const item of narrative.whyItMatters) {
+    const li = document.createElement("li");
+    li.textContent = item;
+    whyList.appendChild(li);
+  }
+  whyBlock.appendChild(whyList);
+  grid.appendChild(whyBlock);
+
+  const actionBlock = document.createElement("div");
+  actionBlock.className = "vendor-vault-api-narrative-block";
+  const actionHeading = document.createElement("div");
+  actionHeading.className = "vendor-vault-api-narrative-label";
+  actionHeading.textContent = "What you can do";
+  actionBlock.appendChild(actionHeading);
+  const actionList = document.createElement("ul");
+  actionList.className = "vendor-vault-api-narrative-list";
+  for (const item of narrative.actions) {
+    const li = document.createElement("li");
+    if (item.href) {
+      const link = document.createElement("a");
+      link.href = item.href;
+      link.className = "vendor-vault-action-link";
+      link.textContent = item.text;
+      li.appendChild(link);
+    } else {
+      li.textContent = item.text;
+    }
+    actionList.appendChild(li);
+  }
+  actionBlock.appendChild(actionList);
+  grid.appendChild(actionBlock);
+
+  container.appendChild(grid);
+}
+
 function clearVendorApiEvidenceSubsection(sectionKey) {
   const section = sectionKey === API_EVIDENCE_SECTION_VENDOR
     ? qs("vendorApiEvidenceVendorSection")
     : qs("vendorApiEvidenceContextualSection");
+  const narrative = sectionKey === API_EVIDENCE_SECTION_VENDOR
+    ? qs("vendorApiEvidenceVendorNarrative")
+    : qs("vendorApiEvidenceContextualNarrative");
   const list = sectionKey === API_EVIDENCE_SECTION_VENDOR
     ? qs("vendorApiEvidenceVendorList")
     : qs("vendorApiEvidenceContextualList");
@@ -2032,6 +2086,10 @@ function clearVendorApiEvidenceSubsection(sectionKey) {
   if (empty) {
     empty.textContent = "";
     empty.classList.add("hidden");
+  }
+  if (narrative) {
+    narrative.innerHTML = "";
+    narrative.classList.add("hidden");
   }
   if (section) section.classList.add("hidden");
 }
@@ -2050,6 +2108,7 @@ function renderVendorApiEvidenceSubsection(sectionKey, groups, opts = {}) {
 
   const safeGroups = Array.isArray(groups) ? groups : [];
   section.classList.remove("hidden");
+  renderVendorApiNarrative(sectionKey, safeGroups);
   renderVendorApiEvidenceGroups(list, safeGroups);
   list.classList.toggle("hidden", safeGroups.length === 0);
   empty.classList.toggle("hidden", safeGroups.length !== 0);

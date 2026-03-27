@@ -1625,6 +1625,7 @@ function renderECharts() {
   };
 
   if (!events.length) {
+    insightSheet.renderBrowserApiNarrative([]);
     const empty = buildEmptyChartOption("No events match current filters");
     focusedLensPivotActive = false;
     renderDensityBadge(null);
@@ -1650,6 +1651,7 @@ function renderECharts() {
   }
 
   const viewBuild = chartOrchestrationController.buildViewOption(requestedViewId, events, { viewMode });
+  insightSheet.renderBrowserApiNarrative(events);
   const built = viewBuild.built;
   effectiveViewId = viewBuild.effectiveViewId;
   lensPivotActive = viewBuild.lensPivotActive;

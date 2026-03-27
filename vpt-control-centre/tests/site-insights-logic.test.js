@@ -734,3 +734,78 @@ test("timeline keeps API as a first-class series in easy low-signal scopes", () 
   assert.equal(seriesNames.includes("Events"), false);
   assert.equal(seriesNames.includes("Observed API"), true);
 });
+
+test("browser api site narrative combines fingerprinting and sensitive-access meanings deterministically", () => {
+  const { buildSiteBrowserApiNarrative } = loadRuntimeModuleExport(
+    "public/app/browser-api-narratives.js",
+    ["buildSiteBrowserApiNarrative"]
+  );
+
+  const narrative = buildSiteBrowserApiNarrative([
+    {
+      key: "api.canvas.repeated_readback",
+      surfaceDetail: "canvas",
+      totalCount: 2,
+      observedCount: 2,
+      blockedCount: 0,
+      trustedAllowedCount: 0,
+    },
+    {
+      key: "api.clipboard.async_read_text",
+      surfaceDetail: "clipboard",
+      totalCount: 1,
+      observedCount: 0,
+      blockedCount: 1,
+      trustedAllowedCount: 0,
+    },
+  ], { subject: "this site" });
+
+  assert.match(narrative.headline, /fingerprinting-related/i);
+  assert.match(narrative.headline, /sensitive-access/i);
+  assert.equal(narrative.concern.label, "Notable concern");
+  assert.ok(narrative.whyItMatters.some((line) => /distinguish your browser or device/i.test(line)));
+  assert.ok(narrative.whyItMatters.some((line) => /clipboard access/i.test(line)));
+  assert.ok(narrative.actions.some((action) => action.href === "/?view=api-signals"));
+});
+
+test("browser api vendor narrative preserves non-assertive vendor attribution wording", () => {
+  const { buildVendorBrowserApiNarrative } = loadRuntimeModuleExport(
+    "public/app/browser-api-narratives.js",
+    ["buildVendorBrowserApiNarrative"]
+  );
+
+  const vendorNarrative = buildVendorBrowserApiNarrative([
+    {
+      key: "api.webrtc.stun_turn_assisted_probe",
+      surfaceDetail: "webrtc",
+      totalCount: 3,
+      observedCount: 2,
+      blockedCount: 1,
+      trustedAllowedCount: 0,
+    },
+  ], { section: "vendor" });
+
+  const contextualNarrative = buildVendorBrowserApiNarrative([
+    {
+      key: "api.canvas.readback",
+      surfaceDetail: "canvas",
+      totalCount: 1,
+      observedCount: 1,
+      blockedCount: 0,
+      trustedAllowedCount: 0,
+    },
+    {
+      key: "geolocation",
+      surfaceDetail: "geolocation",
+      totalCount: 1,
+      observedCount: 1,
+      blockedCount: 0,
+      trustedAllowedCount: 0,
+    },
+  ], { section: "contextual" });
+
+  assert.match(vendorNarrative.headline, /may be using WebRTC activity/i);
+  assert.equal(/proof/i.test(vendorNarrative.headline), false);
+  assert.match(contextualNarrative.headline, /not directly attributable to this vendor/i);
+  assert.ok(contextualNarrative.actions.some((action) => action.href === "/?view=api-signals"));
+});
