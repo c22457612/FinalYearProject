@@ -27,18 +27,41 @@
 
   <div class="site-content">
     <section class="visualizer-row" aria-label="Site visualizer">
-    <section class="site-grid">
       <div class="panel site-viz-panel">
-        <div class="panel-header">
+        <div class="panel-header viz-panel-header">
           <div>
             <div id="vizTitle" class="panel-title">Visualisation</div>
             <div class="panel-subtitle">Auto-updates as new events arrive</div>
           </div>
 
-          <div class="viz-controls">
+          <div class="viz-panel-actions">
             <button id="vizInfoBtn" class="viz-nav" type="button">Explain / Info</button>
           </div>
         </div>
+
+        <section class="viz-toolbar" aria-label="Visualizer controls">
+          <div class="viz-toolbar-group">
+            <label class="viz-toolbar-field" for="viewModeSelect">
+              <span class="viz-label">View</span>
+              <select id="viewModeSelect" class="viz-select viz-toolbar-select">
+                <option value="easy" selected>Easy</option>
+                <option value="power">Power</option>
+              </select>
+            </label>
+            <label class="viz-toolbar-field" for="rangeSelect">
+              <span class="viz-label">Range</span>
+              <select id="rangeSelect" class="viz-select viz-toolbar-select">
+                <option value="24h" selected>Last 24h</option>
+                <option value="1h">Last 1h</option>
+                <option value="7d">Last 7d</option>
+                <option value="all">All time</option>
+              </select>
+            </label>
+          </div>
+          <div class="viz-toolbar-actions">
+            <button id="filterResetBtn" class="viz-nav" type="button">Reset filters</button>
+          </div>
+        </section>
 
         <div class="viz-opening-stack">
           <div class="site-meta-strip" aria-label="Site scope summary">
@@ -76,9 +99,8 @@
               <div id="filterSummary" class="panel-subtitle filter-summary">
                 Showing 0 of 0 events
               </div>
-              <div class="viz-guided-actions">
-                <button id="filterResetBtn" class="viz-nav" type="button">Reset filters</button>
-                <button id="clearVendorBtn" class="viz-nav" type="button">Clear vendor</button>
+              <div class="viz-scope-actions">
+                <button id="clearVendorBtn" class="viz-nav hidden" type="button">Clear vendor</button>
               </div>
             </div>
             <div id="vizScopeSummary" class="viz-scope-summary">Waiting for site activity.</div>
@@ -89,130 +111,6 @@
             </div>
             <div id="vizTopBucketSummary" class="viz-top-bucket hidden"></div>
             <div id="vizStateGuidance" class="viz-state-guidance hidden"></div>
-          </section>
-        </div>
-
-        <div class="viz-wrap">
-          <div id="vizChart" class="viz-chart"></div>
-        </div>
-        <div class="viz-bottom-nav">
-          <div class="viz-arrow-group">
-            <button id="vizPrevBtn" class="viz-nav" type="button" title="Previous">&larr;</button>
-            <button id="vizNextBtn" class="viz-nav" type="button" title="Next">&rarr;</button>
-          </div>
-          <div class="viz-mode-group">
-            <label class="viz-label" for="vizSelect">Chart</label>
-            <select id="vizSelect" class="viz-select">
-              <option value="vendorOverview">Vendor activity overview</option>
-              <option value="vendorBlockRateComparison">Block-rate by vendor comparison (%)</option>
-              <option value="vendorShareOverTime">Vendor share over time (stacked area)</option>
-              <option value="vendorAllowedBlockedTimeline">Vendor allowed vs blocked timeline</option>
-              <option value="vendorTopDomainsEndpoints">Where this vendor connects (top domains/endpoints)</option>
-              <option value="riskTrend">Risk trend timeline</option>
-              <option value="baselineDetectedBlockedTrend">Baseline vs detected vs blocked trend</option>
-              <option value="timeline">Activity timeline (last 24h)</option>
-              <option value="topSeen">Top third-party domains (seen)</option>
-              <option value="kinds">Event breakdown (kind)</option>
-              <option value="apiGating">3P API-like calls (heuristic)</option>
-              <option value="vendorKindMatrix">Vendor-kind matrix</option>
-              <option value="ruleIdFrequency">Rule ID frequency</option>
-              <option value="resourceTypes">Resource type breakdown</option>
-              <option value="modeBreakdown">Protection mode breakdown</option>
-              <option value="partySplit">Party split (first vs third)</option>
-              <option value="hourHeatmap">Activity heatmap (hour x day)</option>
-            </select>
-          </div>
-          <div id="vizPositionLabel" class="viz-position-label">1 / 1</div>
-        </div>
-        <div id="vizModeHelp" class="viz-mode-help"></div>
-
-        <section id="insightSheet" class="insight-sheet">
-          <div class="insight-sheet-header">
-            <div>
-              <div id="insightTitle" class="panel-title">Detailed evidence</div>
-              <div id="insightMeta" class="panel-subtitle">Select a chart point or use Explain / Info for a deeper breakdown.</div>
-            </div>
-          </div>
-          <div class="insight-sheet-body">
-            <div id="insightSeverity" class="insight-severity severity-info">Info</div>
-            <div id="insightSelectedLead" class="insight-selected-lead">You selected: no datapoint yet.</div>
-            <section id="insightApiNarrative" class="insight-api-narrative hidden" aria-label="Browser API summary">
-              <div id="insightApiNarrativeConcern" class="insight-api-narrative-concern"></div>
-              <div id="insightApiNarrativeHeadline" class="insight-api-narrative-headline"></div>
-              <div id="insightApiNarrativeDetail" class="insight-api-narrative-detail"></div>
-              <div class="insight-api-narrative-grid">
-                <div class="insight-block">
-                  <div class="insight-label">Why it matters</div>
-                  <ul id="insightApiNarrativeWhy" class="insight-list"></ul>
-                </div>
-                <div class="insight-block">
-                  <div class="insight-label">What you can do</div>
-                  <ul id="insightApiNarrativeActions" class="insight-list"></ul>
-                </div>
-              </div>
-            </section>
-            <div class="insight-block">
-              <div class="insight-label">What</div>
-              <div id="insightSummary"></div>
-            </div>
-            <div class="insight-block">
-              <div class="insight-label">How</div>
-              <div id="insightHow"></div>
-            </div>
-            <div class="insight-block">
-              <div class="insight-label">Why</div>
-              <ul id="insightWhy" class="insight-list"></ul>
-            </div>
-            <div class="insight-block">
-              <div class="insight-label">Limits</div>
-              <ul id="insightLimits" class="insight-list"></ul>
-            </div>
-            <details id="insightTechnicalPanel" class="insight-technical hidden">
-              <summary>Technical evidence (Power)</summary>
-              <div class="insight-technical-body">
-                <div id="drawerTitle" class="insight-technical-title">Selection</div>
-                <div class="insight-technical-label">Advanced details</div>
-                <div id="drawerSummary" class="insight-technical-summary"></div>
-                <div id="drawerEvents" class="insight-technical-events"></div>
-              </div>
-            </details>
-            <div id="insightActions" class="insight-actions"></div>
-          </div>
-        </section>
-      </div>
-
-      <div class="site-right">
-        <div id="sidebarModuleFilters" class="panel sidebar-module" data-sidebar-module="filters">
-          <div class="panel-header">
-            <div>
-              <div class="panel-title">View controls</div>
-              <div id="sidebarFiltersMeta" class="panel-subtitle">Primary mode and range controls</div>
-            </div>
-          </div>
-          <div class="sidebar-module-body">
-            <div class="view-module-controls">
-              <div class="view-module-row">
-                <label class="viz-label" for="viewModeSelect">View</label>
-                <select id="viewModeSelect" class="viz-select view-module-select">
-                  <option value="easy" selected>Easy</option>
-                  <option value="power">Power</option>
-                </select>
-              </div>
-              <div class="view-module-row">
-                <label class="viz-label" for="rangeSelect">Range</label>
-                <select id="rangeSelect" class="viz-select view-module-select">
-                  <option value="24h" selected>Last 24h</option>
-                  <option value="1h">Last 1h</option>
-                  <option value="7d">Last 7d</option>
-                  <option value="all">All time</option>
-                </select>
-              </div>
-            </div>
-            <div id="sidebarFiltersSummary" class="panel-subtitle">No filters applied.</div>
-            <ul id="sidebarFiltersList" class="sidebar-mini-list"></ul>
-            <div class="sidebar-actions">
-              <button id="sidebarResetFiltersBtn" class="viz-nav" type="button">Reset filters</button>
-            </div>
             <details id="advancedControlsPanel" class="viz-advanced-panel">
               <summary>Power chart options</summary>
               <div class="viz-advanced-panel-body">
@@ -341,26 +239,103 @@
                     <label class="kind-toggle"><input id="vizStackToggle" type="checkbox" checked />Stack bars</label>
                   </div>
 
-                  <div class="sidebar-actions">
+                  <div class="viz-scope-actions">
                     <button id="vizClearSelectionBtn" class="viz-nav" type="button">Clear selection</button>
                   </div>
                 </div>
               </div>
             </details>
-          </div>
+          </section>
         </div>
 
-        <div id="sidebarModuleSelectedEvidence" class="panel sidebar-module" data-sidebar-module="selectedEvidence">
-          <div class="panel-header">
+        <div class="viz-wrap">
+          <div id="vizChart" class="viz-chart"></div>
+        </div>
+        <div class="viz-bottom-nav">
+          <div class="viz-arrow-group">
+            <button id="vizPrevBtn" class="viz-nav" type="button" title="Previous">&larr;</button>
+            <button id="vizNextBtn" class="viz-nav" type="button" title="Next">&rarr;</button>
+          </div>
+          <div class="viz-mode-group">
+            <label class="viz-label" for="vizSelect">Chart</label>
+            <select id="vizSelect" class="viz-select">
+              <option value="vendorOverview">Vendor activity overview</option>
+              <option value="vendorBlockRateComparison">Block-rate by vendor comparison (%)</option>
+              <option value="vendorShareOverTime">Vendor share over time (stacked area)</option>
+              <option value="vendorAllowedBlockedTimeline">Vendor allowed vs blocked timeline</option>
+              <option value="vendorTopDomainsEndpoints">Where this vendor connects (top domains/endpoints)</option>
+              <option value="riskTrend">Risk trend timeline</option>
+              <option value="baselineDetectedBlockedTrend">Baseline vs detected vs blocked trend</option>
+              <option value="timeline">Activity timeline (last 24h)</option>
+              <option value="topSeen">Top third-party domains (seen)</option>
+              <option value="kinds">Event breakdown (kind)</option>
+              <option value="apiGating">3P API-like calls (heuristic)</option>
+              <option value="vendorKindMatrix">Vendor-kind matrix</option>
+              <option value="ruleIdFrequency">Rule ID frequency</option>
+              <option value="resourceTypes">Resource type breakdown</option>
+              <option value="modeBreakdown">Protection mode breakdown</option>
+              <option value="partySplit">Party split (first vs third)</option>
+              <option value="hourHeatmap">Activity heatmap (hour x day)</option>
+            </select>
+          </div>
+          <div id="vizPositionLabel" class="viz-position-label">1 / 1</div>
+        </div>
+        <div id="vizModeHelp" class="viz-mode-help"></div>
+
+        <section id="insightSheet" class="insight-sheet">
+          <div class="insight-sheet-header">
             <div>
-              <div class="panel-title">Selected evidence</div>
-              <div id="sidebarSelectedEvidenceMeta" class="panel-subtitle">No datapoint selected.</div>
+              <div id="insightTitle" class="panel-title">Detailed evidence</div>
+              <div id="insightMeta" class="panel-subtitle">Select a chart point or use Explain / Info for a deeper breakdown.</div>
             </div>
           </div>
-          <div id="sidebarSelectedEvidenceBody" class="sidebar-module-body"></div>
-        </div>
+          <div class="insight-sheet-body">
+            <div id="insightSeverity" class="insight-severity severity-info">Info</div>
+            <div id="insightSelectedLead" class="insight-selected-lead">You selected: no datapoint yet.</div>
+            <section id="insightApiNarrative" class="insight-api-narrative hidden" aria-label="Browser API summary">
+              <div id="insightApiNarrativeConcern" class="insight-api-narrative-concern"></div>
+              <div id="insightApiNarrativeHeadline" class="insight-api-narrative-headline"></div>
+              <div id="insightApiNarrativeDetail" class="insight-api-narrative-detail"></div>
+              <div class="insight-api-narrative-grid">
+                <div class="insight-block">
+                  <div class="insight-label">Why it matters</div>
+                  <ul id="insightApiNarrativeWhy" class="insight-list"></ul>
+                </div>
+                <div class="insight-block">
+                  <div class="insight-label">What you can do</div>
+                  <ul id="insightApiNarrativeActions" class="insight-list"></ul>
+                </div>
+              </div>
+            </section>
+            <div class="insight-block">
+              <div class="insight-label">What</div>
+              <div id="insightSummary"></div>
+            </div>
+            <div class="insight-block">
+              <div class="insight-label">How</div>
+              <div id="insightHow"></div>
+            </div>
+            <div class="insight-block">
+              <div class="insight-label">Why</div>
+              <ul id="insightWhy" class="insight-list"></ul>
+            </div>
+            <div class="insight-block">
+              <div class="insight-label">Limits</div>
+              <ul id="insightLimits" class="insight-list"></ul>
+            </div>
+            <details id="insightTechnicalPanel" class="insight-technical hidden">
+              <summary>Technical evidence (Power)</summary>
+              <div class="insight-technical-body">
+                <div id="drawerTitle" class="insight-technical-title">Selection</div>
+                <div class="insight-technical-label">Advanced details</div>
+                <div id="drawerSummary" class="insight-technical-summary"></div>
+                <div id="drawerEvents" class="insight-technical-events"></div>
+              </div>
+            </details>
+            <div id="insightActions" class="insight-actions"></div>
+          </div>
+        </section>
       </div>
-    </section>
     </section>
   </div>
 

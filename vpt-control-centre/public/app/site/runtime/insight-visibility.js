@@ -1,8 +1,5 @@
 export function createInsightVisibility(deps) {
-  const {
-    qs,
-    onSelectVendorProfileModule,
-  } = deps;
+  const { qs } = deps;
 
   let insightScrollRaf = null;
 
@@ -87,8 +84,8 @@ export function createInsightVisibility(deps) {
   function focusVendorDetailsUx(vendorName, count = 0) {
     if (!vendorName) return;
     showVendorSelectionCue(vendorName, count);
-    if (typeof onSelectVendorProfileModule === "function") onSelectVendorProfileModule();
-    pulseElement(qs("sidebarModuleSelectedEvidence"));
+    ensureInsightVisible({ force: true, source: "vendor" });
+    pulseElement(qs("insightSheet"));
   }
 
   return {

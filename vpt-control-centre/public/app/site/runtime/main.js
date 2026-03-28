@@ -1,5 +1,4 @@
 import { createChartBuilders } from "../chart-builders.js";
-import { createSidebarModules } from "./sidebar-modules.js";
 import { createScopeInsights } from "./scope-insights.js";
 import { createInsightVisibility } from "./insight-visibility.js";
 import { createInsightSheet } from "./insight-sheet.js";
@@ -23,7 +22,6 @@ import {
   summarizeVisualCategoryCounts,
   matchesFilters,
   getActiveFilterLabels as computeActiveFilterLabels,
-  getActiveVizOptionLabels as computeActiveVizOptionLabels,
   readFilterStateFromControls as readFilterStateFromDom,
   writeFilterStateToControls as writeFilterStateToDom,
   readVizOptionsFromControls as readVizOptionsFromDom,
@@ -154,33 +152,6 @@ const PARTY_LABELS = {
   first_or_unknown: "First/unknown",
 };
 
-const SURFACE_LABELS = {
-  network: "Network",
-  cookies: "Cookies",
-  storage: "Storage",
-  api: "API",
-  browser_api: "Browser API",
-  script: "Script",
-  unknown: "Unknown",
-};
-
-const PRIVACY_STATUS_LABELS = {
-  baseline: "Baseline",
-  signal_detected: "Signal detected",
-  high_risk: "High risk",
-  policy_blocked: "Policy blocked",
-  policy_allowed: "Policy allowed",
-  unknown: "Unknown",
-};
-
-const MITIGATION_STATUS_LABELS = {
-  allowed: "Allowed",
-  blocked: "Blocked",
-  observed_only: "Observed only",
-  modified: "Modified",
-  unknown: "Unknown",
-};
-
 const vendorScope = createVendorScope({
   qs,
   getVendorTaxonomy,
@@ -252,37 +223,8 @@ const chartOrchestrationController = createChartOrchestrationController({
   hideVendorSelectionCue,
 });
 
-const sidebarModules = createSidebarModules({
-  qs,
-  friendlyTime,
-  pickPrimarySelectedEvent,
-  getRangeKey,
-  getViewMode: () => viewMode,
-  getCurrentView: () => VIEWS[vizIndex] || VIEWS[0],
-  getSiteName: () => siteName,
-  getInsightRules,
-  getFilterState: () => filterState,
-  getSelectedVendor: () => selectedVendor,
-  getVizSelection: () => vizSelection,
-  getChartEvents,
-  getActiveVizOptionLabels,
-  partyLabels: PARTY_LABELS,
-  resourceLabels: RESOURCE_LABELS,
-  surfaceLabels: SURFACE_LABELS,
-  privacyStatusLabels: PRIVACY_STATUS_LABELS,
-  mitigationStatusLabels: MITIGATION_STATUS_LABELS,
-  onResetFilters: () => {
-    filterState = defaultFilterState();
-    writeFilterStateToControls();
-    applyFilterChanges();
-  },
-});
-
 const insightVisibility = createInsightVisibility({
   qs,
-  onSelectVendorProfileModule: () => {
-    sidebarModules.selectModule("selectedEvidence");
-  },
 });
 
 const insightSheet = createInsightSheet({
@@ -640,13 +582,10 @@ function getActiveFilterLabels() {
   return computeActiveFilterLabels(filterState);
 }
 
-function getActiveVizOptionLabels() {
-  return computeActiveVizOptionLabels(vizOptions);
-}
-
 function updateFilterSummary() {
   const el = qs("filterSummary");
   if (!el) return;
+  const clearVendorBtn = qs("clearVendorBtn");
 
   const baseCount = Array.isArray(windowEvents) ? windowEvents.length : 0;
   const filteredCount = Array.isArray(filteredEvents) ? filteredEvents.length : 0;
@@ -665,8 +604,8 @@ function updateFilterSummary() {
   parts.push(viewMode === "power" ? "Power" : "Easy");
 
   el.textContent = parts.join(" • ");
+  clearVendorBtn?.classList.toggle("hidden", !selectedVendor?.vendorId);
   vendorScopeBanner.renderVendorScopeBanner();
-  sidebarModules.renderSidebarModules();
   renderCurrentInsightLead();
 }
 
@@ -724,7 +663,6 @@ function renderStateGuidance({ events = [], lensPivotActive = false, emptyMessag
       btn.textContent = action.label;
       btn.addEventListener("click", () => {
         if (action.id === "broaden_range") {
-          sidebarModules.selectModule("filters");
           qs("rangeSelect")?.focus();
           return;
         }
@@ -1753,7 +1691,6 @@ export function bootSiteInsights() {
   }
 
   setViewMode(qs("viewModeSelect")?.value || "easy", { rerender: false });
-  sidebarModules.initControls();
 
   qs("viewModeSelect")?.addEventListener("change", () => {
     setViewMode(qs("viewModeSelect")?.value || "easy", { rerender: true });

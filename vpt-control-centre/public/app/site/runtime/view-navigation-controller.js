@@ -91,7 +91,7 @@ export function createViewNavigationController(deps) {
       return;
     }
 
-    el.textContent = `Easy mode is guided. ${powerOnlyCount} additional views are listed as "${powerOnlyViewLabelSuffix.trim()}" and unlock in Power mode.`;
+    el.textContent = `Easy mode is guided. ${powerOnlyCount} additional views are listed as "${powerOnlyViewLabelSuffix.trim()}" and unlock from the visualizer toolbar in Power mode.`;
   }
 
   function updateDrawerButtonState() {
@@ -126,7 +126,7 @@ export function createViewNavigationController(deps) {
       opt.hidden = false;
       opt.disabled = !allowed;
       opt.textContent = allowed ? baseLabel : `${baseLabel}${powerOnlyViewLabelSuffix}`;
-      opt.title = allowed ? "" : "Switch View controls to Power to use this chart mode.";
+      opt.title = allowed ? "" : "Switch the visualizer toolbar to Power to use this chart mode.";
     }
 
     const currentId = views[getVizIndex()]?.id;

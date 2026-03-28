@@ -957,47 +957,59 @@ test("insight summary text calls out browser API activity for API-only selection
   assert.match(insight.summary, /Browser API activity/i);
 });
 
-test("selected evidence digest model prefers compact formatted summary-first content", () => {
-  const { summarizeVisualCategoryCounts } = loadRuntimeModuleExport(
-    "public/app/site/filter-state.js",
-    ["summarizeVisualCategoryCounts"]
-  );
-  const { buildSidebarEvidenceDigestModel } = loadRuntimeModuleExportWithoutImports(
-    "public/app/site/runtime/sidebar-modules.js",
-    ["buildSidebarEvidenceDigestModel"],
+test("insight visibility routes vendor-detail focus to the lower insight sheet", () => {
+  let scrollTarget = null;
+  const sandboxWindow = {
+    scrollY: 0,
+    matchMedia: () => ({ matches: true }),
+    scrollTo: ({ top }) => {
+      scrollTarget = top;
+    },
+  };
+  const { createInsightVisibility } = loadRuntimeModuleExport(
+    "public/app/site/runtime/insight-visibility.js",
+    ["createInsightVisibility"],
     {
-      summarizeVisualCategoryCounts,
-      getEventListContextText: () => "",
-      getEventListKindText: () => "",
-      getEventListMetaText: () => "",
+      window: sandboxWindow,
+      document: {
+        documentElement: { clientHeight: 900, scrollTop: 0 },
+        body: { scrollTop: 0 },
+      },
+      performance: { now: () => 0 },
+      requestAnimationFrame: (cb) => {
+        cb(1000);
+        return 1;
+      },
+      cancelAnimationFrame: () => {},
     }
   );
 
-  const digest = buildSidebarEvidenceDigestModel({
-    selection: null,
-    evidence: [
-      { id: "e1", ts: 1_000, kind: "network.observed", data: { isThirdParty: true }, enrichment: { mitigationStatus: "observed_only" } },
-      { id: "e2", ts: 2_000, kind: "network.blocked", data: { isThirdParty: true }, enrichment: { mitigationStatus: "blocked" } },
-    ],
-    currentView: { id: "vendorOverview", title: "Vendor activity overview" },
-    viewMode: "power",
-    siteName: "alpha.local",
-    selectedVendor: null,
-    pickPrimarySelectedEvent: (events) => events[0] || null,
-    getInsightRules: () => ({
-      buildInsightResult: () => ({
-        summary: "Selected activity includes 2 events with third-party tracking signals.",
-        severity: "caution",
-        confidence: 0.8,
-        evidenceSummary: { total: 2, blocked: 1, observed: 1, blockedApi: 0, observedApi: 0, api: 0, other: 0 },
-      }),
-    }),
+  let removedClass = "";
+  let addedClass = "";
+  const insightSheet = {
+    getBoundingClientRect: () => ({ top: 200, bottom: 420 }),
+    classList: {
+      remove: (name) => {
+        removedClass = name;
+      },
+      add: (name) => {
+        addedClass = name;
+      },
+    },
+    get offsetWidth() {
+      return 320;
+    },
+  };
+
+  const api = createInsightVisibility({
+    qs: (id) => (id === "insightSheet" ? insightSheet : null),
   });
 
-  assert.equal(digest.insight.severity, "caution");
-  assert.equal(digest.hasLockedSelection, false);
-  assert.match(digest.supportLine, /Vendor activity overview digest/i);
-  assert.match(digest.mixText, /1 blocked, 1 observed/i);
+  api.focusVendorDetailsUx("Google", 12);
+
+  assert.equal(removedClass, "attention-pulse");
+  assert.equal(addedClass, "attention-pulse");
+  assert.equal(scrollTarget, 128);
 });
 
 test("timeline chart counts API blocked and observed buckets from semantic status", () => {
