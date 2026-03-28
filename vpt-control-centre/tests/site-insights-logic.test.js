@@ -144,6 +144,240 @@ test("evidence summary tracks dominant kinds and time bounds", () => {
   assert.ok(summary.dominantKinds.length >= 1);
 });
 
+test("insight lead presentation promotes the first sentence into the headline", () => {
+  const { buildInsightLeadPresentation } = loadRuntimeModuleExportWithoutImports(
+    "public/app/site/runtime/insight-sheet.js",
+    ["buildInsightLeadPresentation"],
+    {
+      isApiSignalEvent: () => false,
+    }
+  );
+
+  const presentation = buildInsightLeadPresentation({
+    insight: {
+      summary: "Selected activity includes 24 events (10 blocked, 14 observed). Third-party requests are present (18/24).",
+      evidenceSummary: {
+        total: 24,
+        blocked: 10,
+        observed: 14,
+        blockedApi: 0,
+        observedApi: 0,
+      },
+    },
+    evidence: [],
+  });
+
+  assert.equal(presentation.headline, "Selected activity includes 24 events (10 blocked, 14 observed).");
+  assert.equal(presentation.detail, "Third-party requests are present (18/24).");
+});
+
+test("insight lead presentation omits detail when only one sentence exists", () => {
+  const { buildInsightLeadPresentation } = loadRuntimeModuleExportWithoutImports(
+    "public/app/site/runtime/insight-sheet.js",
+    ["buildInsightLeadPresentation"],
+    {
+      isApiSignalEvent: () => false,
+    }
+  );
+
+  const presentation = buildInsightLeadPresentation({
+    insight: {
+      summary: "Selected activity includes 3 events (1 blocked, 2 observed).",
+      evidenceSummary: {
+        total: 3,
+        blocked: 1,
+        observed: 2,
+        blockedApi: 0,
+        observedApi: 0,
+      },
+    },
+    evidence: [],
+  });
+
+  assert.equal(presentation.headline, "Selected activity includes 3 events (1 blocked, 2 observed).");
+  assert.equal(presentation.detail, "");
+});
+
+test("insight lead presentation keeps facts compact and folds API counts into outcome totals", () => {
+  const { buildInsightLeadPresentation } = loadRuntimeModuleExportWithoutImports(
+    "public/app/site/runtime/insight-sheet.js",
+    ["buildInsightLeadPresentation"],
+    {
+      isApiSignalEvent: (ev) => String(ev?.kind || "").startsWith("api."),
+    }
+  );
+
+  const evidence = [
+    { kind: "network.blocked", data: { isThirdParty: true, resourceType: "script" } },
+    { kind: "network.observed", data: { isThirdParty: true, resourceType: "script" } },
+    { kind: "network.observed", data: { isThirdParty: true, resourceType: "xmlhttprequest" } },
+    { kind: "api.clipboard", data: { isThirdParty: true } },
+    { kind: "api.canvas", data: { isThirdParty: true } },
+    { kind: "network.observed", data: { isThirdParty: true, resourceType: "image" } },
+    { kind: "network.observed", data: { isThirdParty: false, resourceType: "image" } },
+  ];
+
+  const presentation = buildInsightLeadPresentation({
+    insight: {
+      summary: "Selected activity includes 7 events (1 blocked, 2 observed, 3 blocked API, 1 observed API).",
+      evidenceSummary: {
+        total: 7,
+        blocked: 1,
+        observed: 2,
+        blockedApi: 3,
+        observedApi: 1,
+      },
+    },
+    evidence,
+  });
+
+  assert.deepEqual(
+    Array.from(presentation.facts, (fact) => `${fact.label} ${fact.value}`),
+    [
+      "Activity 7 events",
+      "Outcome 4 blocked / 3 observed",
+      "Exposure 6 third-party",
+      "Signals 2 script requests",
+    ]
+  );
+  assert.equal(presentation.facts.length, 4);
+});
+
+test("insight case sheet presentation promotes the first summary sentence into the takeaway", () => {
+  const { buildInsightCaseSheetPresentation } = loadRuntimeModuleExportWithoutImports(
+    "public/app/site/runtime/insight-sheet.js",
+    ["buildInsightCaseSheetPresentation"],
+    {
+      isApiSignalEvent: () => false,
+    }
+  );
+
+  const presentation = buildInsightCaseSheetPresentation({
+    insight: {
+      summary: "example.com activity includes 49 events (13 blocked, 28 observed, 8 other). Script traffic is meaningful (6 script-type requests).",
+      severity: "high",
+      confidence: 0.88,
+      evidenceSummary: {
+        total: 49,
+        blocked: 13,
+        observed: 28,
+        blockedApi: 0,
+        observedApi: 0,
+        other: 8,
+      },
+      actions: [{ type: "trust_site", label: "Trust this site" }],
+    },
+    evidence: [],
+  });
+
+  assert.equal(presentation.takeaway, "example.com activity includes 49 events (13 blocked, 28 observed, 8 other).");
+  assert.equal(presentation.severity.level, "high");
+  assert.equal(presentation.severity.label, "High");
+  assert.equal(presentation.confidence.label, "88% confidence");
+  assert.equal(presentation.confidence.band, "high");
+});
+
+test("insight case sheet presentation keeps metrics compact and folds API into blocked and observed totals", () => {
+  const { buildInsightCaseSheetPresentation } = loadRuntimeModuleExportWithoutImports(
+    "public/app/site/runtime/insight-sheet.js",
+    ["buildInsightCaseSheetPresentation"],
+    {
+      isApiSignalEvent: (ev) => String(ev?.kind || "").startsWith("api."),
+    }
+  );
+
+  const presentation = buildInsightCaseSheetPresentation({
+    insight: {
+      summary: "Selected activity includes 9 events (2 blocked, 3 observed, 1 other, 2 blocked API, 1 observed API).",
+      severity: "caution",
+      confidence: 0.76,
+      evidenceSummary: {
+        total: 9,
+        blocked: 2,
+        observed: 3,
+        blockedApi: 2,
+        observedApi: 1,
+        other: 1,
+      },
+      actions: [],
+    },
+    evidence: [
+      { kind: "network.blocked", data: { isThirdParty: true, resourceType: "script" } },
+      { kind: "network.observed", data: { isThirdParty: true, resourceType: "script" } },
+      { kind: "network.observed", data: { isThirdParty: true, resourceType: "xmlhttprequest" } },
+      { kind: "api.clipboard", data: { isThirdParty: true } },
+      { kind: "api.canvas", data: { isThirdParty: true } },
+      { kind: "network.observed", data: { isThirdParty: true, resourceType: "image" } },
+      { kind: "network.observed", data: { isThirdParty: false, resourceType: "image" } },
+      { kind: "network.observed", data: { isThirdParty: false, resourceType: "image" } },
+      { kind: "network.observed", data: { isThirdParty: false, resourceType: "image" } },
+    ],
+  });
+
+  assert.deepEqual(
+    Array.from(presentation.metrics, (metric) => `${metric.label} ${metric.value} ${metric.note || ""}`.trim()),
+    [
+      "Events 9 captured in scope",
+      "Blocked 4 including API",
+      "Observed 4 including API",
+      "Third-party 6 requests",
+      "Signals 2 script requests",
+    ]
+  );
+  assert.equal(presentation.metrics.length, 5);
+});
+
+test("insight case sheet presentation reports footer visibility when actions are present", () => {
+  const { buildInsightCaseSheetPresentation } = loadRuntimeModuleExportWithoutImports(
+    "public/app/site/runtime/insight-sheet.js",
+    ["buildInsightCaseSheetPresentation"],
+    {
+      isApiSignalEvent: () => false,
+    }
+  );
+
+  const withActions = buildInsightCaseSheetPresentation({
+    insight: {
+      summary: "Selected activity includes 2 events.",
+      severity: "info",
+      confidence: 0.45,
+      evidenceSummary: {
+        total: 2,
+        blocked: 0,
+        observed: 2,
+        blockedApi: 0,
+        observedApi: 0,
+        other: 0,
+      },
+      actions: [{ type: "export_evidence", label: "Export selected evidence" }],
+    },
+    evidence: [{ kind: "network.observed", data: {} }],
+  });
+
+  const withoutActions = buildInsightCaseSheetPresentation({
+    insight: {
+      summary: "Selected activity includes 0 events.",
+      severity: "info",
+      confidence: 0.45,
+      evidenceSummary: {
+        total: 0,
+        blocked: 0,
+        observed: 0,
+        blockedApi: 0,
+        observedApi: 0,
+        other: 0,
+      },
+      actions: [],
+    },
+    evidence: [],
+  });
+
+  assert.equal(withActions.footer.hasActions, true);
+  assert.equal(withActions.footer.hasTechnical, true);
+  assert.equal(withoutActions.footer.hasActions, false);
+  assert.equal(withoutActions.footer.hasTechnical, false);
+});
+
 test("site lens pivots vendor overview for selected vendor when comparison cardinality is low", () => {
   const sandbox = createSandbox();
   loadBrowserModule("public/app/site-lens.js", sandbox);

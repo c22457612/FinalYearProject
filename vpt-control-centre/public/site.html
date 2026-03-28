@@ -122,11 +122,15 @@
 
             <section id="insightLead" class="insight-lead" aria-label="Current deterministic insight">
               <div class="insight-lead-main">
-                <div id="insightLeadSeverity" class="insight-severity severity-info">Info</div>
+                <div class="insight-lead-header">
+                  <div id="insightLeadSeverity" class="insight-severity severity-info">Severity: Info</div>
+                  <div id="insightLeadSupport" class="insight-lead-support hidden"></div>
+                </div>
                 <div id="insightLeadSummary" class="insight-lead-summary">
                   Waiting for captured activity in the current scope.
                 </div>
-                <div id="insightLeadSupport" class="insight-lead-support hidden"></div>
+                <div id="insightLeadDetail" class="insight-lead-detail hidden"></div>
+                <div id="insightLeadFacts" class="insight-lead-facts hidden"></div>
               </div>
               <div id="insightLeadActions" class="insight-lead-actions"></div>
             </section>
@@ -294,14 +298,33 @@
 
         <section id="insightSheet" class="insight-sheet">
           <div class="insight-sheet-header">
-            <div>
-              <div id="insightTitle" class="panel-title">Detailed evidence</div>
-              <div id="insightMeta" class="panel-subtitle">Select a chart point or use Explain / Info for a deeper breakdown.</div>
+            <div id="insightCaseHeader" class="insight-case-header">
+              <div class="insight-case-header-top">
+                <div class="insight-case-heading">
+                  <div class="insight-case-heading-row">
+                    <div class="insight-case-title-wrap">
+                      <div class="insight-case-section-kicker">
+                        <span class="insight-section-icon insight-icon-summary" aria-hidden="true"></span>
+                        Case sheet
+                      </div>
+                      <div id="insightTitle" class="panel-title">Detailed evidence</div>
+                    </div>
+                    <div class="insight-case-badges">
+                      <div id="insightSeverity" class="insight-severity severity-info">Severity: Info</div>
+                      <div id="insightConfidence" class="insight-confidence-badge">45% confidence</div>
+                    </div>
+                  </div>
+                  <div id="insightMeta" class="panel-subtitle">Select a chart point or use Explain / Info for a deeper breakdown.</div>
+                  <div id="insightSelectedLead" class="insight-selected-lead">You selected: no datapoint yet.</div>
+                </div>
+              </div>
+              <div id="insightTakeaway" class="insight-case-takeaway">
+                Choose a datapoint or use Explain / Info to expand the current deterministic scope summary.
+              </div>
             </div>
           </div>
           <div class="insight-sheet-body">
-            <div id="insightSeverity" class="insight-severity severity-info">Info</div>
-            <div id="insightSelectedLead" class="insight-selected-lead">You selected: no datapoint yet.</div>
+            <section id="insightCaseMetrics" class="insight-case-metrics hidden" aria-label="Evidence metrics"></section>
             <section id="insightApiNarrative" class="insight-api-narrative hidden" aria-label="Browser API summary">
               <div id="insightApiNarrativeConcern" class="insight-api-narrative-concern"></div>
               <div id="insightApiNarrativeHeadline" class="insight-api-narrative-headline"></div>
@@ -317,32 +340,60 @@
                 </div>
               </div>
             </section>
-            <div class="insight-block">
-              <div class="insight-label">What</div>
-              <div id="insightSummary"></div>
+            <div id="insightCaseGrid" class="insight-case-grid">
+              <section class="insight-case-section">
+                <div class="insight-case-section-header">
+                  <span class="insight-section-icon insight-icon-summary" aria-hidden="true"></span>
+                  <div class="insight-case-section-title">Interpretation</div>
+                </div>
+                <div class="insight-case-section-body">
+                  <div id="insightSummary" class="insight-case-copy"></div>
+                </div>
+              </section>
+              <section class="insight-case-section">
+                <div class="insight-case-section-header">
+                  <span class="insight-section-icon insight-icon-evidence" aria-hidden="true"></span>
+                  <div class="insight-case-section-title">Observed evidence</div>
+                </div>
+                <div class="insight-case-section-body">
+                  <div id="insightHow" class="insight-case-copy"></div>
+                </div>
+              </section>
+              <section class="insight-case-section">
+                <div class="insight-case-section-header">
+                  <span class="insight-section-icon insight-icon-risk" aria-hidden="true"></span>
+                  <div class="insight-case-section-title">Risk cues</div>
+                </div>
+                <div class="insight-case-section-body">
+                  <ul id="insightWhy" class="insight-list"></ul>
+                </div>
+              </section>
+              <section class="insight-case-section">
+                <div class="insight-case-section-header">
+                  <span class="insight-section-icon insight-icon-limits" aria-hidden="true"></span>
+                  <div class="insight-case-section-title">Limits</div>
+                </div>
+                <div class="insight-case-section-body">
+                  <ul id="insightLimits" class="insight-list"></ul>
+                </div>
+              </section>
             </div>
-            <div class="insight-block">
-              <div class="insight-label">How</div>
-              <div id="insightHow"></div>
-            </div>
-            <div class="insight-block">
-              <div class="insight-label">Why</div>
-              <ul id="insightWhy" class="insight-list"></ul>
-            </div>
-            <div class="insight-block">
-              <div class="insight-label">Limits</div>
-              <ul id="insightLimits" class="insight-list"></ul>
-            </div>
-            <details id="insightTechnicalPanel" class="insight-technical hidden">
-              <summary>Technical evidence (Power)</summary>
-              <div class="insight-technical-body">
-                <div id="drawerTitle" class="insight-technical-title">Selection</div>
-                <div class="insight-technical-label">Advanced details</div>
-                <div id="drawerSummary" class="insight-technical-summary"></div>
-                <div id="drawerEvents" class="insight-technical-events"></div>
+            <div id="insightActionsFooter" class="insight-actions-footer">
+              <div id="insightActionsLabel" class="insight-footer-heading">
+                <span class="insight-section-icon insight-icon-action" aria-hidden="true"></span>
+                Recommended action
               </div>
-            </details>
-            <div id="insightActions" class="insight-actions"></div>
+              <div id="insightActions" class="insight-actions"></div>
+              <details id="insightTechnicalPanel" class="insight-technical hidden">
+                <summary>Technical evidence (Power)</summary>
+                <div class="insight-technical-body">
+                  <div id="drawerTitle" class="insight-technical-title">Selection</div>
+                  <div class="insight-technical-label">Advanced details</div>
+                  <div id="drawerSummary" class="insight-technical-summary"></div>
+                  <div id="drawerEvents" class="insight-technical-events"></div>
+                </div>
+              </details>
+            </div>
           </div>
         </section>
       </div>

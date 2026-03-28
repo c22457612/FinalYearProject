@@ -3,6 +3,155 @@ import { buildSiteBrowserApiNarrative } from "../../browser-api-narratives.js";
 import { getEventListContextText, getEventListKindText, getEventListMetaText } from "../utils.js";
 import { summarizeVisualCategoryCounts } from "../filter-state.js";
 
+function splitInsightLeadSummary(summaryText) {
+  const text = String(summaryText || "").trim().replace(/\s+/g, " ");
+  if (!text) {
+    return {
+      headline: "",
+      detail: "",
+    };
+  }
+
+  const match = text.match(/^(.+?[.!?])(?:\s+(.*))?$/);
+  if (!match) {
+    return {
+      headline: text,
+      detail: "",
+    };
+  }
+
+  return {
+    headline: String(match[1] || "").trim(),
+    detail: String(match[2] || "").trim(),
+  };
+}
+
+function pluralizeLeadWord(count, singular, plural = `${singular}s`) {
+  return `${count} ${count === 1 ? singular : plural}`;
+}
+
+function getLeadSignalCounts(evidence) {
+  const counts = {
+    thirdParty: 0,
+    scripts: 0,
+    xhrFetch: 0,
+    api: 0,
+  };
+
+  for (const ev of Array.isArray(evidence) ? evidence : []) {
+    if (ev?.data?.isThirdParty === true) counts.thirdParty += 1;
+
+    const resourceType = String(ev?.data?.resourceType || "").toLowerCase();
+    if (resourceType.includes("script")) counts.scripts += 1;
+    if (
+      resourceType.includes("xhr")
+      || resourceType.includes("fetch")
+      || resourceType.includes("xmlhttprequest")
+    ) {
+      counts.xhrFetch += 1;
+    }
+
+    if (isApiSignalEvent(ev)) counts.api += 1;
+  }
+
+  return counts;
+}
+
+export function buildInsightLeadPresentation({ insight = null, evidence = [] } = {}) {
+  const summaryText = String(insight?.summary || "").trim();
+  const text = splitInsightLeadSummary(summaryText);
+  const evidenceSummary = insight?.evidenceSummary || {};
+  const total = Number(evidenceSummary.total || (Array.isArray(evidence) ? evidence.length : 0));
+  const blocked = Number(evidenceSummary.blocked || 0) + Number(evidenceSummary.blockedApi || 0);
+  const observed = Number(evidenceSummary.observed || 0) + Number(evidenceSummary.observedApi || 0);
+  const signalCounts = getLeadSignalCounts(evidence);
+
+  const facts = [];
+  if (total > 0) {
+    facts.push({ label: "Activity", value: pluralizeLeadWord(total, "event") });
+    facts.push({ label: "Outcome", value: `${blocked} blocked / ${observed} observed` });
+  }
+  if (signalCounts.thirdParty > 0) {
+    facts.push({ label: "Exposure", value: `${signalCounts.thirdParty} third-party` });
+  }
+  if (signalCounts.scripts > 0) {
+    facts.push({ label: "Signals", value: pluralizeLeadWord(signalCounts.scripts, "script request") });
+  } else if (signalCounts.xhrFetch > 0) {
+    facts.push({ label: "Signals", value: pluralizeLeadWord(signalCounts.xhrFetch, "XHR/fetch request") });
+  } else if (signalCounts.api > 0) {
+    facts.push({ label: "Signals", value: pluralizeLeadWord(signalCounts.api, "Browser API event") });
+  }
+
+  return {
+    headline: text.headline || "No deterministic summary available for this scope.",
+    detail: text.detail,
+    facts: facts.slice(0, 4),
+  };
+}
+
+function getConfidenceBand(percent) {
+  if (percent >= 85) return "high";
+  if (percent >= 60) return "moderate";
+  return "low";
+}
+
+function formatSeverityLabel(severity) {
+  if (severity === "high") return "High";
+  if (severity === "caution") return "Caution";
+  return "Info";
+}
+
+export function buildInsightCaseSheetPresentation({ insight = null, evidence = [] } = {}) {
+  const summaryText = String(insight?.summary || "").trim();
+  const text = splitInsightLeadSummary(summaryText);
+  const evidenceSummary = insight?.evidenceSummary || {};
+  const total = Number(evidenceSummary.total || (Array.isArray(evidence) ? evidence.length : 0));
+  const blocked = Number(evidenceSummary.blocked || 0) + Number(evidenceSummary.blockedApi || 0);
+  const observed = Number(evidenceSummary.observed || 0) + Number(evidenceSummary.observedApi || 0);
+  const other = Number(evidenceSummary.other || 0);
+  const signalCounts = getLeadSignalCounts(evidence);
+  const percent = Math.max(0, Math.min(100, Math.round((Number(insight?.confidence || 0)) * 100)));
+  const severity = insight?.severity === "high" ? "high" : insight?.severity === "caution" ? "caution" : "info";
+
+  const metrics = [];
+  if (total > 0) {
+    metrics.push({ label: "Events", value: String(total), note: "captured in scope" });
+    metrics.push({ label: "Blocked", value: String(blocked), note: "including API" });
+    metrics.push({ label: "Observed", value: String(observed), note: "including API" });
+  }
+  if (signalCounts.thirdParty > 0) {
+    metrics.push({ label: "Third-party", value: String(signalCounts.thirdParty), note: "requests" });
+  }
+  if (signalCounts.scripts > 0) {
+    metrics.push({ label: "Signals", value: String(signalCounts.scripts), note: "script requests" });
+  } else if (signalCounts.xhrFetch > 0) {
+    metrics.push({ label: "Signals", value: String(signalCounts.xhrFetch), note: "XHR/fetch requests" });
+  } else if (signalCounts.api > 0) {
+    metrics.push({ label: "Signals", value: String(signalCounts.api), note: "Browser API events" });
+  } else if (other > 0) {
+    metrics.push({ label: "Other", value: String(other), note: "other events" });
+  }
+
+  return {
+    takeaway: text.headline || "No summary generated.",
+    summaryDetail: text.detail,
+    severity: {
+      level: severity,
+      label: formatSeverityLabel(severity),
+    },
+    confidence: {
+      percent,
+      label: `${percent}% confidence`,
+      band: getConfidenceBand(percent),
+    },
+    metrics: metrics.slice(0, 5),
+    footer: {
+      hasActions: Array.isArray(insight?.actions) && insight.actions.length > 0,
+      hasTechnical: Array.isArray(evidence) && evidence.length > 0,
+    },
+  };
+}
+
 export function createInsightSheet(deps) {
   const {
     qs,
@@ -58,6 +207,7 @@ export function createInsightSheet(deps) {
     if (qs("drawerSummary")) qs("drawerSummary").innerHTML = "";
     if (qs("drawerEvents")) qs("drawerEvents").innerHTML = "";
     activeDrawerEvent = null;
+    syncInsightFooterVisibility();
   }
 
   function explainEventAdvanced(ev) {
@@ -199,21 +349,25 @@ export function createInsightSheet(deps) {
   }
 
   function setInsightSeverity(severity, confidence) {
+    void confidence;
     const badge = qs("insightSeverity");
+    const sheet = qs("insightSheet");
+    const level = severity === "high" ? "high" : severity === "caution" ? "caution" : "info";
     if (!badge) return;
+    if (sheet) sheet.dataset.severity = level;
     badge.classList.remove("severity-info", "severity-caution", "severity-high");
-    if (severity === "high") {
+    if (level === "high") {
       badge.classList.add("severity-high");
-      badge.textContent = `High (${Math.round((confidence || 0) * 100)}% confidence)`;
+      badge.textContent = "Severity: High";
       return;
     }
-    if (severity === "caution") {
+    if (level === "caution") {
       badge.classList.add("severity-caution");
-      badge.textContent = `Caution (${Math.round((confidence || 0) * 100)}% confidence)`;
+      badge.textContent = "Severity: Caution";
       return;
     }
     badge.classList.add("severity-info");
-    badge.textContent = `Info (${Math.round((confidence || 0) * 100)}% confidence)`;
+    badge.textContent = "Severity: Info";
   }
 
   function showToast(message, isError = false) {
@@ -359,6 +513,7 @@ export function createInsightSheet(deps) {
 
   function renderInsightActions(actions) {
     renderActionButtons(qs("insightActions"), actions, { includeManageLink: true });
+    syncInsightFooterVisibility();
   }
 
   function getInsightLeadActions(actions) {
@@ -376,10 +531,125 @@ export function createInsightSheet(deps) {
     el.classList.toggle("hidden", !content);
   }
 
+  function setInsightLeadDetail(text) {
+    const el = qs("insightLeadDetail");
+    if (!el) return;
+    const content = String(text || "").trim();
+    el.textContent = content;
+    el.classList.toggle("hidden", !content);
+  }
+
+  function setInsightLeadFacts(facts) {
+    const box = qs("insightLeadFacts");
+    if (!box) return;
+    box.innerHTML = "";
+
+    const list = Array.isArray(facts) ? facts.filter((fact) => fact && fact.label && fact.value) : [];
+    for (const fact of list) {
+      const item = document.createElement("div");
+      item.className = "insight-lead-fact";
+
+      const label = document.createElement("span");
+      label.className = "insight-lead-fact-label";
+      label.textContent = fact.label;
+      item.appendChild(label);
+
+      const value = document.createElement("span");
+      value.className = "insight-lead-fact-value";
+      value.textContent = fact.value;
+      item.appendChild(value);
+
+      box.appendChild(item);
+    }
+
+    box.classList.toggle("hidden", box.childElementCount === 0);
+  }
+
   function formatInsightLeadSeverityLabel(severity) {
-    if (severity === "high") return "Overall severity: High";
-    if (severity === "caution") return "Overall severity: Caution";
-    return "Overall severity: Info";
+    if (severity === "high") return "Severity: High";
+    if (severity === "caution") return "Severity: Caution";
+    return "Severity: Info";
+  }
+
+  function setInsightLeadSeverity(severity) {
+    const lead = qs("insightLead");
+    const badge = qs("insightLeadSeverity");
+    const level = severity === "high" ? "high" : severity === "caution" ? "caution" : "info";
+
+    if (lead) {
+      lead.dataset.severity = level;
+    }
+
+    if (!badge) return;
+    badge.classList.remove("severity-info", "severity-caution", "severity-high");
+    if (level === "high") {
+      badge.classList.add("severity-high");
+    } else if (level === "caution") {
+      badge.classList.add("severity-caution");
+    } else {
+      badge.classList.add("severity-info");
+    }
+    badge.textContent = formatInsightLeadSeverityLabel(level);
+  }
+
+  function setInsightConfidence(confidence) {
+    const badge = qs("insightConfidence");
+    if (!badge) return;
+    const percent = Math.max(0, Math.min(100, Math.round((Number(confidence || 0)) * 100)));
+    const band = getConfidenceBand(percent);
+    badge.className = `insight-confidence-badge insight-confidence-${band}`;
+    badge.textContent = `${percent}% confidence`;
+  }
+
+  function setInsightTakeaway(text) {
+    const el = qs("insightTakeaway");
+    if (!el) return;
+    el.textContent = String(text || "").trim();
+  }
+
+  function setInsightCaseMetrics(metrics) {
+    const box = qs("insightCaseMetrics");
+    if (!box) return;
+    box.innerHTML = "";
+
+    const list = Array.isArray(metrics) ? metrics.filter((metric) => metric && metric.label && metric.value) : [];
+    for (const metric of list) {
+      const item = document.createElement("div");
+      item.className = "insight-case-metric";
+
+      const label = document.createElement("div");
+      label.className = "insight-case-metric-label";
+      label.textContent = metric.label;
+      item.appendChild(label);
+
+      const value = document.createElement("div");
+      value.className = "insight-case-metric-value";
+      value.textContent = metric.value;
+      item.appendChild(value);
+
+      if (metric.note) {
+        const note = document.createElement("div");
+        note.className = "insight-case-metric-note";
+        note.textContent = metric.note;
+        item.appendChild(note);
+      }
+
+      box.appendChild(item);
+    }
+
+    box.classList.toggle("hidden", box.childElementCount === 0);
+  }
+
+  function syncInsightFooterVisibility() {
+    const footer = qs("insightActionsFooter");
+    const actions = qs("insightActions");
+    const label = qs("insightActionsLabel");
+    const technical = qs("insightTechnicalPanel");
+    const hasActions = !!actions && actions.childElementCount > 0;
+    const hasTechnical = !!technical && !technical.classList.contains("hidden");
+
+    label?.classList.toggle("hidden", !hasActions);
+    footer?.classList.toggle("hidden", !hasActions && !hasTechnical);
   }
 
   function buildFallbackInsight(selection, evidence) {
@@ -454,39 +724,31 @@ export function createInsightSheet(deps) {
   }
 
   function resetInsightLead() {
-    if (qs("insightLeadSeverity")) {
-      qs("insightLeadSeverity").className = "insight-severity severity-info";
-      qs("insightLeadSeverity").textContent = formatInsightLeadSeverityLabel("info");
-    }
+    setInsightLeadSeverity("info");
     if (qs("insightLeadSummary")) {
       qs("insightLeadSummary").textContent = "Waiting for captured activity in the current scope.";
     }
+    setInsightLeadDetail("");
     setInsightLeadSupport("");
+    setInsightLeadFacts([]);
     renderActionButtons(qs("insightLeadActions"), [], { maxItems: 1 });
   }
 
   function renderInsightLead(selection, evidence) {
     const model = buildInsightView(selection, evidence);
     activeEvidence = model.evs;
+    const presentation = buildInsightLeadPresentation({
+      insight: model.insight,
+      evidence: model.evs,
+    });
 
     if (qs("insightLeadSummary")) {
-      qs("insightLeadSummary").textContent = model.insight?.summary || "No deterministic summary available for this scope.";
+      qs("insightLeadSummary").textContent = presentation.headline;
     }
+    setInsightLeadDetail(presentation.detail);
     setInsightLeadSupport(formatInsightLeadSupport(selection, model.primaryEvent, model.context));
-    const badge = qs("insightLeadSeverity");
-    if (badge) {
-      badge.classList.remove("severity-info", "severity-caution", "severity-high");
-      if (model.insight?.severity === "high") {
-        badge.classList.add("severity-high");
-        badge.textContent = formatInsightLeadSeverityLabel("high");
-      } else if (model.insight?.severity === "caution") {
-        badge.classList.add("severity-caution");
-        badge.textContent = formatInsightLeadSeverityLabel("caution");
-      } else {
-        badge.classList.add("severity-info");
-        badge.textContent = formatInsightLeadSeverityLabel("info");
-      }
-    }
+    setInsightLeadFacts(presentation.facts);
+    setInsightLeadSeverity(model.insight?.severity);
     renderActionButtons(qs("insightLeadActions"), getInsightLeadActions(model.insight?.actions || []), { maxItems: 1 });
     return model;
   }
@@ -498,6 +760,10 @@ export function createInsightSheet(deps) {
   } = {}) {
     const model = renderInsightLead(selection, evidence);
     const { selection: activeSelection, evs, primaryEvent, context, insight } = model;
+    const caseSheet = buildInsightCaseSheetPresentation({
+      insight,
+      evidence: evs,
+    });
 
     if (qs("insightTitle")) qs("insightTitle").textContent = "Detailed evidence";
     if (qs("insightMeta")) {
@@ -505,9 +771,12 @@ export function createInsightSheet(deps) {
       qs("insightMeta").textContent = `${label} • ${evs.length} events`;
     }
     if (qs("insightSelectedLead")) qs("insightSelectedLead").textContent = formatSelectedLead(activeSelection, primaryEvent);
+    setInsightTakeaway(caseSheet.takeaway);
     if (qs("insightSummary")) qs("insightSummary").textContent = insight.summary || "No summary generated.";
 
     setInsightSeverity(insight.severity, insight.confidence);
+    setInsightConfidence(insight.confidence);
+    setInsightCaseMetrics(caseSheet.metrics);
 
     const summary = insight.evidenceSummary || {};
     const firstText = summary.firstTs ? new Date(summary.firstTs).toLocaleTimeString() : "-";
@@ -589,12 +858,16 @@ export function createInsightSheet(deps) {
     if (qs("insightTitle")) qs("insightTitle").textContent = "Detailed evidence";
     if (qs("insightMeta")) qs("insightMeta").textContent = "Select a chart point or use Explain / Info for a deeper breakdown.";
     setInsightSeverity("info", 0.45);
+    setInsightConfidence(0.45);
     if (qs("insightSelectedLead")) qs("insightSelectedLead").textContent = "You selected: no datapoint yet.";
+    setInsightTakeaway("Choose a datapoint or use Explain / Info to expand the current deterministic scope summary.");
     if (qs("insightSummary")) qs("insightSummary").textContent = "Choose a datapoint or use Explain / Info to expand the current deterministic scope summary.";
     if (qs("insightHow")) qs("insightHow").textContent = "This section describes deterministic evidence from current range, filters, and selected scope.";
+    setInsightCaseMetrics([]);
     renderListItems(qs("insightWhy"), [], "No immediate risk narrative until evidence is selected.");
     renderListItems(qs("insightLimits"), [], "Derived from captured events only; not a complete audit of all page behavior.");
     renderInsightActions([]);
+    syncInsightFooterVisibility();
   }
 
   function closeInsightSheet() {
@@ -614,6 +887,7 @@ export function createInsightSheet(deps) {
     if (!panel) return;
 
     panel.classList.remove("hidden");
+    syncInsightFooterVisibility();
 
     qs("drawerTitle").textContent = title || "Selection";
     qs("drawerSummary").innerHTML = "";
