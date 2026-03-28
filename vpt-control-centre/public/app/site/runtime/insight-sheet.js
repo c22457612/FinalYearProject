@@ -24,6 +24,33 @@ export function createInsightSheet(deps) {
   let pendingConfirmAction = null;
   let activeDrawerEvent = null;
 
+  function buildInsightView(selection, evidence) {
+    const insightApi = getInsightRules();
+    const evs = Array.isArray(evidence) ? evidence.filter(Boolean) : [];
+    const primaryEvent = pickPrimarySelectedEvent(evs);
+
+    const context = {
+      events: evs,
+      viewId: getViews()[getVizIndex()]?.id || "unknown",
+      viewMode: getViewMode(),
+      siteName: getSiteName(),
+      selectedVendor: getSelectedVendor(),
+      selectedDomain: selection?.type === "domain" ? selection.value : "",
+    };
+
+    const insight = insightApi?.buildInsightResult
+      ? insightApi.buildInsightResult(context)
+      : buildFallbackInsight(selection, evs);
+
+    return {
+      selection,
+      evs,
+      primaryEvent,
+      context,
+      insight,
+    };
+  }
+
   function closeDrawer() {
     const panel = qs("insightTechnicalPanel");
     panel?.classList.add("hidden");
@@ -160,6 +187,15 @@ export function createInsightSheet(deps) {
     return parts;
   }
 
+  function formatInsightLeadSelection(selection, primaryEvent) {
+    const label = selection?.title || selection?.value || "Current scope";
+    if (!primaryEvent) return label;
+    if (isApiSignalEvent(primaryEvent)) {
+      return `${label} • ${getApiEventPresentation(primaryEvent).label}`;
+    }
+    return `${label} • ${String(primaryEvent?.kind || "event")}`;
+  }
+
   function setInsightSeverity(severity, confidence) {
     const badge = qs("insightSeverity");
     if (!badge) return;
@@ -269,12 +305,14 @@ export function createInsightSheet(deps) {
     }
   }
 
-  function renderInsightActions(actions) {
-    const box = qs("insightActions");
+  function renderActionButtons(box, actions, {
+    maxItems = Infinity,
+    includeManageLink = false,
+  } = {}) {
     if (!box) return;
     box.innerHTML = "";
 
-    const list = Array.isArray(actions) ? actions : [];
+    const list = Array.isArray(actions) ? actions.slice(0, maxItems) : [];
     const hasTrustAction = list.some((action) => action?.type === "trust_site");
     for (const action of list) {
       const btn = document.createElement("button");
@@ -306,13 +344,17 @@ export function createInsightSheet(deps) {
       box.appendChild(btn);
     }
 
-    if (hasTrustAction) {
+    if (includeManageLink && hasTrustAction) {
       const manageLink = document.createElement("a");
       manageLink.className = "insight-action-btn";
       manageLink.href = "/?view=trusted-sites";
       manageLink.textContent = "Manage trusted sites";
       box.appendChild(manageLink);
     }
+  }
+
+  function renderInsightActions(actions) {
+    renderActionButtons(qs("insightActions"), actions, { includeManageLink: true });
   }
 
   function buildFallbackInsight(selection, evidence) {
@@ -386,32 +428,60 @@ export function createInsightSheet(deps) {
     renderActionListItems(actionsList, narrative.actions, "No Browser API-specific actions for the current scope.");
   }
 
+  function resetInsightLead() {
+    if (qs("insightLeadSeverity")) {
+      qs("insightLeadSeverity").className = "insight-severity severity-info";
+      qs("insightLeadSeverity").textContent = "Info";
+    }
+    if (qs("insightLeadSelection")) qs("insightLeadSelection").textContent = "Current scope";
+    if (qs("insightLeadSummary")) {
+      qs("insightLeadSummary").textContent = "Waiting for captured activity in the current scope.";
+    }
+    renderActionButtons(qs("insightLeadActions"), [], { maxItems: 2 });
+  }
+
+  function renderInsightLead(selection, evidence) {
+    const model = buildInsightView(selection, evidence);
+    activeEvidence = model.evs;
+
+    if (qs("insightLeadSelection")) {
+      qs("insightLeadSelection").textContent = formatInsightLeadSelection(selection, model.primaryEvent);
+    }
+    if (qs("insightLeadSummary")) {
+      qs("insightLeadSummary").textContent = model.insight?.summary || "No deterministic summary available for this scope.";
+    }
+    const badge = qs("insightLeadSeverity");
+    if (badge) {
+      badge.classList.remove("severity-info", "severity-caution", "severity-high");
+      if (model.insight?.severity === "high") {
+        badge.classList.add("severity-high");
+        badge.textContent = "High";
+      } else if (model.insight?.severity === "caution") {
+        badge.classList.add("severity-caution");
+        badge.textContent = "Caution";
+      } else {
+        badge.classList.add("severity-info");
+        badge.textContent = "Info";
+      }
+    }
+    renderActionButtons(qs("insightLeadActions"), model.insight?.actions || [], { maxItems: 2 });
+    return model;
+  }
+
   function openInsightSheet(selection, evidence, {
     forceScroll = false,
     allowAutoScroll = true,
     scrollSource = "selection",
   } = {}) {
-    const insightApi = getInsightRules();
-    const evs = Array.isArray(evidence) ? evidence.filter(Boolean) : [];
-    activeEvidence = evs;
-    const primaryEvent = pickPrimarySelectedEvent(evs);
+    const model = renderInsightLead(selection, evidence);
+    const { selection: activeSelection, evs, primaryEvent, context, insight } = model;
 
-    const context = {
-      events: evs,
-      viewId: getViews()[getVizIndex()]?.id || "unknown",
-      viewMode: getViewMode(),
-      siteName: getSiteName(),
-      selectedVendor: getSelectedVendor(),
-      selectedDomain: selection?.type === "domain" ? selection.value : "",
-    };
-
-    const insight = insightApi?.buildInsightResult
-      ? insightApi.buildInsightResult(context)
-      : buildFallbackInsight(selection, evs);
-
-    if (qs("insightTitle")) qs("insightTitle").textContent = insight.title || "Info";
-    if (qs("insightMeta")) qs("insightMeta").textContent = `${evs.length} events selected`;
-    if (qs("insightSelectedLead")) qs("insightSelectedLead").textContent = formatSelectedLead(selection, primaryEvent);
+    if (qs("insightTitle")) qs("insightTitle").textContent = "Detailed evidence";
+    if (qs("insightMeta")) {
+      const label = activeSelection?.title || "Current scope";
+      qs("insightMeta").textContent = `${label} • ${evs.length} events`;
+    }
+    if (qs("insightSelectedLead")) qs("insightSelectedLead").textContent = formatSelectedLead(activeSelection, primaryEvent);
     if (qs("insightSummary")) qs("insightSummary").textContent = insight.summary || "No summary generated.";
 
     setInsightSeverity(insight.severity, insight.confidence);
@@ -425,7 +495,7 @@ export function createInsightSheet(deps) {
     const categorySummary = buildCategorySummaryParts(summary).join(", ");
 
     if (qs("insightHow")) {
-      const label = selection?.title || "current scope";
+      const label = activeSelection?.title || "current scope";
       const evidenceLine = `From ${label}: total ${summary.total || 0}, ${categorySummary}, first ${firstText}, last ${lastText}, dominant ${dominant}.`;
       const whatThisAnswers = getWhatThisAnswersLine(context.viewId);
       const apiHowLine = primaryEvent && isApiSignalEvent(primaryEvent)
@@ -439,19 +509,19 @@ export function createInsightSheet(deps) {
             return `Representative Browser API signal: ${presentation.label}. ${presentation.explanation} Observed details: ${presentation.summary}. Backend classification: ${technical}.`;
           })()
         : "";
-      if (context.viewId === "vendorTopDomainsEndpoints" && selection?.bucketKey) {
-        const bucketLabel = selection?.bucketLabel || label;
-        const seen = Number(selection?.seen || 0);
-        const blocked = Number(selection?.blocked || 0);
-        const observed = Number(selection?.observed || 0);
-        const other = Number(selection?.other || 0);
+      if (context.viewId === "vendorTopDomainsEndpoints" && activeSelection?.bucketKey) {
+        const bucketLabel = activeSelection?.bucketLabel || label;
+        const seen = Number(activeSelection?.seen || 0);
+        const blocked = Number(activeSelection?.blocked || 0);
+        const observed = Number(activeSelection?.observed || 0);
+        const other = Number(activeSelection?.other || 0);
         const bucketLine = `Selected bucket: ${bucketLabel} (${seen} total; ${blocked} blocked; ${observed} observed; ${other} other).`;
-        const example = getBucketExample(selection, evs);
+        const example = getBucketExample(activeSelection, evs);
         const exampleLine = example ? ` Example URL/path: ${example}.` : "";
         qs("insightHow").textContent = `${whatThisAnswers ? `${whatThisAnswers} ` : ""}${apiHowLine ? `${apiHowLine} ` : ""}${bucketLine}${exampleLine}`;
       } else {
-        const bucketKeyLine = selection?.bucketKey
-          ? ` Bucket key: ${selection.bucketKey}.`
+        const bucketKeyLine = activeSelection?.bucketKey
+          ? ` Bucket key: ${activeSelection.bucketKey}.`
           : "";
         qs("insightHow").textContent = `${whatThisAnswers ? `${whatThisAnswers} ` : ""}${apiHowLine ? `${apiHowLine} ` : ""}${evidenceLine}${bucketKeyLine}`;
       }
@@ -480,7 +550,7 @@ export function createInsightSheet(deps) {
     renderListItems(qs("insightLimits"), limits, "No additional caveats.");
 
     if (getViewMode() === "power" && evs.length) {
-      openDrawer(selection?.title, evs);
+      openDrawer(activeSelection?.title, evs);
     } else {
       closeDrawer();
     }
@@ -493,10 +563,11 @@ export function createInsightSheet(deps) {
 
   function resetInsightSection() {
     closeDrawer();
-    if (qs("insightTitle")) qs("insightTitle").textContent = "Info";
-    if (qs("insightMeta")) qs("insightMeta").textContent = "Select a chart point to explain current evidence.";
+    if (qs("insightTitle")) qs("insightTitle").textContent = "Detailed evidence";
+    if (qs("insightMeta")) qs("insightMeta").textContent = "Select a chart point or use Explain / Info for a deeper breakdown.";
+    setInsightSeverity("info", 0.45);
     if (qs("insightSelectedLead")) qs("insightSelectedLead").textContent = "You selected: no datapoint yet.";
-    if (qs("insightSummary")) qs("insightSummary").textContent = "No selection yet. Choose a datapoint or press Explain / Info to summarize the current scope.";
+    if (qs("insightSummary")) qs("insightSummary").textContent = "Choose a datapoint or use Explain / Info to expand the current deterministic scope summary.";
     if (qs("insightHow")) qs("insightHow").textContent = "This section describes deterministic evidence from current range, filters, and selected scope.";
     renderListItems(qs("insightWhy"), [], "No immediate risk narrative until evidence is selected.");
     renderListItems(qs("insightLimits"), [], "Derived from captured events only; not a complete audit of all page behavior.");
@@ -561,6 +632,8 @@ export function createInsightSheet(deps) {
 
   return {
     closeDrawer,
+    resetInsightLead,
+    renderInsightLead,
     resetInsightSection,
     closeInsightSheet,
     renderBrowserApiNarrative,

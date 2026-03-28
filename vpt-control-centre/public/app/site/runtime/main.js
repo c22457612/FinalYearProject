@@ -9,6 +9,7 @@ import { createPollingController } from "./polling-controller.js";
 import { createSelectionController } from "./selection-controller.js";
 import { createChartOrchestrationController } from "./chart-orchestration-controller.js";
 import { createVendorScopeBanner } from "./vendor-scope-banner.js";
+import { buildStateGuidanceModel } from "./state-guidance.js";
 import {
   defaultFilterState,
   defaultVizOptions,
@@ -39,7 +40,6 @@ import {
   formatSelectedLead,
   triggerDownload,
   buildExportUrl,
-  formatPercent,
   escapeCsvCell,
   debounce,
 } from "../utils.js";
@@ -654,83 +654,34 @@ function updateFilterSummary() {
   const filteredCount = Array.isArray(filteredEvents) ? filteredEvents.length : 0;
   const scopedCount = getChartEvents().length;
 
-  const parts = selectedVendor?.vendorId
-    ? [`Showing ${scopedCount} vendor-scoped of ${filteredCount} filtered (${baseCount} total)`]
-    : [`Showing ${filteredCount} of ${baseCount} events`];
-  const activeLabels = getActiveFilterLabels();
-  if (activeLabels.length) parts.push(`filters: ${activeLabels.join(", ")}`);
-
-  const vizLabels = getActiveVizOptionLabels();
-  if (vizLabels.length) parts.push(`viz: ${vizLabels.join(", ")}`);
-  parts.push(`mode: ${viewMode}`);
-  if (selectedVendor?.vendorName) parts.push(`vendor: ${selectedVendor.vendorName}`);
-
-  if (vizSelection?.events?.length) {
-    parts.push(`selection: ${vizSelection.events.length}`);
+  const parts = [`${scopedCount} in scope`];
+  if (filteredCount !== scopedCount || baseCount !== filteredCount) {
+    parts.push(`${filteredCount}/${baseCount} filtered`);
+  } else {
+    parts.push(`${baseCount} captured`);
   }
+  const activeLabels = getActiveFilterLabels();
+  if (activeLabels.length) parts.push(`${activeLabels.length} filter${activeLabels.length === 1 ? "" : "s"}`);
+  if (selectedVendor?.vendorName) parts.push(`${selectedVendor.vendorName} scope`);
+  if (vizSelection?.events?.length) parts.push(`${vizSelection.events.length} selected`);
+  parts.push(viewMode === "power" ? "Power" : "Easy");
 
-  el.textContent = parts.join(" | ");
+  el.textContent = parts.join(" • ");
   vendorScopeBanner.renderVendorScopeBanner();
   sidebarModules.renderSidebarModules();
+  renderCurrentInsightLead();
 }
 
 function ensureDensityBadge() {
-  const chartEl = qs("vizChart");
-  const wrap = chartEl?.parentElement;
-  if (!wrap || !chartEl) return null;
-
-  const existing = qs("vizDensityBadge");
-  if (existing) {
-    if (existing.parentElement !== wrap || existing.nextElementSibling !== chartEl) {
-      wrap.insertBefore(existing, chartEl);
-    }
-    return existing;
-  }
-
-  const badge = document.createElement("div");
-  badge.id = "vizDensityBadge";
-  badge.className = "viz-density-badge hidden";
-  wrap.insertBefore(badge, chartEl);
-  return badge;
+  return qs("vizDensityBadge");
 }
 
 function renderDensityBadge(meta = null) {
+  void meta;
   const badge = ensureDensityBadge();
   if (!badge) return;
-
-  const densityDefaults = meta?.densityDefaults || null;
-  const applied = !!densityDefaults?.applied;
-  if (viewMode !== "easy" || !applied) {
-    badge.classList.add("hidden");
-    badge.textContent = "";
-    return;
-  }
-
-  let text = "Easy mode compacted for low data";
-  if (densityDefaults?.compactSummary) {
-    text = "Easy mode compacted for low data: showing summary view";
-  } else if (
-    densityDefaults?.focusedWindow
-    && densityDefaults?.simplifiedSeries
-    && Number(densityDefaults?.appliedBinMs) > Number(densityDefaults?.originalBinMs)
-  ) {
-    text = "Easy mode compacted for low data: larger bins, focused window, and simpler series";
-  } else if (densityDefaults?.focusedWindow && Number(densityDefaults?.appliedBinMs) > Number(densityDefaults?.originalBinMs)) {
-    text = "Easy mode compacted for low data: larger bins and focused window";
-  } else if (densityDefaults?.focusedWindow && densityDefaults?.simplifiedSeries) {
-    text = "Easy mode compacted for low data: focused window and simpler series";
-  } else if (densityDefaults?.focusedWindow) {
-    text = "Easy mode compacted for low data: focused window";
-  } else if (densityDefaults?.simplifiedSeries && Number(densityDefaults?.appliedBinMs) > Number(densityDefaults?.originalBinMs)) {
-    text = "Easy mode compacted for low data: larger bins and simpler series";
-  } else if (densityDefaults?.simplifiedSeries) {
-    text = "Easy mode compacted for low data: simpler series";
-  } else if (Number(densityDefaults?.appliedBinMs) > Number(densityDefaults?.originalBinMs)) {
-    text = "Easy mode compacted for low data: larger time bins";
-  }
-
-  badge.textContent = text;
-  badge.classList.remove("hidden");
+  badge.classList.add("hidden");
+  badge.textContent = "";
 }
 
 function renderStateGuidance({ events = [], lensPivotActive = false, emptyMessage = "", viewId = "" } = {}) {
@@ -739,55 +690,18 @@ function renderStateGuidance({ events = [], lensPivotActive = false, emptyMessag
 
   const list = Array.isArray(events) ? events : [];
   const activeFilters = getActiveFilterLabels();
-  const hasVendorFocus = !!selectedVendor?.vendorId;
-  const rangeLabel = qs("rangeSelect")?.selectedOptions?.[0]?.textContent || getRangeKey();
-  const steps = [];
-  let title = String(emptyMessage || "").trim();
+  const model = buildStateGuidanceModel({
+    eventCount: list.length,
+    hasVendorFocus: !!selectedVendor?.vendorId,
+    vendorName: selectedVendor?.vendorName || "",
+    activeFilterCount: activeFilters.length,
+    lensPivotActive,
+    emptyMessage,
+    viewId,
+    lowInformationThreshold: LOW_INFORMATION_EVENT_THRESHOLD,
+  });
 
-  const addStep = (text) => {
-    const value = String(text || "").trim();
-    if (!value || steps.includes(value)) return;
-    steps.push(value);
-  };
-
-  const addSwitchViewStep = () => {
-    if (String(viewId || "") === "vendorTopDomainsEndpoints") {
-      addStep("Switch view to Vendor allowed vs blocked timeline for a clearer sparse-data trend.");
-      return;
-    }
-    addStep("Switch view using the Mode selector below the chart.");
-  };
-
-  if (!list.length) {
-    if (!title) {
-      title = hasVendorFocus
-        ? `No events are available for ${selectedVendor.vendorName || "the selected vendor"} in this scope.`
-        : "No events match the current scope.";
-    }
-
-    addStep(`Broaden range in View controls (current: ${rangeLabel}).`);
-    if (hasVendorFocus) addStep("Clear vendor focus to compare all vendors.");
-    if (activeFilters.length) addStep("Use Reset filters to remove strict filters.");
-    addSwitchViewStep();
-    if (!hasVendorFocus && !activeFilters.length) addStep("Wait for more captured events, then refresh this view.");
-  } else if (!title && list.length < LOW_INFORMATION_EVENT_THRESHOLD) {
-    title = `Low-information view: only ${list.length} events in the current scope.`;
-    addStep(`Broaden range in View controls (current: ${rangeLabel}).`);
-    if (hasVendorFocus) addStep("Clear vendor focus to compare all vendors.");
-    if (activeFilters.length) addStep("Use Reset filters to remove strict filters.");
-    addSwitchViewStep();
-  } else if (title) {
-    addStep(`Broaden range in View controls (current: ${rangeLabel}).`);
-    if (hasVendorFocus) addStep("Clear vendor focus to compare all vendors.");
-    if (activeFilters.length) addStep("Use Reset filters to remove strict filters.");
-    addSwitchViewStep();
-  }
-
-  if (lensPivotActive) {
-    addStep("Clear vendor focus to compare all vendors side-by-side.");
-  }
-
-  if (!title) {
+  if (!model.message) {
     box.classList.add("hidden");
     box.innerHTML = "";
     return;
@@ -798,18 +712,42 @@ function renderStateGuidance({ events = [], lensPivotActive = false, emptyMessag
 
   const heading = document.createElement("div");
   heading.className = "viz-state-guidance-title";
-  heading.textContent = title;
+  heading.textContent = model.message;
   box.appendChild(heading);
 
-  if (steps.length) {
-    const listEl = document.createElement("ul");
-    listEl.className = "viz-state-guidance-list";
-    for (const step of steps) {
-      const li = document.createElement("li");
-      li.textContent = step;
-      listEl.appendChild(li);
+  if (model.actions.length) {
+    const actionBox = document.createElement("div");
+    actionBox.className = "viz-state-guidance-actions";
+
+    for (const action of model.actions) {
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = "viz-nav viz-state-guidance-action";
+      btn.textContent = action.label;
+      btn.addEventListener("click", () => {
+        if (action.id === "broaden_range") {
+          sidebarModules.selectModule("filters");
+          qs("rangeSelect")?.focus();
+          return;
+        }
+        if (action.id === "clear_vendor") {
+          clearVendorFocus();
+          return;
+        }
+        if (action.id === "reset_filters") {
+          filterState = defaultFilterState();
+          writeFilterStateToControls();
+          applyFilterChanges();
+          return;
+        }
+        if (action.id === "switch_chart") {
+          qs("vizSelect")?.focus();
+        }
+      });
+      actionBox.appendChild(btn);
     }
-    box.appendChild(listEl);
+
+    box.appendChild(actionBox);
   }
 }
 
@@ -832,28 +770,37 @@ function renderTopBucketSummary(viewId, meta = null) {
   }
 
   box.classList.remove("hidden");
-  const formatCounts = (counts) => {
-    const parts = [
-      `${counts.blocked || 0} blocked`,
-      `${counts.observed || 0} observed`,
-    ];
-    if (Number(counts.blockedApi || 0) > 0) parts.push(`${counts.blockedApi} blocked API`);
-    if (Number(counts.observedApi || 0) > 0) parts.push(`${counts.observedApi} observed API`);
-    if (Number(counts.other || 0) > 0) parts.push(`${counts.other} other`);
-    return parts.join(", ");
-  };
   if (compactSummary) {
     const bucketCount = Number(compactSummary.bucketCount || 0);
     const bucketLabel = `${bucketCount} endpoint bucket${bucketCount === 1 ? "" : "s"}`;
-    const compactText = `Compact summary: ${compactSummary.vendorName || "Selected vendor"} has ${compactSummary.totalEvents || 0} events across ${bucketLabel} (${formatCounts(compactSummary)}).`;
+    const compactText = `${compactSummary.vendorName || "Selected vendor"} is spread across ${bucketLabel}.`;
     if (summary) {
-      box.textContent = `${compactText} Top bucket: ${summary.displayLabel} (${summary.seen} total; ${formatCounts(summary)}).`;
+      box.textContent = `${compactText} Top endpoint: ${summary.displayLabel} (${summary.seen}).`;
       return;
     }
     box.textContent = compactText;
     return;
   }
-  box.textContent = `Top bucket: ${summary.displayLabel} (${summary.seen} total; ${formatCounts(summary)})`;
+  box.textContent = `Top endpoint: ${summary.displayLabel} (${summary.seen}).`;
+}
+
+function renderCurrentInsightLead() {
+  const evidence = getChartEvents();
+  if (!evidence.length) {
+    insightSheet.resetInsightLead();
+    return;
+  }
+
+  const currentSelection = vizSelection?.events?.length
+    ? vizSelection
+    : {
+      type: "scope",
+      value: getCurrentViewId() || VIEWS[vizIndex]?.id || "scope",
+      title: `${VIEWS[vizIndex]?.title || "Current view"} scope`,
+      summaryHtml: "",
+      events: evidence,
+    };
+  insightSheet.renderInsightLead(currentSelection, evidence);
 }
 
 function readFilterStateFromControls() {
@@ -1278,7 +1225,6 @@ const scopeInsights = createScopeInsights({
   qs,
   getSiteLens,
   getTimelineBinMs,
-  formatPercent,
 });
 
 function readPrimaryDataZoomState() {

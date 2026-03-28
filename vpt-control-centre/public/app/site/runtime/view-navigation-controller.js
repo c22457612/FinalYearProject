@@ -81,7 +81,7 @@ export function createViewNavigationController(deps) {
     if (!el) return;
 
     if (getViewMode() !== "easy") {
-      el.textContent = "Power mode: all chart views are available.";
+      el.textContent = "Power mode: all chart views are available. Extra controls stay tucked into Power chart options.";
       return;
     }
 
@@ -147,9 +147,7 @@ export function createViewNavigationController(deps) {
   function syncAdvancedControlsByMode() {
     const panel = qs("advancedControlsPanel");
     if (!panel) return;
-    if (getViewMode() === "easy") {
-      panel.open = false;
-    }
+    panel.open = false;
   }
 
   function setViewMode(mode, { rerender = true } = {}) {

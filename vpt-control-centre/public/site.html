@@ -26,32 +26,6 @@
   </header>
 
   <div class="site-content">
-    <section class="summary site-summary">
-      <div class="summary-card">
-        <h2>Total events</h2>
-        <div id="siteStatTotal" class="value">0</div>
-        <div class="hint">stored in SQLite</div>
-      </div>
-
-      <div class="summary-card">
-        <h2>Blocked</h2>
-        <div id="siteStatBlocked" class="value">0</div>
-        <div class="hint">network.blocked</div>
-      </div>
-
-      <div class="summary-card">
-        <h2>Observed</h2>
-        <div id="siteStatObserved" class="value">0</div>
-        <div class="hint">network.observed</div>
-      </div>
-
-      <div class="summary-card">
-        <h2>Unique 3rd parties</h2>
-        <div id="siteStatUniqueThird" class="value">0</div>
-        <div class="hint">domains detected</div>
-      </div>
-    </section>
-
     <section class="site-grid">
       <div class="panel site-viz-panel">
         <div class="panel-header">
@@ -65,12 +39,94 @@
           </div>
         </div>
 
-        <div class="viz-guided-actions">
-          <button id="filterResetBtn" class="viz-nav" type="button">Reset filters</button>
+        <div class="site-meta-strip" aria-label="Site scope summary">
+          <div class="site-meta-item">
+            <span class="site-meta-label">Total</span>
+            <span id="siteStatTotal" class="site-meta-value">0</span>
+          </div>
+          <div class="site-meta-item">
+            <span class="site-meta-label">Blocked</span>
+            <span id="siteStatBlocked" class="site-meta-value">0</span>
+          </div>
+          <div class="site-meta-item">
+            <span class="site-meta-label">Observed</span>
+            <span id="siteStatObserved" class="site-meta-value">0</span>
+          </div>
+          <div class="site-meta-item">
+            <span class="site-meta-label">3P domains</span>
+            <span id="siteStatUniqueThird" class="site-meta-value">0</span>
+          </div>
         </div>
 
+        <section id="insightLead" class="insight-lead" aria-label="Current deterministic insight">
+          <div class="insight-lead-main">
+            <div class="insight-lead-topline">
+              <div id="insightLeadSeverity" class="insight-severity severity-info">Info</div>
+              <div id="insightLeadSelection" class="insight-lead-selection">Current scope</div>
+            </div>
+            <div id="insightLeadSummary" class="insight-lead-summary">
+              Waiting for captured activity in the current scope.
+            </div>
+          </div>
+          <div id="insightLeadActions" class="insight-lead-actions"></div>
+        </section>
+
+        <section class="viz-scope-toolbar" aria-label="Chart scope and state">
+          <div class="viz-scope-toolbar-header">
+            <div id="filterSummary" class="panel-subtitle filter-summary">
+              Showing 0 of 0 events
+            </div>
+            <div class="viz-guided-actions">
+              <button id="filterResetBtn" class="viz-nav" type="button">Reset filters</button>
+              <button id="clearVendorBtn" class="viz-nav" type="button">Clear vendor</button>
+            </div>
+          </div>
+          <div id="vizScopeSummary" class="viz-scope-summary">Waiting for site activity.</div>
+          <div id="vendorScopeBanner" class="vendor-scope-banner hidden"></div>
+          <div class="viz-scope-toolbar-row">
+            <div class="panel-subtitle">Vendor scope</div>
+            <div id="vendorChips" class="vendor-chips"></div>
+          </div>
+          <div id="vizTopBucketSummary" class="viz-top-bucket hidden"></div>
+          <div id="vizStateGuidance" class="viz-state-guidance hidden"></div>
+        </section>
+
+        <div class="viz-wrap">
+          <div id="vizChart" class="viz-chart"></div>
+        </div>
+        <div class="viz-bottom-nav">
+          <div class="viz-arrow-group">
+            <button id="vizPrevBtn" class="viz-nav" type="button" title="Previous">&larr;</button>
+            <button id="vizNextBtn" class="viz-nav" type="button" title="Next">&rarr;</button>
+          </div>
+          <div class="viz-mode-group">
+            <label class="viz-label" for="vizSelect">Chart</label>
+            <select id="vizSelect" class="viz-select">
+              <option value="vendorOverview">Vendor activity overview</option>
+              <option value="vendorBlockRateComparison">Block-rate by vendor comparison (%)</option>
+              <option value="vendorShareOverTime">Vendor share over time (stacked area)</option>
+              <option value="vendorAllowedBlockedTimeline">Vendor allowed vs blocked timeline</option>
+              <option value="vendorTopDomainsEndpoints">Where this vendor connects (top domains/endpoints)</option>
+              <option value="riskTrend">Risk trend timeline</option>
+              <option value="baselineDetectedBlockedTrend">Baseline vs detected vs blocked trend</option>
+              <option value="timeline">Activity timeline (last 24h)</option>
+              <option value="topSeen">Top third-party domains (seen)</option>
+              <option value="kinds">Event breakdown (kind)</option>
+              <option value="apiGating">3P API-like calls (heuristic)</option>
+              <option value="vendorKindMatrix">Vendor-kind matrix</option>
+              <option value="ruleIdFrequency">Rule ID frequency</option>
+              <option value="resourceTypes">Resource type breakdown</option>
+              <option value="modeBreakdown">Protection mode breakdown</option>
+              <option value="partySplit">Party split (first vs third)</option>
+              <option value="hourHeatmap">Activity heatmap (hour x day)</option>
+            </select>
+          </div>
+          <div id="vizPositionLabel" class="viz-position-label">1 / 1</div>
+        </div>
+        <div id="vizModeHelp" class="viz-mode-help"></div>
+
         <details id="advancedControlsPanel" class="viz-advanced-panel">
-          <summary>Advanced chart options</summary>
+          <summary>Power chart options</summary>
           <div class="viz-advanced-panel-body">
             <div class="viz-filters">
               <div class="kind-toggles">
@@ -176,64 +232,11 @@
           </div>
         </details>
 
-        <div class="vendor-drilldown">
-          <div class="vendor-drill-header">
-            <div class="panel-subtitle">Vendor drilldown</div>
-            <button id="clearVendorBtn" class="viz-nav" type="button">Clear vendor</button>
-          </div>
-          <div id="vendorChips" class="vendor-chips"></div>
-        </div>
-        <div id="vendorScopeBanner" class="vendor-scope-banner hidden"></div>
-
-        <div id="filterSummary" class="panel-subtitle filter-summary">
-          Showing 0 of 0 events
-        </div>
-
-        <div id="vizTopBucketSummary" class="panel-subtitle hidden"></div>
-        <div id="vizStateGuidance" class="viz-state-guidance hidden"></div>
-        <div id="vizLensNotice" class="viz-lens-notice hidden"></div>
-        <div id="vizKpiStrip" class="viz-kpi-strip"></div>
-        <ul id="vizCallouts" class="viz-callouts"></ul>
-
-        <div class="viz-wrap">
-          <div id="vizChart" class="viz-chart"></div>
-        </div>
-        <div class="viz-bottom-nav">
-          <div class="viz-arrow-group">
-            <button id="vizPrevBtn" class="viz-nav" type="button" title="Previous">&larr;</button>
-            <button id="vizNextBtn" class="viz-nav" type="button" title="Next">&rarr;</button>
-          </div>
-          <div class="viz-mode-group">
-            <label class="viz-label" for="vizSelect">Mode</label>
-            <select id="vizSelect" class="viz-select">
-              <option value="vendorOverview">Vendor activity overview</option>
-              <option value="vendorBlockRateComparison">Block-rate by vendor comparison (%)</option>
-              <option value="vendorShareOverTime">Vendor share over time (stacked area)</option>
-              <option value="vendorAllowedBlockedTimeline">Vendor allowed vs blocked timeline</option>
-              <option value="vendorTopDomainsEndpoints">Where this vendor connects (top domains/endpoints)</option>
-              <option value="riskTrend">Risk trend timeline</option>
-              <option value="baselineDetectedBlockedTrend">Baseline vs detected vs blocked trend</option>
-              <option value="timeline">Activity timeline (last 24h)</option>
-              <option value="topSeen">Top third-party domains (seen)</option>
-              <option value="kinds">Event breakdown (kind)</option>
-              <option value="apiGating">3P API-like calls (heuristic)</option>
-              <option value="vendorKindMatrix">Vendor-kind matrix</option>
-              <option value="ruleIdFrequency">Rule ID frequency</option>
-              <option value="resourceTypes">Resource type breakdown</option>
-              <option value="modeBreakdown">Protection mode breakdown</option>
-              <option value="partySplit">Party split (first vs third)</option>
-              <option value="hourHeatmap">Activity heatmap (hour x day)</option>
-            </select>
-          </div>
-          <div id="vizPositionLabel" class="viz-position-label">1 / 1</div>
-        </div>
-        <div id="vizModeHelp" class="viz-mode-help"></div>
-
         <section id="insightSheet" class="insight-sheet">
           <div class="insight-sheet-header">
             <div>
-              <div id="insightTitle" class="panel-title">Info</div>
-              <div id="insightMeta" class="panel-subtitle">Select a chart point to explain current evidence.</div>
+              <div id="insightTitle" class="panel-title">Detailed evidence</div>
+              <div id="insightMeta" class="panel-subtitle">Select a chart point or use Explain / Info for a deeper breakdown.</div>
             </div>
           </div>
           <div class="insight-sheet-body">

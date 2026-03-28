@@ -1,3 +1,22 @@
+export function buildVendorScopeBannerModel({
+  selectedVendor = null,
+  scopedCount = 0,
+  focusedLensPivotActive = false,
+  siteName = "",
+} = {}) {
+  if (!selectedVendor?.vendorId) return null;
+
+  const vendorLabel = selectedVendor.vendorName || selectedVendor.vendorId;
+  const text = focusedLensPivotActive
+    ? `${vendorLabel} scoped to ${Number(scopedCount || 0)} events. Focused timeline is active because comparison is thin here.`
+    : `${vendorLabel} scoped to ${Number(scopedCount || 0)} events in the current chart scope.`;
+
+  return {
+    text,
+    href: `/vendor-vault.html?site=${encodeURIComponent(siteName || "")}&vendor=${encodeURIComponent(vendorLabel)}`,
+  };
+}
+
 export function createVendorScopeBanner(deps) {
   const {
     qs,
@@ -11,30 +30,32 @@ export function createVendorScopeBanner(deps) {
     const box = qs("vendorScopeBanner");
     if (!box) return;
 
-    const selectedVendor = getSelectedVendor();
-    if (!selectedVendor?.vendorId) {
+    const model = buildVendorScopeBannerModel({
+      selectedVendor: getSelectedVendor(),
+      scopedCount: getChartEvents().length,
+      focusedLensPivotActive: getFocusedLensPivotActive(),
+      siteName: getSiteName(),
+    });
+
+    if (!model) {
       box.classList.add("hidden");
       box.innerHTML = "";
       return;
     }
 
-    const scopedCount = getChartEvents().length;
     box.classList.remove("hidden");
     box.innerHTML = "";
 
     const text = document.createElement("div");
     text.className = "vendor-scope-banner-text";
-    text.textContent = getFocusedLensPivotActive()
-      ? `Selected Vendor: ${selectedVendor.vendorName || selectedVendor.vendorId} (${scopedCount} events). Showing timeline because compare has low data.`
-      : `Selected Vendor: ${selectedVendor.vendorName || selectedVendor.vendorId} (${scopedCount} events in current scope).`;
+    text.textContent = model.text;
     box.appendChild(text);
 
     const actions = document.createElement("div");
     actions.className = "vendor-scope-banner-actions";
 
     const vaultLink = document.createElement("a");
-    const vendorParam = selectedVendor.vendorName || selectedVendor.vendorId;
-    vaultLink.href = `/vendor-vault.html?site=${encodeURIComponent(getSiteName() || "")}&vendor=${encodeURIComponent(vendorParam)}`;
+    vaultLink.href = model.href;
     vaultLink.className = "viz-nav";
     vaultLink.style.textDecoration = "none";
     vaultLink.target = "_blank";

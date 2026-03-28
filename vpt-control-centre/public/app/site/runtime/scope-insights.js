@@ -1,29 +1,50 @@
+export function buildScopeSummaryModel({ events = [], kpis = {}, callouts = [] } = {}) {
+  const total = Number(kpis?.total || (Array.isArray(events) ? events.length : 0) || 0);
+  if (!total) {
+    return {
+      text: "No scoped activity yet.",
+    };
+  }
+
+  const blocked = Number(kpis?.blocked || 0);
+  const observed = Number(kpis?.observed || 0);
+  const blockRate = Number.isFinite(kpis?.blockRate) ? Number(kpis.blockRate) : 0;
+  const thirdPartyRatio = Number.isFinite(kpis?.thirdPartyRatio) ? Number(kpis.thirdPartyRatio) : 0;
+  const peakBurst = Number.isFinite(kpis?.peakBurst) ? Number(kpis.peakBurst) : 0;
+  const lowSample = total < 8;
+  const supportLine = Array.isArray(callouts) && callouts.length ? String(callouts[0] || "").trim() : "";
+
+  const parts = [
+    `${total} events in scope`,
+    `${Math.round(blockRate * 100)}% blocked`,
+    `${Math.round(thirdPartyRatio * 100)}% third-party`,
+  ];
+  if (peakBurst > 0 && total >= 8) {
+    parts.push(`${peakBurst.toFixed(1)}x peak burst`);
+  }
+  if (lowSample) {
+    parts.push("sample still thin");
+  }
+
+  let text = `${parts.join(" • ")}.`;
+  if (!lowSample && supportLine) {
+    text = `${text} ${supportLine}`;
+  } else if (blocked === 0 && observed === 0) {
+    text = `${text} Mostly non-network activity in this scope.`;
+  }
+
+  return { text };
+}
+
 export function createScopeInsights(deps) {
   const {
     qs,
     getSiteLens,
     getTimelineBinMs,
-    formatPercent,
   } = deps;
 
-  function renderLensNotice({ active = false, vendorName = "", eventCount = 0 } = {}) {
-    const box = qs("vizLensNotice");
-    if (!box) return;
-
-    if (!active) {
-      box.classList.add("hidden");
-      box.innerHTML = "";
-      return;
-    }
-
-    box.classList.remove("hidden");
-    box.innerHTML = "";
-
-    const msg = document.createElement("div");
-    msg.className = "viz-lens-message";
-    const scopeHint = Number(eventCount) > 0 ? ` (${Number(eventCount)} events in scope).` : ".";
-    msg.textContent = `Focused timeline is active${vendorName ? ` for ${vendorName}` : ""} because compare mode would have too little data${scopeHint} Use the clear-vendor control above or broaden range.`;
-    box.appendChild(msg);
+  function renderLensNotice({ active = false } = {}) {
+    void active;
   }
 
   function buildFallbackScopeKpis(events) {
@@ -45,55 +66,23 @@ export function createScopeInsights(deps) {
       blockRate: blocked / Math.max(1, blocked + observed),
       thirdPartyRatio: thirdParty / Math.max(1, list.length),
       peakBurst: 0,
-      maxBin: 0,
-      medianNonZeroBin: 0,
     };
   }
 
   function renderScopeInsights(events) {
     const lensApi = getSiteLens();
-    const kpiBox = qs("vizKpiStrip");
-    const calloutBox = qs("vizCallouts");
+    const summaryEl = qs("vizScopeSummary");
+    if (!summaryEl) return;
+
     const list = Array.isArray(events) ? events : [];
     const kpis = lensApi?.buildScopeKpis
       ? lensApi.buildScopeKpis(list, getTimelineBinMs())
       : buildFallbackScopeKpis(list);
-
-    if (kpiBox) {
-      kpiBox.innerHTML = "";
-      const cards = [
-        { label: "Events", value: String(Number(kpis.total || 0)) },
-        { label: "Block rate", value: formatPercent(kpis.blockRate) },
-        { label: "3P ratio", value: formatPercent(kpis.thirdPartyRatio) },
-        { label: "Peak burst", value: `${Number(kpis.peakBurst || 0).toFixed(2)}x` },
-      ];
-
-      for (const card of cards) {
-        const item = document.createElement("div");
-        item.className = "viz-kpi-card";
-        const label = document.createElement("div");
-        label.className = "viz-kpi-label";
-        label.textContent = card.label;
-        const value = document.createElement("div");
-        value.className = "viz-kpi-value";
-        value.textContent = card.value;
-        item.appendChild(label);
-        item.appendChild(value);
-        kpiBox.appendChild(item);
-      }
-    }
-
-    if (calloutBox) {
-      calloutBox.innerHTML = "";
-      const callouts = lensApi?.buildScopeCallouts
-        ? lensApi.buildScopeCallouts(list, kpis)
-        : ["Scope insights unavailable."];
-      for (const text of callouts) {
-        const li = document.createElement("li");
-        li.textContent = String(text || "");
-        calloutBox.appendChild(li);
-      }
-    }
+    const callouts = lensApi?.buildScopeCallouts
+      ? lensApi.buildScopeCallouts(list, kpis)
+      : [];
+    const summary = buildScopeSummaryModel({ events: list, kpis, callouts });
+    summaryEl.textContent = summary.text;
   }
 
   return {

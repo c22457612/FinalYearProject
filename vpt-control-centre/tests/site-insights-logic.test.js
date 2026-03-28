@@ -452,6 +452,197 @@ test("selection lifecycle sync is deterministic for same inputs and control stat
   assert.deepEqual(first, second);
 });
 
+test("selection lifecycle explainCurrentScope synthesizes current-scope selection when none is locked", () => {
+  const { createSelectionController } = loadRuntimeModuleExport(
+    "public/app/site/runtime/selection-controller.js",
+    ["createSelectionController"]
+  );
+
+  const sourceEvents = [
+    { id: "scope-1", ts: 10, kind: "network.observed", site: "alpha.local" },
+    { id: "scope-2", ts: 20, kind: "network.blocked", site: "alpha.local" },
+  ];
+
+  let opened = null;
+  const controller = createSelectionController({
+    pickPrimarySelectedEvent: (events) => events[0] || null,
+    getEventKey: (eventItem) => String(eventItem?.id || ""),
+    getVizSelection: () => null,
+    setVizSelectionState: () => {},
+    setSelectedInsightTarget: () => {},
+    setSelectedRecentEventKey: () => {},
+    clearActiveEvidence: () => {},
+    clearChartSelectionHighlight: () => {},
+    setSelectedChartPoint: () => {},
+    applyChartSelectionHighlight: () => {},
+    clearBrushSelection: () => {},
+    closeDrawer: () => {},
+    closeInsightSheet: () => {},
+    renderRecentEventsFromEvents: () => {},
+    getChartEvents: () => sourceEvents,
+    syncInteractionOverlayOnCurrentChart: () => {},
+    updateDrawerButtonState: () => {},
+    updateFilterSummary: () => {},
+    openInsightSheet: (selection, evidence, opts) => {
+      opened = { selection, evidence, opts };
+    },
+    getViews: () => [{ id: "riskTrend", title: "Risk trend" }],
+    getVizIndex: () => 0,
+    resetInsightSection: () => {},
+    ensureInsightVisible: () => {},
+  });
+
+  controller.explainCurrentScope({ forceScroll: false });
+
+  assert.equal(opened.selection.type, "scope");
+  assert.equal(opened.selection.value, "riskTrend");
+  assert.equal(opened.selection.title, "Risk trend scope");
+  assert.deepEqual(opened.evidence.map((eventItem) => eventItem.id), ["scope-1", "scope-2"]);
+  assert.equal(opened.opts.scrollSource, "scope");
+});
+
+test("selection lifecycle explainCurrentScope reuses locked selection when present", () => {
+  const { createSelectionController } = loadRuntimeModuleExport(
+    "public/app/site/runtime/selection-controller.js",
+    ["createSelectionController"]
+  );
+
+  const lockedSelection = {
+    type: "vendor",
+    value: "Google",
+    title: "Google",
+    summaryHtml: "",
+    events: [{ id: "sel-1", ts: 10, kind: "network.observed", site: "alpha.local" }],
+  };
+
+  let opened = null;
+  const controller = createSelectionController({
+    pickPrimarySelectedEvent: (events) => events[0] || null,
+    getEventKey: (eventItem) => String(eventItem?.id || ""),
+    getVizSelection: () => lockedSelection,
+    setVizSelectionState: () => {},
+    setSelectedInsightTarget: () => {},
+    setSelectedRecentEventKey: () => {},
+    clearActiveEvidence: () => {},
+    clearChartSelectionHighlight: () => {},
+    setSelectedChartPoint: () => {},
+    applyChartSelectionHighlight: () => {},
+    clearBrushSelection: () => {},
+    closeDrawer: () => {},
+    closeInsightSheet: () => {},
+    renderRecentEventsFromEvents: () => {},
+    getChartEvents: () => lockedSelection.events,
+    syncInteractionOverlayOnCurrentChart: () => {},
+    updateDrawerButtonState: () => {},
+    updateFilterSummary: () => {},
+    openInsightSheet: (selection, evidence) => {
+      opened = { selection, evidence };
+    },
+    getViews: () => [{ id: "timeline", title: "Timeline" }],
+    getVizIndex: () => 0,
+    resetInsightSection: () => {},
+    ensureInsightVisible: () => {},
+  });
+
+  controller.explainCurrentScope({ forceScroll: true });
+
+  assert.equal(opened.selection.type, "vendor");
+  assert.equal(opened.selection.title, "Google");
+  assert.deepEqual(opened.evidence.map((eventItem) => eventItem.id), ["sel-1"]);
+});
+
+test("scope summary model stays compact for sparse and non-sparse scopes", () => {
+  const { buildScopeSummaryModel } = loadRuntimeModuleExport(
+    "public/app/site/runtime/scope-insights.js",
+    ["buildScopeSummaryModel"]
+  );
+
+  const sparse = buildScopeSummaryModel({
+    events: [{ id: "a" }, { id: "b" }, { id: "c" }],
+    kpis: {
+      total: 3,
+      blocked: 1,
+      observed: 2,
+      blockRate: 1 / 3,
+      thirdPartyRatio: 2 / 3,
+      peakBurst: 0,
+    },
+    callouts: ["Strongest concentration is domain \"tracker.example\" (66.7% of scoped events)."],
+  });
+  const richer = buildScopeSummaryModel({
+    events: new Array(18).fill(0).map((_, index) => ({ id: `e-${index}` })),
+    kpis: {
+      total: 18,
+      blocked: 9,
+      observed: 9,
+      blockRate: 0.5,
+      thirdPartyRatio: 0.72,
+      peakBurst: 2.3,
+    },
+    callouts: ["Strongest concentration is domain \"tracker.example\" (44.4% of scoped events)."],
+  });
+
+  assert.match(sparse.text, /3 events in scope/i);
+  assert.match(sparse.text, /sample still thin/i);
+  assert.match(richer.text, /18 events in scope/i);
+  assert.match(richer.text, /50% blocked/i);
+  assert.match(richer.text, /2\.3x peak burst/i);
+});
+
+test("state guidance model keeps sparse actions capped at two and prioritized", () => {
+  const { buildStateGuidanceModel } = loadRuntimeModuleExport(
+    "public/app/site/runtime/state-guidance.js",
+    ["buildStateGuidanceModel"]
+  );
+
+  const vendorScoped = buildStateGuidanceModel({
+    eventCount: 3,
+    hasVendorFocus: true,
+    vendorName: "Google",
+    activeFilterCount: 4,
+    lensPivotActive: false,
+    emptyMessage: "",
+    viewId: "vendorTopDomainsEndpoints",
+    lowInformationThreshold: 8,
+  });
+  const filtered = buildStateGuidanceModel({
+    eventCount: 0,
+    hasVendorFocus: false,
+    vendorName: "",
+    activeFilterCount: 2,
+    lensPivotActive: false,
+    emptyMessage: "",
+    viewId: "timeline",
+    lowInformationThreshold: 8,
+  });
+
+  assert.equal(vendorScoped.actions.length, 2);
+  assert.equal(Array.from(vendorScoped.actions, (action) => action.id).join(","), "broaden_range,clear_vendor");
+  assert.equal(filtered.actions.length, 2);
+  assert.equal(Array.from(filtered.actions, (action) => action.id).join(","), "broaden_range,reset_filters");
+});
+
+test("vendor scope banner model produces integrated scope copy and vault link", () => {
+  const { buildVendorScopeBannerModel } = loadRuntimeModuleExport(
+    "public/app/site/runtime/vendor-scope-banner.js",
+    ["buildVendorScopeBannerModel"]
+  );
+
+  const model = buildVendorScopeBannerModel({
+    selectedVendor: {
+      vendorId: "google",
+      vendorName: "Google",
+    },
+    scopedCount: 7,
+    focusedLensPivotActive: true,
+    siteName: "alpha.local",
+  });
+
+  assert.match(model.text, /Google scoped to 7 events/i);
+  assert.match(model.text, /Focused timeline is active/i);
+  assert.match(model.href, /vendor-vault\.html\?site=alpha\.local&vendor=Google/i);
+});
+
 test("api event presentation maps canonical labels and metadata-only summaries", () => {
   const { getApiEventPresentation, isApiSignalEvent } = loadRuntimeModuleExport(
     "public/app/api-event-presentation.js",
@@ -488,6 +679,57 @@ test("api event presentation maps canonical labels and metadata-only summaries",
   assert.equal(presentation.confidenceBand, "high");
   assert.match(presentation.summary, /toDataURL/i);
   assert.match(presentation.summary, /300x150/);
+});
+
+test("view navigation keeps advanced controls closed when entering power mode", () => {
+  const { createViewNavigationController } = loadRuntimeModuleExport(
+    "public/app/site/runtime/view-navigation-controller.js",
+    ["createViewNavigationController"]
+  );
+
+  const controls = {
+    viewModeSelect: { value: "easy" },
+    vizSelect: {
+      value: "timeline",
+      options: [{ value: "timeline", textContent: "Timeline", dataset: {} }],
+    },
+    vizPositionLabel: { textContent: "" },
+    vizModeHelp: { textContent: "" },
+    advancedControlsPanel: { open: true },
+    vizOpenDrawerBtn: { disabled: false, textContent: "", title: "" },
+    privacyStatusFilter: { disabled: false, title: "" },
+  };
+
+  let viewMode = "easy";
+  let vizIndex = 0;
+  const controller = createViewNavigationController({
+    qs: (id) => controls[id] || null,
+    getDocumentBody: () => ({ classList: { toggle: () => {} } }),
+    views: [{ id: "timeline", title: "Timeline" }],
+    easyViewIds: new Set(["timeline"]),
+    powerOnlyViewLabelSuffix: " (Power only)",
+    privacyFilterAllOnlyViewIds: new Set(),
+    getViewMode: () => viewMode,
+    setViewModeState: (next) => { viewMode = next; },
+    getVizIndex: () => vizIndex,
+    setVizIndex: (next) => { vizIndex = next; },
+    getVizSelection: () => null,
+    getFilterState: () => ({ privacyStatus: "all" }),
+    closeDrawer: () => {},
+    writeFilterStateToControls: () => {},
+    deriveFilteredEvents: () => {},
+    renderVendorChips: () => {},
+    clearVizSelection: () => {},
+    renderECharts: () => {},
+    renderRecentEventsFromEvents: () => {},
+    getChartEvents: () => [],
+    updateFilterSummary: () => {},
+  });
+
+  controller.setViewMode("power", { rerender: false });
+
+  assert.equal(viewMode, "power");
+  assert.equal(controls.advancedControlsPanel.open, false);
 });
 
 test("site filter logic keeps API events compatible with surface and mitigation filters", () => {
