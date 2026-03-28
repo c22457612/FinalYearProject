@@ -120,6 +120,14 @@ function normalizeRows(rows) {
   }));
 }
 
+function getBarLikeGridBottom(axisLabelRotate = 45) {
+  const rotate = Math.abs(Number(axisLabelRotate || 0));
+  if (rotate >= 40) return 82;
+  if (rotate >= 28) return 68;
+  if (rotate >= 12) return 56;
+  return 44;
+}
+
 function buildBarLikeOption(rows, { seriesName = "count", defaultType = "bar", maxLabels = 20, axisLabelRotate = 45 } = {}) {
   const ranked = sortRankedRows(rows).slice(0, maxLabels);
   const normalized = normalizeRows(ranked);
@@ -130,8 +138,17 @@ function buildBarLikeOption(rows, { seriesName = "count", defaultType = "bar", m
   return {
     option: {
       tooltip: { trigger: "axis" },
-      grid: { left: 40, right: 18, top: 18, bottom: 120 },
-      xAxis: { type: "category", data: labels, axisLabel: { rotate: axisLabelRotate } },
+      grid: { left: 40, right: 18, top: 18, bottom: getBarLikeGridBottom(axisLabelRotate) },
+      xAxis: {
+        type: "category",
+        data: labels,
+        axisLabel: {
+          rotate: axisLabelRotate,
+          margin: 10,
+          fontSize: 13,
+          hideOverlap: true,
+        },
+      },
       yAxis: {
         type: "value",
         max: vizOptions.normalize ? 100 : null,

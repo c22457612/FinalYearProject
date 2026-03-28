@@ -376,6 +376,12 @@ export function createInsightSheet(deps) {
     el.classList.toggle("hidden", !content);
   }
 
+  function formatInsightLeadSeverityLabel(severity) {
+    if (severity === "high") return "Overall severity: High";
+    if (severity === "caution") return "Overall severity: Caution";
+    return "Overall severity: Info";
+  }
+
   function buildFallbackInsight(selection, evidence) {
     const counts = summarizeVisualCategoryCounts(evidence);
     const total = counts.total;
@@ -450,7 +456,7 @@ export function createInsightSheet(deps) {
   function resetInsightLead() {
     if (qs("insightLeadSeverity")) {
       qs("insightLeadSeverity").className = "insight-severity severity-info";
-      qs("insightLeadSeverity").textContent = "Info";
+      qs("insightLeadSeverity").textContent = formatInsightLeadSeverityLabel("info");
     }
     if (qs("insightLeadSummary")) {
       qs("insightLeadSummary").textContent = "Waiting for captured activity in the current scope.";
@@ -472,13 +478,13 @@ export function createInsightSheet(deps) {
       badge.classList.remove("severity-info", "severity-caution", "severity-high");
       if (model.insight?.severity === "high") {
         badge.classList.add("severity-high");
-        badge.textContent = "High";
+        badge.textContent = formatInsightLeadSeverityLabel("high");
       } else if (model.insight?.severity === "caution") {
         badge.classList.add("severity-caution");
-        badge.textContent = "Caution";
+        badge.textContent = formatInsightLeadSeverityLabel("caution");
       } else {
         badge.classList.add("severity-info");
-        badge.textContent = "Info";
+        badge.textContent = formatInsightLeadSeverityLabel("info");
       }
     }
     renderActionButtons(qs("insightLeadActions"), getInsightLeadActions(model.insight?.actions || []), { maxItems: 1 });
