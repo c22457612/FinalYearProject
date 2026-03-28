@@ -1,9 +1,9 @@
-let selectedRow = null;
 let selectedEventId = null;
 let onSelectEventCb = null;
 let getTrustedSitesCb = null;
-
-const HOME_RECEIPT_LIMIT = 50;
+let lastRenderedEvents = [];
+let lastRenderMeta = {};
+let rawJsonOpenEventId = null;
 
 function ensureCoreUtils() {
   const utils = window.VPT?.utils;
@@ -28,6 +28,13 @@ function formatReceiptTime(ts) {
   return date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" });
 }
 
+function formatExactTimestamp(ts) {
+  if (!ts) return "-";
+  const date = new Date(ts);
+  if (Number.isNaN(date.getTime())) return "-";
+  return date.toLocaleString();
+}
+
 function minuteBucketKey(ts) {
   const numericTs = Number(ts) || 0;
   return String(Math.floor(numericTs / 60000) * 60000);
@@ -47,6 +54,32 @@ function truncateText(value, max = 120) {
   if (!text) return "(no details)";
   if (text.length <= max) return text;
   return `${text.slice(0, Math.max(0, max - 3)).trimEnd()}...`;
+}
+
+function humanizeToken(value) {
+  const text = String(value || "").trim();
+  if (!text) return "";
+  return text
+    .replace(/([a-z0-9])([A-Z])/g, "$1 $2")
+    .replace(/[._-]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function compactFactValue(value, max = 48) {
+  if (value == null) return "";
+  if (typeof value === "number" || typeof value === "boolean") return String(value);
+  return truncateText(humanizeToken(value), max);
+}
+
+function firstNonEmptyValue(...values) {
+  return values.find((value) => value !== undefined && value !== null && String(value).trim() !== "");
+}
+
+function pushFact(facts, label, value, max = 48) {
+  const formatted = compactFactValue(value, max);
+  if (!formatted) return;
+  facts.push({ label, value: formatted });
 }
 
 function buildGroupedEvents(events) {
@@ -71,15 +104,122 @@ function buildGroupedEvents(events) {
   return groups;
 }
 
-function selectReceiptRow(row, ev) {
-  if (selectedRow) selectedRow.classList.remove("receipt-event-row-selected");
-  selectedRow = row;
-  selectedEventId = ev?.id || null;
-  if (selectedRow) selectedRow.classList.add("receipt-event-row-selected");
+function updateEventTools(ev, trustedSites = new Set()) {
+  const actions = document.getElementById("details-actions");
+  const trustBtn = document.getElementById("trust-site-btn");
+  if (!actions || !trustBtn) return;
 
+  const canTrustSite = !!ev?.site;
+  actions.style.display = canTrustSite ? "flex" : "none";
+  trustBtn.disabled = !canTrustSite;
+
+  if (!canTrustSite) {
+    trustBtn.textContent = "Trust this site (send to extension)";
+    return;
+  }
+
+  if (trustedSites.has(ev.site)) {
+    trustBtn.textContent = `Stop trusting ${ev.site}`;
+    return;
+  }
+
+  trustBtn.textContent = `Trust ${ev.site} (send to extension)`;
+}
+
+function rerenderCurrentFeed() {
+  if (!lastRenderedEvents.length) return;
+  renderEvents(lastRenderedEvents, lastRenderMeta);
+}
+
+function buildDrawerFacts(ev, trustedSites) {
+  const data = ev.data || {};
+  const facts = [];
+  const status = ev.site && trustedSites.has(ev.site) ? "trusted" : "protected";
+
+  pushFact(facts, "Mode", ev.mode, 22);
+  pushFact(facts, "Status", status, 22);
+  pushFact(facts, "Surface", firstNonEmptyValue(data.surfaceDetail, data.surface), 28);
+  pushFact(facts, "Action", firstNonEmptyValue(data.action, data.operation, data.patternId), 34);
+  pushFact(facts, "State", firstNonEmptyValue(data.state, data.gateOutcome, data.privacyStatus, data.mitigationStatus), 28);
+  pushFact(facts, "Domain", data.domain, 34);
+  pushFact(facts, "Resource", data.resourceType, 24);
+
+  if (typeof data.isThirdParty === "boolean") {
+    pushFact(facts, "Party", data.isThirdParty ? "Third-party" : "First-party", 18);
+  }
+  if (typeof data.count === "number") {
+    pushFact(facts, "Count", data.count, 12);
+  }
+
+  return facts;
+}
+
+function renderDrawerHtml(ev, trustedSites, utils) {
+  const { escapeHtml } = utils;
+  const summary = summarizeEvent(ev);
+  const facts = buildDrawerFacts(ev, trustedSites);
+  const tone = receiptKindTone(ev?.kind);
+
+  return `
+    <div class="receipt-event-drawer-head">
+      <div class="receipt-event-drawer-primary">
+        <span class="receipt-event-drawer-site">${escapeHtml(ev.site || "unknown")}</span>
+        <span class="receipt-event-drawer-dot">·</span>
+        <span class="receipt-event-drawer-time">${escapeHtml(formatExactTimestamp(ev.ts))}</span>
+      </div>
+      <span class="pill pill-kind receipt-kind-pill ${tone}">${escapeHtml(ev.kind || "event")}</span>
+    </div>
+    ${facts.length ? `<div class="receipt-event-drawer-meta">${escapeHtml(facts.join(" | "))}</div>` : ""}
+    <div class="receipt-event-drawer-summary">${escapeHtml(summary)}</div>
+    <details class="receipt-event-drawer-raw">
+      <summary>Raw event JSON</summary>
+      <pre>${escapeHtml(JSON.stringify(ev, null, 2))}</pre>
+    </details>
+  `;
+}
+
+function renderCompactDrawerHtml(ev, trustedSites, utils) {
+  const { escapeHtml } = utils;
+  const summary = summarizeEvent(ev);
+  const facts = buildDrawerFacts(ev, trustedSites);
+  const tone = receiptKindTone(ev?.kind);
+  const rawJsonOpen = ev?.id && rawJsonOpenEventId === ev.id;
+  const factsHtml = facts.length
+    ? `
+      <div class="receipt-event-drawer-facts">
+        ${facts.map((fact) => `
+          <span class="receipt-event-drawer-fact">
+            <span class="receipt-event-drawer-fact-label">${escapeHtml(fact.label)}</span>
+            <span class="receipt-event-drawer-fact-value">${escapeHtml(fact.value)}</span>
+          </span>
+        `).join("")}
+      </div>
+    `
+    : "";
+
+  return `
+    <div class="receipt-event-drawer-head">
+      <div class="receipt-event-drawer-primary">
+        <span class="receipt-event-drawer-site">${escapeHtml(ev.site || "unknown")}</span>
+        <span class="receipt-event-drawer-dot">&middot;</span>
+        <span class="receipt-event-drawer-time">${escapeHtml(formatExactTimestamp(ev.ts))}</span>
+      </div>
+      <span class="pill pill-kind receipt-kind-pill ${tone}">${escapeHtml(ev.kind || "event")}</span>
+    </div>
+    ${factsHtml}
+    <div class="receipt-event-drawer-summary">${escapeHtml(summary)}</div>
+    <details class="receipt-event-drawer-raw"${rawJsonOpen ? " open" : ""}>
+      <summary>Raw event JSON</summary>
+      <pre>${escapeHtml(JSON.stringify(ev, null, 2))}</pre>
+    </details>
+  `;
+}
+
+function handleRowSelection(ev) {
   const trusted = getTrustedSitesCb ? (getTrustedSitesCb() || new Set()) : new Set();
-  renderEventDetails(ev, { trustedSites: trusted });
-  onSelectEventCb?.(ev);
+  const nextEvent = selectedEventId === ev?.id ? null : ev;
+  renderEventDetails(nextEvent, { trustedSites: trusted });
+  onSelectEventCb?.(nextEvent);
 }
 
 export function initEventsFeature({ onSelectEvent, getTrustedSites } = {}) {
@@ -128,82 +268,50 @@ export function summarizeEvent(ev) {
     return `Cleared ${count} cookie${count === 1 ? "" : "s"} for ${site}`;
   }
 
-  return JSON.stringify(d) || "(no details)";
+  if (String(kind).startsWith("api.")) {
+    const highlights = [
+      compactFactValue(firstNonEmptyValue(d.surfaceDetail, d.surface), 26),
+      compactFactValue(firstNonEmptyValue(d.action, d.operation, d.patternId, d.signalType), 40),
+      compactFactValue(firstNonEmptyValue(d.state, d.gateOutcome, d.privacyStatus, d.mitigationStatus), 24),
+    ].filter(Boolean);
+
+    if (typeof d.count === "number") {
+      highlights.push(`${d.count} sample${d.count === 1 ? "" : "s"}`);
+    }
+
+    if (!highlights.length) return "Technical API activity recorded";
+    return truncateText(highlights.join(" | "), 140);
+  }
+
+  const genericHighlights = [
+    compactFactValue(firstNonEmptyValue(d.domain, d.surfaceDetail, d.surface), 26),
+    compactFactValue(firstNonEmptyValue(d.action, d.operation, d.state), 34),
+    compactFactValue(firstNonEmptyValue(d.resourceType, d.patternId), 24),
+  ].filter(Boolean);
+
+  if (genericHighlights.length) {
+    return truncateText(genericHighlights.join(" | "), 120);
+  }
+
+  return "Technical event recorded";
 }
 
 export function renderEventDetails(ev, { trustedSites = new Set() } = {}) {
-  const utils = ensureCoreUtils();
-  if (!utils) return;
-
-  const { friendlyTime, escapeHtml } = utils;
-
-  const body = document.getElementById("details-body");
-  const actions = document.getElementById("details-actions");
-  const subtitle = document.getElementById("details-subtitle");
-  const trustBtn = document.getElementById("trust-site-btn");
-
-  if (!body || !actions || !subtitle) return;
-
-  if (!ev) {
-    body.innerHTML = '<div class="details-placeholder">No event selected.</div>';
-    actions.style.display = "none";
-    if (trustBtn) trustBtn.disabled = true;
-    subtitle.textContent = "Click a receipt row to inspect a single event.";
-    selectedEventId = null;
-    if (selectedRow) {
-      selectedRow.classList.remove("receipt-event-row-selected");
-      selectedRow = null;
-    }
-    return;
+  const previousId = selectedEventId;
+  const trustedSetChanged = lastRenderMeta.trustedSites !== trustedSites;
+  selectedEventId = ev?.id || null;
+  if (previousId !== selectedEventId) {
+    rawJsonOpenEventId = null;
   }
+  lastRenderMeta = { ...lastRenderMeta, trustedSites };
+  updateEventTools(ev, trustedSites);
 
-  const data = ev.data || {};
-  const domain = data.domain || "";
-  const resourceType = data.resourceType || "";
-  const isTrusted = ev.site && trustedSites.has(ev.site);
-  const protectionStatus = isTrusted ? "trusted" : "protected";
-  const summary = summarizeEvent(ev);
-
-  subtitle.textContent = `Event at ${friendlyTime(ev.ts)} on ${ev.site || "unknown"}`;
-
-  const fields = [
-    ["Site", ev.site || "unknown"],
-    ["Time", friendlyTime(ev.ts)],
-    ["Event", ev.kind || "-"],
-    ["Mode", ev.mode || "-"],
-    ["Status", protectionStatus],
-    ["Domain", domain || "-"],
-    ["Resource", resourceType || "-"],
-    ["Summary", summary],
-  ];
-
-  body.innerHTML = `
-    <div class="receipt-detail-grid">
-      ${fields.map(([label, value]) => `
-        <div class="receipt-detail-item">
-          <div class="label">${escapeHtml(label)}</div>
-          <div class="value">${escapeHtml(value)}</div>
-        </div>
-      `).join("")}
-    </div>
-    <details class="receipt-raw-event">
-      <summary>Raw event JSON</summary>
-      <pre>${escapeHtml(JSON.stringify(ev, null, 2))}</pre>
-    </details>
-  `;
-
-  const canTrustSite = !!ev.site;
-  actions.style.display = canTrustSite ? "flex" : "none";
-
-  if (trustBtn) {
-    trustBtn.disabled = !canTrustSite;
-    if (!canTrustSite) trustBtn.textContent = "Trust this site (send to extension)";
-    else if (trustedSites.has(ev.site)) trustBtn.textContent = `Stop trusting ${ev.site}`;
-    else trustBtn.textContent = `Trust ${ev.site} (send to extension)`;
+  if (previousId !== selectedEventId || (selectedEventId && trustedSetChanged)) {
+    rerenderCurrentFeed();
   }
 }
 
-export function renderEvents(events) {
+export function renderEvents(events, meta = {}) {
   const utils = ensureCoreUtils();
   if (!utils) return;
 
@@ -213,23 +321,27 @@ export function renderEvents(events) {
   const subtitle = document.getElementById("receiptSubtitle");
   if (!feed || !subtitle) return;
 
+  lastRenderedEvents = Array.isArray(events) ? events.slice() : [];
+  lastRenderMeta = { ...meta };
+
   feed.innerHTML = "";
-  selectedRow = null;
 
   const sorted = (Array.isArray(events) ? events : [])
     .slice()
     .sort((a, b) => (Number(b?.ts) || 0) - (Number(a?.ts) || 0));
-  const latest = sorted.slice(0, HOME_RECEIPT_LIMIT);
 
-  if (!latest.length) {
+  if (!sorted.length) {
     subtitle.textContent = "No events received yet. Browse a site with trackers to see activity.";
     feed.innerHTML = '<div class="receipt-empty">No receipt entries yet.</div>';
     return;
   }
 
-  subtitle.textContent = `Showing ${latest.length} of ${events.length} event(s)`;
+  subtitle.textContent = meta.historyMode === "older"
+    ? "Grouped by minute from a frozen older receipt window."
+    : "Grouped by minute from the current live receipt window.";
 
-  const groups = buildGroupedEvents(latest);
+  const trustedSites = meta.trustedSites instanceof Set ? meta.trustedSites : (getTrustedSitesCb ? (getTrustedSitesCb() || new Set()) : new Set());
+  const groups = buildGroupedEvents(sorted);
 
   groups.forEach((group) => {
     const section = document.createElement("section");
@@ -247,16 +359,14 @@ export function renderEvents(events) {
     list.className = "receipt-minute-list";
 
     group.items.forEach((ev) => {
+      const isSelected = selectedEventId && ev?.id === selectedEventId;
+
       const row = document.createElement("div");
-      row.className = "receipt-event-row";
+      row.className = `receipt-event-row${isSelected ? " receipt-event-row-selected" : ""}`;
       row.tabIndex = 0;
       row.setAttribute("role", "button");
+      row.setAttribute("aria-expanded", isSelected ? "true" : "false");
       row.setAttribute("aria-label", `Inspect event on ${ev.site || "unknown"} at ${formatReceiptTime(ev.ts)}`);
-
-      if (selectedEventId && ev?.id === selectedEventId) {
-        selectedRow = row;
-        row.classList.add("receipt-event-row-selected");
-      }
 
       const detailText = summarizeEvent(ev);
       const kindTone = receiptKindTone(ev?.kind);
@@ -275,14 +385,27 @@ export function renderEvents(events) {
         </div>
       `;
 
-      row.addEventListener("click", () => selectReceiptRow(row, ev));
+      row.addEventListener("click", () => handleRowSelection(ev));
       row.addEventListener("keydown", (event) => {
         if (event.key !== "Enter" && event.key !== " ") return;
         event.preventDefault();
-        selectReceiptRow(row, ev);
+        handleRowSelection(ev);
       });
 
       list.appendChild(row);
+
+      if (isSelected) {
+        const drawer = document.createElement("div");
+        drawer.className = "receipt-event-drawer";
+        drawer.setAttribute("role", "region");
+        drawer.setAttribute("aria-label", `Selected event details for ${ev.site || "unknown"}`);
+        drawer.innerHTML = renderCompactDrawerHtml(ev, trustedSites, utils);
+        const rawJsonDetails = drawer.querySelector(".receipt-event-drawer-raw");
+        rawJsonDetails?.addEventListener("toggle", () => {
+          rawJsonOpenEventId = rawJsonDetails.open ? ev.id : null;
+        });
+        list.appendChild(drawer);
+      }
     });
 
     section.appendChild(list);
@@ -293,4 +416,3 @@ export function renderEvents(events) {
 window.VPT = window.VPT || {};
 window.VPT.features = window.VPT.features || {};
 window.VPT.features.events = { initEventsFeature, renderEvents, renderEventDetails };
-
