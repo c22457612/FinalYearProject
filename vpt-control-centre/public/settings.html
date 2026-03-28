@@ -92,9 +92,13 @@
             <span class="nav-item-label">Settings</span>
           </span>
         </a>
+        <div class="sidebar-utility-card">
+          <div class="sidebar-utility-label">Backend</div>
+          <div id="connectionStatusShell" class="sidebar-utility-status" data-status="pending">Connecting...</div>
+        </div>
         <div class="sidebar-utility-card sidebar-utility-card-note">
-          <div class="sidebar-utility-label">Mode</div>
-          <div class="sidebar-utility-value">Settings scaffold</div>
+          <div class="sidebar-utility-label">Storage</div>
+          <div class="sidebar-utility-value">privacy.db on this device</div>
         </div>
       </div>
     </aside>
@@ -166,6 +170,7 @@
     </div>
   </div>
 
+  <script type="module" src="app/core.js"></script>
   <script src="app/shell.js" defer></script>
   <script src="settings.js" defer></script>
 </body>
