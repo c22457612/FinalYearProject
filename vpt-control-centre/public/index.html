@@ -109,143 +109,83 @@
     <!-- Main content area (views switch inside here) -->
     <div class="app-content">
       <!-- HOME VIEW: existing dashboard -->
-      <main id="view-home">
-        <section>
-          <div class="summary">
-            <div class="summary-card">
-              <h2>Total events</h2>
-              <div id="statTotalEvents" class="value">0</div>
-              <div class="hint">stored in SQLite</div>
-            </div>
-            <div class="summary-card">
-              <h2>Active sites</h2>
-              <div id="statSites" class="value">0</div>
-              <div class="hint">seen in recent events</div>
-            </div>
-            <div class="summary-card">
-              <h2>Events (last 5 min)</h2>
-              <div id="statRecent" class="value">0</div>
-              <div class="hint" id="statRecentHint">refreshing…</div>
-            </div>
-          </div>
-
-          <div class="panel">
-            <div class="panel-header">
+      <main id="view-home" class="home-view">
+        <section class="home-receipt-column">
+          <div class="panel home-receipt-panel">
+            <div class="panel-header home-receipt-header">
               <div>
                 <div class="panel-title">Live Privacy Receipt</div>
                 <div class="panel-subtitle" id="receiptSubtitle">
-                  Showing latest events…
+                  Showing latest events...
                 </div>
               </div>
             </div>
-            <div class="scroll">
-              <table>
-                <thead>
-                  <tr>
-                    <th>Time</th>
-                    <th>Site</th>
-                    <th>Event</th>
-                    <th>Details</th>
-                    <th>Mode</th>
-                  </tr>
-                </thead>
-                <tbody id="eventsTableBody"></tbody>
-              </table>
+
+            <div class="home-receipt-scroll">
+              <div id="receiptFeed" class="receipt-feed" aria-live="polite"></div>
+            </div>
+
+            <div class="receipt-selection-shell">
+              <div class="receipt-selection-head">
+                <div class="receipt-selection-title">Selected event</div>
+                <div id="details-subtitle" class="panel-subtitle receipt-selection-subtitle">
+                  Click a receipt row to inspect a single event.
+                </div>
+              </div>
+
+              <div id="details-body" class="details-body receipt-details-body">
+                <div class="details-placeholder">No event selected.</div>
+              </div>
+
+              <details class="receipt-tools-disclosure">
+                <summary>Event tools</summary>
+
+                <div id="details-actions" class="details-actions">
+                  <button id="trust-site-btn">
+                    Trust this site (send to extension)
+                  </button>
+                </div>
+
+                <div class="export-body receipt-export-body">
+                  <div class="export-group">
+                    <div class="export-label">All events</div>
+                    <div class="export-actions">
+                      <button id="exportAllCsvBtn" class="btn-export">Download CSV</button>
+                      <button id="exportAllJsonBtn" class="btn-export">Download JSON</button>
+                    </div>
+                  </div>
+
+                  <div class="export-group">
+                    <div class="export-label" id="exportSiteLabel">Selected site: none</div>
+                    <div class="export-actions">
+                      <button id="exportSiteCsvBtn" class="btn-export" disabled>Download site CSV</button>
+                      <button id="exportSiteJsonBtn" class="btn-export" disabled>Download site JSON</button>
+                    </div>
+                    <div class="export-hint muted">
+                      Tip: select a receipt row to enable site export.
+                    </div>
+                  </div>
+                </div>
+              </details>
             </div>
           </div>
         </section>
 
-        <!-- RIGHT COLUMN: per-site summary + event details -->
-        <section class="right-column">
-          <!-- Per-site summary -->
-          <div class="panel">
+        <section class="right-column home-support-column">
+          <div class="panel inspect-next-panel">
             <div class="panel-header">
               <div>
-                <div class="panel-title">Per-site summary</div>
+                <div class="panel-title">Inspect next</div>
                 <div class="panel-subtitle">
-                  Derived from SQLite (Privacy.db)
+                  Small, high-signal sites from the current receipt window
                 </div>
               </div>
             </div>
 
-            <div class="table-wrapper">
-              <table class="summary-table">
-                <thead>
-                  <tr>
-                    <th>Site</th>
-                    <th>Events</th>
-                    <th>Blocked</th>
-                    <th>Observed</th>
-                    <th>3rd-party domains</th>
-                  </tr>
-                </thead>
-                <tbody id="site-summary-body">
-                  <!-- filled by dashboard.js -->
-                </tbody>
-              </table>
+            <div id="inspectNextList" class="inspect-next-list">
+              <div class="inspect-next-empty">Waiting for site activity...</div>
             </div>
           </div>
-
-          <!-- Event details panel -->
-          <div class="panel details-panel">
-            <div class="panel-header">
-              <div>
-                <div class="panel-title">Event details</div>
-                <div id="details-subtitle" class="panel-subtitle">
-                  Click an event in the table to see more information.
-                </div>
-              </div>
-            </div>
-
-            <div id="details-body" class="details-body">
-              <div class="details-placeholder">No event selected.</div>
-            </div>
-
-            <div id="details-actions" class="details-actions">
-              <button id="trust-site-btn">
-                Trust this site (send to extension)
-              </button>
-            </div>
-
-
-            <button id="details-json-toggle" class="details-json-toggle" hidden>
-              Show raw event JSON
-            </button>
-            <pre id="details-json" class="details-json" hidden></pre>
-          </div>
-          <!-- Export data panel -->
-          <div class="panel export-panel">
-            <div class="panel-header">
-              <div>
-                <div class="panel-title">Export data</div>
-                <div class="panel-subtitle">
-                  Download privacy events for analysis (CSV/JSON)
-                </div>
-              </div>
-            </div>
-
-            <div class="panel-body export-body">
-              <div class="export-group">
-                <div class="export-label">All events</div>
-                <div class="export-actions">
-                  <button id="exportAllCsvBtn" class="btn-export">Download CSV</button>
-                  <button id="exportAllJsonBtn" class="btn-export">Download JSON</button>
-                </div>
-              </div>
-
-              <div class="export-group">
-                <div class="export-label" id="exportSiteLabel">Selected site: none</div>
-                <div class="export-actions">
-                  <button id="exportSiteCsvBtn" class="btn-export" disabled>Download site CSV</button>
-                  <button id="exportSiteJsonBtn" class="btn-export" disabled>Download site JSON</button>
-                </div>
-                <div class="export-hint muted">
-                  Tip: click an event in the table to enable site export.
-                </div>
-              </div>
-            </div>
-          </div>
-
         </section>
       </main>
 
@@ -786,4 +726,5 @@
 
 </body>
 </html>
+
 

@@ -1,16 +1,307 @@
 /* Make Live Privacy Receipt rows feel interactive */
 
-#eventsTableBody tr {
+.home-view {
+  grid-template-columns: minmax(0, 1.9fr) minmax(250px, 0.7fr);
+  align-items: start;
+}
+
+.home-receipt-panel,
+.inspect-next-panel {
+  min-height: auto;
+}
+
+.home-receipt-scroll {
+  overflow-y: auto;
+  flex: 1;
+  min-height: 24rem;
+}
+
+.receipt-feed {
+  display: grid;
+  gap: 0.8rem;
+}
+
+.receipt-empty,
+.inspect-next-empty {
+  border: 1px dashed rgba(148, 163, 184, 0.24);
+  border-radius: var(--radius-sm);
+  padding: 0.9rem;
+  color: #cbd5e1;
+  font-size: 0.82rem;
+}
+
+.receipt-minute-group {
+  display: grid;
+  gap: 0.15rem;
+}
+
+.receipt-minute-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.2rem 0 0.45rem;
+  border-bottom: 1px solid rgba(148, 163, 184, 0.16);
+}
+
+.receipt-minute-label,
+.receipt-minute-count {
+  font-size: 0.72rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.receipt-minute-label {
+  color: #dbe4f0;
+  font-family: var(--font-mono);
+}
+
+.receipt-minute-count {
+  color: var(--color-text-faint);
+}
+
+.receipt-minute-list {
+  display: grid;
+}
+
+.receipt-event-row {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto auto;
+  gap: 0.7rem;
+  align-items: center;
+  padding: 0.5rem 0.2rem;
+  border-bottom: 1px solid rgba(148, 163, 184, 0.1);
   cursor: pointer;
-  transition: background 0.12s ease, transform 0.05s ease;
+  transition: background 0.12s ease, border-color 0.12s ease;
 }
 
-#eventsTableBody tr:hover {
-  background: rgba(148, 163, 184, 0.12);
+.receipt-event-row:hover,
+.receipt-event-row:focus-visible {
+  background: rgba(148, 163, 184, 0.08);
+  outline: none;
 }
 
-#eventsTableBody tr.event-row-selected {
-  background: rgba(59, 130, 246, 0.25);
+.receipt-event-row-selected {
+  background: rgba(59, 130, 246, 0.12);
+  border-color: rgba(59, 130, 246, 0.22);
+}
+
+.receipt-event-time {
+  font-family: var(--font-mono);
+  font-size: 0.74rem;
+  color: var(--color-text-faint);
+  white-space: nowrap;
+}
+
+.receipt-event-main {
+  min-width: 0;
+  display: grid;
+  gap: 0.18rem;
+}
+
+.receipt-event-site {
+  font-size: 0.92rem;
+  font-weight: 600;
+  color: var(--color-text-main);
+  overflow-wrap: anywhere;
+}
+
+.receipt-event-details {
+  font-size: 0.79rem;
+  color: #aebed1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.receipt-kind-pill,
+.receipt-mode-pill {
+  white-space: nowrap;
+}
+
+.receipt-kind-pill.blocked {
+  background: rgba(239, 68, 68, 0.16);
+  color: #fecaca;
+}
+
+.receipt-kind-pill.observed {
+  background: rgba(59, 130, 246, 0.16);
+  color: #bfdbfe;
+}
+
+.receipt-kind-pill.cookie {
+  background: rgba(245, 158, 11, 0.16);
+  color: #fde68a;
+}
+
+.receipt-kind-pill.api {
+  background: rgba(16, 185, 129, 0.16);
+  color: #a7f3d0;
+}
+
+.receipt-kind-pill.preview,
+.receipt-kind-pill.other {
+  background: rgba(148, 163, 184, 0.16);
+  color: #dbe4f0;
+}
+
+.receipt-mode-pill {
+  opacity: 0.82;
+  font-size: 0.7rem;
+}
+
+.receipt-selection-shell {
+  margin-top: 0.9rem;
+  padding-top: 0.7rem;
+  border-top: 1px solid rgba(148, 163, 184, 0.16);
+  display: grid;
+  gap: 0.55rem;
+}
+
+.receipt-selection-head {
+  display: grid;
+  gap: 0.18rem;
+}
+
+.receipt-selection-title {
+  font-size: 0.72rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--color-text-faint);
+}
+
+.receipt-selection-subtitle {
+  font-size: 0.76rem;
+}
+
+.receipt-details-body {
+  margin-top: 0;
+  display: block;
+}
+
+.receipt-detail-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 0.45rem 0.6rem;
+}
+
+.receipt-detail-item {
+  display: grid;
+  gap: 0.14rem;
+  min-width: 0;
+}
+
+.receipt-detail-item .value {
+  overflow-wrap: anywhere;
+}
+
+.receipt-raw-event {
+  margin-top: 0.5rem;
+}
+
+.receipt-raw-event summary {
+  cursor: pointer;
+  font-size: 0.74rem;
+  color: var(--color-text-faint);
+}
+
+.receipt-raw-event pre {
+  margin: 0.4rem 0 0;
+  padding: 0.55rem 0.65rem;
+  border-radius: 0.6rem;
+  background: rgba(2, 6, 23, 0.9);
+  border: 1px solid rgba(148, 163, 184, 0.12);
+  font-size: 0.7rem;
+  max-height: 11rem;
+  overflow: auto;
+  white-space: pre-wrap;
+}
+
+.receipt-tools-disclosure {
+  margin-top: 0.15rem;
+}
+
+.receipt-tools-disclosure summary {
+  cursor: pointer;
+  font-size: 0.75rem;
+  color: var(--color-text-faint);
+}
+
+.receipt-export-body {
+  margin-top: 0.6rem;
+  padding-top: 0;
+}
+
+.inspect-next-list {
+  display: grid;
+  gap: 0.55rem;
+}
+
+.inspect-next-item {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 0.65rem;
+  align-items: center;
+  padding: 0.55rem 0;
+  border-bottom: 1px solid rgba(148, 163, 184, 0.1);
+}
+
+.inspect-next-main {
+  min-width: 0;
+  display: grid;
+  gap: 0.16rem;
+}
+
+.inspect-next-site {
+  color: var(--color-text-main);
+  font-size: 0.88rem;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+.inspect-next-reason {
+  color: #aebed1;
+  font-size: 0.77rem;
+}
+
+.inspect-next-link {
+  color: #93c5fd;
+  text-decoration: none;
+  font-size: 0.78rem;
+  white-space: nowrap;
+}
+
+.inspect-next-link:hover {
+  text-decoration: underline;
+}
+
+@media (max-width: 1120px) {
+  .home-view {
+    grid-template-columns: minmax(0, 1.55fr) minmax(230px, 0.72fr);
+  }
+
+  .receipt-detail-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 900px) {
+  .home-view {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .receipt-event-row {
+    grid-template-columns: auto minmax(0, 1fr);
+  }
+
+  .receipt-event-kind,
+  .receipt-event-mode {
+    grid-column: 2;
+  }
+
+  .receipt-detail-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
 }
 
 
@@ -1812,6 +2103,22 @@
 .export-hint {
   font-size: 0.75rem;
   color: var(--color-text-muted);
+}
+
+.receipt-selection-shell .receipt-details-body {
+  display: block;
+  margin-top: 0;
+  font-size: 0.78rem;
+}
+
+.receipt-selection-shell .details-actions {
+  margin-top: 0.55rem;
+}
+
+.receipt-selection-shell .details-actions button {
+  background: rgba(239, 68, 68, 0.18);
+  border: 1px solid rgba(248, 113, 113, 0.24);
+  color: #fecaca;
 }
 
 

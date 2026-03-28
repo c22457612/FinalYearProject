@@ -9,6 +9,7 @@ if (!api || !utils) {
 const { friendlyTime, modeClass, escapeHtml } = utils || {};
 
 const POLL_MS = 3000; // poll every 3s
+const HOME_RECEIPT_LIMIT = 50;
 
 let latestEvents = [];
 let selectedEvent = null;
@@ -87,57 +88,89 @@ function setShellHeaderTitle(view) {
   titleEl.textContent = labels[view] || "Home";
 }
 
-function renderSummary(events, sites) {
-  const total = events.length;
-  const siteCount = sites.length;
+function buildInspectReason(metrics, siteSummary) {
+  const blocked = Number(metrics.blocked || 0);
+  const observed = Number(metrics.observed || 0);
+  const receiptCount = Number(metrics.receiptCount || 0);
+  const thirdParties = Number(siteSummary?.uniqueThirdParties || 0);
 
-  const now = Date.now();
-  const fiveMinAgo = now - 5 * 60 * 1000;
-  const recent = events.filter(e => e.ts && e.ts >= fiveMinAgo).length;
-
-  document.getElementById("statTotalEvents").textContent = total;
-  document.getElementById("statSites").textContent = siteCount;
-  document.getElementById("statRecent").textContent = recent;
-  document.getElementById("statRecentHint").textContent =
-    recent ? "in the last 5 minutes" : "none in the last 5 minutes";
+  if (blocked >= 3) return `${blocked} blocked requests in the current receipt`;
+  if (blocked >= 1 && observed >= 1) return "Mixed blocked and observed activity";
+  if (receiptCount >= 4) return `${receiptCount} events in the current receipt`;
+  if (thirdParties >= 4) return `${thirdParties} third-party domains observed`;
+  if (blocked >= 1) return "Blocked activity worth checking";
+  return "Recent privacy activity in the current receipt";
 }
 
-function renderSites(sites) {
-  const tbody = document.getElementById("site-summary-body");
-  tbody.innerHTML = "";
+function renderInspectNext(sites, events) {
+  const container = document.getElementById("inspectNextList");
+  if (!container) return;
 
-  const rows = sites.slice().sort((a, b) => b.totalEvents - a.totalEvents);
+  const latest = (Array.isArray(events) ? events : [])
+    .slice()
+    .sort((a, b) => (Number(b?.ts) || 0) - (Number(a?.ts) || 0))
+    .slice(0, HOME_RECEIPT_LIMIT);
 
-  rows.forEach(s => {
-    const tr = document.createElement("tr");
+  const siteSummaryBySite = new Map(
+    (Array.isArray(sites) ? sites : []).map((site) => [site?.site || "unknown", site])
+  );
+  const metricsBySite = new Map();
 
-    const tdSite = document.createElement("td");
-    const a = document.createElement("a");
-    a.href = `/site.html?site=${encodeURIComponent(s.site)}`;
-    a.textContent = s.site;
-    a.className = "site-link";
-    tdSite.appendChild(a);
-    tr.appendChild(tdSite);
+  latest.forEach((event) => {
+    const site = event?.site || "unknown";
+    if (!metricsBySite.has(site)) {
+      metricsBySite.set(site, {
+        site,
+        receiptCount: 0,
+        blocked: 0,
+        observed: 0,
+        lastTs: 0,
+      });
+    }
 
-
-    const tdTotal = document.createElement("td");
-    tdTotal.textContent = s.totalEvents;
-    tr.appendChild(tdTotal);
-
-    const tdBlocked = document.createElement("td");
-    tdBlocked.textContent = s.blockedCount;
-    tr.appendChild(tdBlocked);
-
-    const tdObserved = document.createElement("td");
-    tdObserved.textContent = s.observedCount;
-    tr.appendChild(tdObserved);
-
-    const tdThird = document.createElement("td");
-    tdThird.textContent = s.uniqueThirdParties;
-    tr.appendChild(tdThird);
-
-    tbody.appendChild(tr);
+    const metric = metricsBySite.get(site);
+    metric.receiptCount += 1;
+    metric.lastTs = Math.max(metric.lastTs, Number(event?.ts) || 0);
+    if (event?.kind === "network.blocked") metric.blocked += 1;
+    if (event?.kind === "network.observed") metric.observed += 1;
   });
+
+  const rows = Array.from(metricsBySite.values())
+    .map((metric) => {
+      const siteSummary = siteSummaryBySite.get(metric.site) || null;
+      const reason = buildInspectReason(metric, siteSummary);
+      const score = (metric.blocked * 5)
+        + ((metric.blocked > 0 && metric.observed > 0) ? 4 : 0)
+        + (metric.receiptCount * 2)
+        + Math.min(Number(siteSummary?.uniqueThirdParties || 0), 4);
+
+      return {
+        site: metric.site,
+        reason,
+        score,
+        lastTs: metric.lastTs,
+      };
+    })
+    .sort((a, b) => {
+      if (b.score !== a.score) return b.score - a.score;
+      return (b.lastTs || 0) - (a.lastTs || 0);
+    })
+    .slice(0, 5);
+
+  if (!rows.length) {
+    container.innerHTML = '<div class="inspect-next-empty">No active sites in the current receipt.</div>';
+    return;
+  }
+
+  container.innerHTML = rows.map((row) => `
+    <div class="inspect-next-item">
+      <div class="inspect-next-main">
+        <div class="inspect-next-site">${escapeHtml(row.site)}</div>
+        <div class="inspect-next-reason">${escapeHtml(row.reason)}</div>
+      </div>
+      <a class="inspect-next-link" href="/site.html?site=${encodeURIComponent(row.site)}">Inspect</a>
+    </div>
+  `).join("");
 }
 
 // ---- Poll loop ----
@@ -156,6 +189,7 @@ async function fetchAndRender() {
     if (selectedEvent?.id && !events.some(e => e?.id === selectedEvent.id)) {
       selectedEvent = null;
       setSelectedSite(null);
+      updateExportButtons();
     }
 
     // update trustedSites set from policies
@@ -163,10 +197,9 @@ async function fetchAndRender() {
 
     setConnectionStatus("online", "Connected to local backend");
 
-    renderSummary(events, sites);
     latestEvents = events; // keep for cookies back button etc.
     window.VPT?.features?.events?.renderEvents?.(events);
-    renderSites(sites);
+    renderInspectNext(sites, events);
     window.VPT?.features?.sites?.renderSitesWall?.(sites); //modularisation call
 
     // refresh details panel so status + button reflect current trust state
