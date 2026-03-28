@@ -191,59 +191,37 @@
 
       <!-- SITES VIEW -->
     <main id="view-sites" class="sites-view hidden">
-
-      <!-- Summary cards -->
-      <section class="sites-summary-row">
-        <div class="summary-card">
-          <h2>Sites tracked</h2>
-          <div id="sitesStatCount" class="value">0</div>
-          <div class="hint">from SQLite</div>
-        </div>
-
-        <div class="summary-card">
-          <h2>Total events</h2>
-          <div id="sitesStatEvents" class="value">0</div>
-          <div class="hint">across all sites</div>
-        </div>
-
-        <div class="summary-card">
-          <h2>Total blocked</h2>
-          <div id="sitesStatBlocked" class="value">0</div>
-          <div class="hint">network.blocked</div>
-        </div>
-
-        <div class="summary-card">
-          <h2>3rd-party domains</h2>
-          <div id="sitesStatThird" class="value">0</div>
-          <div class="hint">sum per site</div>
-        </div>
-      </section>
-
-      <!-- Wall of sites -->
-      <div class="panel">
-        <div class="panel-header">
-          <div>
-            <div class="panel-title">Sites</div>
-            <div class="panel-subtitle">Click a site to open detailed insights</div>
+      <section class="sites-launcher-panel">
+        <div class="sites-launcher-header">
+          <div class="sites-launcher-copy">
+            <div class="panel-title">Choose a site to inspect</div>
+            <div class="panel-subtitle">Search, sort, and open Site Insights for the next site you want to review.</div>
           </div>
 
-          <div class="sites-controls">
-            <input id="sitesSearch" class="sites-search" placeholder="Search site..." />
-            <select id="sitesSort" class="sites-sort">
+          <div class="sites-controls" role="search">
+            <input
+              id="sitesSearch"
+              class="sites-search"
+              type="search"
+              placeholder="Search by site name"
+              aria-label="Search sites"
+            />
+            <select id="sitesSort" class="sites-sort" aria-label="Sort sites">
+              <option value="recent">Most recent</option>
               <option value="events">Most events</option>
               <option value="blocked">Most blocked</option>
               <option value="third">Most 3rd parties</option>
-              <option value="recent">Most recent</option>
+              <option value="alpha">A-Z</option>
             </select>
           </div>
         </div>
 
-        <div class="panel-body">
-          <div id="sitesGrid" class="sites-grid">
-            <!-- site cards inserted by dashboard.js -->
-          </div>
+        <div id="sitesMeta" class="sites-meta" aria-live="polite">0 tracked</div>
+
+        <div id="sitesGrid" class="sites-grid">
+          <!-- site cards inserted by dashboard.js -->
         </div>
-      </div>
+      </section>
 
     </main>
 
