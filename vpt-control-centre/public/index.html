@@ -119,55 +119,55 @@
                   Showing latest events...
                 </div>
               </div>
+              <div class="receipt-header-actions" aria-label="Receipt exports">
+                <button id="exportAllCsvBtn" class="btn-export btn-export-quiet">Export CSV</button>
+                <button id="exportAllJsonBtn" class="btn-export btn-export-quiet">Export JSON</button>
+              </div>
+            </div>
+
+            <div class="receipt-control-strip">
+              <div class="receipt-history-controls" aria-label="Receipt history controls">
+                <label class="receipt-limit-control" for="receiptLatestLimit">
+                  <span class="receipt-limit-label">Latest</span>
+                  <select id="receiptLatestLimit" class="receipt-limit-select">
+                    <option value="20">20</option>
+                    <option value="50" selected>50</option>
+                    <option value="100">100</option>
+                    <option value="200">200</option>
+                  </select>
+                </label>
+                <button id="receiptLoadOlderBtn" class="receipt-control-btn" type="button">Load older</button>
+                <button id="receiptJumpLatestBtn" class="receipt-control-btn receipt-control-btn-primary" type="button" disabled>Jump to latest</button>
+              </div>
+              <div id="receiptHistoryStatus" class="receipt-history-status">Live window · showing 1–50</div>
             </div>
 
             <div class="home-receipt-scroll">
               <div id="receiptFeed" class="receipt-feed" aria-live="polite"></div>
             </div>
 
-            <div class="receipt-selection-shell">
-              <div class="receipt-selection-head">
-                <div class="receipt-selection-title">Selected event</div>
-                <div id="details-subtitle" class="panel-subtitle receipt-selection-subtitle">
-                  Click a receipt row to inspect a single event.
-                </div>
+            <details class="receipt-tools-disclosure">
+              <summary>Event tools</summary>
+
+              <div id="details-actions" class="details-actions">
+                <button id="trust-site-btn">
+                  Trust this site (send to extension)
+                </button>
               </div>
 
-              <div id="details-body" class="details-body receipt-details-body">
-                <div class="details-placeholder">No event selected.</div>
+              <div class="export-body receipt-export-body">
+                <div class="export-group">
+                  <div class="export-label" id="exportSiteLabel">Selected site export</div>
+                  <div class="export-actions">
+                    <button id="exportSiteCsvBtn" class="btn-export" disabled>Download site CSV</button>
+                    <button id="exportSiteJsonBtn" class="btn-export" disabled>Download site JSON</button>
+                  </div>
+                  <div class="export-hint muted">
+                    Tip: select a receipt row to enable site export.
+                  </div>
+                </div>
               </div>
-
-              <details class="receipt-tools-disclosure">
-                <summary>Event tools</summary>
-
-                <div id="details-actions" class="details-actions">
-                  <button id="trust-site-btn">
-                    Trust this site (send to extension)
-                  </button>
-                </div>
-
-                <div class="export-body receipt-export-body">
-                  <div class="export-group">
-                    <div class="export-label">All events</div>
-                    <div class="export-actions">
-                      <button id="exportAllCsvBtn" class="btn-export">Download CSV</button>
-                      <button id="exportAllJsonBtn" class="btn-export">Download JSON</button>
-                    </div>
-                  </div>
-
-                  <div class="export-group">
-                    <div class="export-label" id="exportSiteLabel">Selected site: none</div>
-                    <div class="export-actions">
-                      <button id="exportSiteCsvBtn" class="btn-export" disabled>Download site CSV</button>
-                      <button id="exportSiteJsonBtn" class="btn-export" disabled>Download site JSON</button>
-                    </div>
-                    <div class="export-hint muted">
-                      Tip: select a receipt row to enable site export.
-                    </div>
-                  </div>
-                </div>
-              </details>
-            </div>
+            </details>
           </div>
         </section>
 

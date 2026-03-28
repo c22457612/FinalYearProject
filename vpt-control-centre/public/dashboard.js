@@ -9,13 +9,21 @@ if (!api || !utils) {
 const { friendlyTime, modeClass, escapeHtml } = utils || {};
 
 const POLL_MS = 3000; // poll every 3s
-const HOME_RECEIPT_LIMIT = 50;
+const DEFAULT_RECEIPT_LIMIT = 50;
 
 let latestEvents = [];
 let selectedEvent = null;
 let trustedSites = new Set(); // derived from /api/policies
 let latestSitesCache = [];
 let latestPoliciesCache = { latestTs: 0, items: [] };
+let receiptState = {
+  latestLimit: DEFAULT_RECEIPT_LIMIT,
+  mode: "latest",
+  status: "live",
+  frozenEvents: [],
+  offset: 0,
+  renderedEvents: [],
+};
 
 function setSelectedSite(site) {
   const normalized = typeof site === "string" && site.trim() ? site.trim() : null;
@@ -94,22 +102,19 @@ function buildInspectReason(metrics, siteSummary) {
   const receiptCount = Number(metrics.receiptCount || 0);
   const thirdParties = Number(siteSummary?.uniqueThirdParties || 0);
 
-  if (blocked >= 3) return `${blocked} blocked requests in the current receipt`;
-  if (blocked >= 1 && observed >= 1) return "Mixed blocked and observed activity";
-  if (receiptCount >= 4) return `${receiptCount} events in the current receipt`;
-  if (thirdParties >= 4) return `${thirdParties} third-party domains observed`;
+  if (blocked >= 3) return `${blocked} blocked requests now`;
+  if (blocked >= 1 && observed >= 1) return "Mixed blocked and observed traffic";
+  if (receiptCount >= 4) return `${receiptCount} events in the current window`;
+  if (thirdParties >= 4) return `${thirdParties} third-party domains seen`;
   if (blocked >= 1) return "Blocked activity worth checking";
-  return "Recent privacy activity in the current receipt";
+  return "Recent privacy activity";
 }
 
 function renderInspectNext(sites, events) {
   const container = document.getElementById("inspectNextList");
   if (!container) return;
 
-  const latest = (Array.isArray(events) ? events : [])
-    .slice()
-    .sort((a, b) => (Number(b?.ts) || 0) - (Number(a?.ts) || 0))
-    .slice(0, HOME_RECEIPT_LIMIT);
+  const latest = (Array.isArray(events) ? events : []).slice();
 
   const siteSummaryBySite = new Map(
     (Array.isArray(sites) ? sites : []).map((site) => [site?.site || "unknown", site])
@@ -162,8 +167,9 @@ function renderInspectNext(sites, events) {
     return;
   }
 
-  container.innerHTML = rows.map((row) => `
+  container.innerHTML = rows.map((row, index) => `
     <div class="inspect-next-item">
+      <div class="inspect-next-rank" aria-hidden="true">${index + 1}</div>
       <div class="inspect-next-main">
         <div class="inspect-next-site">${escapeHtml(row.site)}</div>
         <div class="inspect-next-reason">${escapeHtml(row.reason)}</div>
@@ -171,6 +177,130 @@ function renderInspectNext(sites, events) {
       <a class="inspect-next-link" href="/site.html?site=${encodeURIComponent(row.site)}">Inspect</a>
     </div>
   `).join("");
+}
+
+function sortEventsDesc(events) {
+  return (Array.isArray(events) ? events : [])
+    .slice()
+    .sort((a, b) => (Number(b?.ts) || 0) - (Number(a?.ts) || 0));
+}
+
+function getRenderedReceiptWindow() {
+  if (receiptState.mode === "older") {
+    return receiptState.frozenEvents.slice(
+      receiptState.offset,
+      receiptState.offset + receiptState.latestLimit
+    );
+  }
+
+  return sortEventsDesc(latestEvents).slice(0, receiptState.latestLimit);
+}
+
+function getHasOlderAvailable() {
+  if (receiptState.mode === "older") {
+    return (receiptState.offset + receiptState.latestLimit) < receiptState.frozenEvents.length;
+  }
+  return Array.isArray(latestEvents) && latestEvents.length > receiptState.latestLimit;
+}
+
+function updateReceiptHistoryUi() {
+  const limitSelect = document.getElementById("receiptLatestLimit");
+  const loadOlderBtn = document.getElementById("receiptLoadOlderBtn");
+  const jumpLatestBtn = document.getElementById("receiptJumpLatestBtn");
+  const statusEl = document.getElementById("receiptHistoryStatus");
+  if (limitSelect) limitSelect.value = String(receiptState.latestLimit);
+
+  const hasOlder = getHasOlderAvailable();
+
+  if (loadOlderBtn) {
+    loadOlderBtn.disabled = !receiptState.renderedEvents.length || !hasOlder;
+  }
+
+  if (jumpLatestBtn) {
+    const active = receiptState.mode === "older";
+    jumpLatestBtn.disabled = !active;
+    jumpLatestBtn.classList.toggle("is-active", active);
+  }
+
+  if (!statusEl) return;
+
+  const visibleCount = Array.isArray(receiptState.renderedEvents) ? receiptState.renderedEvents.length : 0;
+  const rangeStart = visibleCount ? receiptState.offset + 1 : 0;
+  const rangeEnd = visibleCount ? receiptState.offset + visibleCount : 0;
+  const rangeText = visibleCount ? `${rangeStart}–${rangeEnd}` : "0";
+  const modeLabel = receiptState.mode === "older" ? "Older window" : "Live window";
+  const noOlderSuffix = !hasOlder ? " · no older events" : "";
+
+  statusEl.dataset.state = (!hasOlder && receiptState.mode === "latest") ? "no_older" : receiptState.status;
+  statusEl.textContent = `${modeLabel} · showing ${rangeText}${noOlderSuffix}`;
+}
+
+function syncSelectedEventToWindow(windowEvents) {
+  if (!selectedEvent?.id) {
+    window.VPT?.features?.events?.renderEventDetails?.(null, { trustedSites });
+    return;
+  }
+
+  const nextSelected = (Array.isArray(windowEvents) ? windowEvents : []).find((event) => event?.id === selectedEvent.id) || null;
+  if (!nextSelected) {
+    selectedEvent = null;
+    setSelectedSite(null);
+    updateExportButtons();
+    window.VPT?.features?.events?.renderEventDetails?.(null, { trustedSites });
+    return;
+  }
+
+  selectedEvent = nextSelected;
+  window.VPT?.features?.events?.renderEventDetails?.(selectedEvent, { trustedSites });
+}
+
+function renderCurrentReceipt() {
+  const windowEvents = getRenderedReceiptWindow();
+  receiptState.renderedEvents = windowEvents;
+
+  window.VPT?.features?.events?.renderEvents?.(windowEvents, {
+    totalAvailable: receiptState.mode === "older" ? receiptState.frozenEvents.length : latestEvents.length,
+    historyMode: receiptState.mode,
+    latestLimit: receiptState.latestLimit,
+    trustedSites,
+  });
+  renderInspectNext(latestSitesCache, windowEvents);
+  syncSelectedEventToWindow(windowEvents);
+  updateReceiptHistoryUi();
+}
+
+function jumpToLatestWindow() {
+  receiptState.mode = "latest";
+  receiptState.status = "live";
+  receiptState.frozenEvents = [];
+  receiptState.offset = 0;
+  renderCurrentReceipt();
+}
+
+function loadOlderReceiptWindow() {
+  const source = receiptState.mode === "older"
+    ? receiptState.frozenEvents
+    : sortEventsDesc(latestEvents);
+
+  const nextOffset = receiptState.mode === "older"
+    ? receiptState.offset + receiptState.latestLimit
+    : receiptState.latestLimit;
+
+  const nextWindow = source.slice(nextOffset, nextOffset + receiptState.latestLimit);
+  if (!nextWindow.length) {
+    receiptState.status = "no_older";
+    if (receiptState.mode !== "older") {
+      receiptState.mode = "latest";
+    }
+    updateReceiptHistoryUi();
+    return;
+  }
+
+  receiptState.mode = "older";
+  receiptState.status = "older";
+  receiptState.frozenEvents = source;
+  receiptState.offset = nextOffset;
+  renderCurrentReceipt();
 }
 
 // ---- Poll loop ----
@@ -186,7 +316,7 @@ async function fetchAndRender() {
       : { latestTs: 0, items: [] };
 
     // Clear selection if the selected event no longer exists in the latest poll window.
-    if (selectedEvent?.id && !events.some(e => e?.id === selectedEvent.id)) {
+    if (receiptState.mode === "latest" && selectedEvent?.id && !events.some(e => e?.id === selectedEvent.id)) {
       selectedEvent = null;
       setSelectedSite(null);
       updateExportButtons();
@@ -198,12 +328,12 @@ async function fetchAndRender() {
     setConnectionStatus("online", "Connected to local backend");
 
     latestEvents = events; // keep for cookies back button etc.
-    window.VPT?.features?.events?.renderEvents?.(events);
-    renderInspectNext(sites, events);
+    if (receiptState.mode === "latest") {
+      receiptState.status = "live";
+    }
+    renderCurrentReceipt();
     window.VPT?.features?.sites?.renderSitesWall?.(sites); //modularisation call
 
-    // refresh details panel so status + button reflect current trust state
-    window.VPT?.features?.events?.renderEventDetails?.(selectedEvent, { trustedSites });
     window.VPT?.features?.cookies?.renderCookiesView?.(events); //modularised cookie render
     window.VPT?.features?.trustedSites?.renderTrustedSitesView?.(sites, { policies: latestPoliciesCache });
     window.VPT?.features?.apiSignals?.renderApiSignalsView?.(events, { policies: latestPoliciesCache });
@@ -280,6 +410,35 @@ window.addEventListener("load", () => {
   
   fetchAndRender();
   setInterval(fetchAndRender, POLL_MS);
+
+  const receiptLimitSelect = document.getElementById("receiptLatestLimit");
+  const receiptLoadOlderBtn = document.getElementById("receiptLoadOlderBtn");
+  const receiptJumpLatestBtn = document.getElementById("receiptJumpLatestBtn");
+
+  if (receiptLimitSelect) {
+    receiptLimitSelect.addEventListener("change", () => {
+      const nextLimit = Number(receiptLimitSelect.value) || DEFAULT_RECEIPT_LIMIT;
+      receiptState.latestLimit = nextLimit;
+      if (receiptState.mode === "latest") {
+        receiptState.status = "live";
+      } else {
+        receiptState.status = getHasOlderAvailable() ? "older" : "no_older";
+      }
+      renderCurrentReceipt();
+    });
+  }
+
+  if (receiptLoadOlderBtn) {
+    receiptLoadOlderBtn.addEventListener("click", () => {
+      loadOlderReceiptWindow();
+    });
+  }
+
+  if (receiptJumpLatestBtn) {
+    receiptJumpLatestBtn.addEventListener("click", () => {
+      jumpToLatestWindow();
+    });
+  }
 
   
   // --- View switching (Home / Cookies) ---
