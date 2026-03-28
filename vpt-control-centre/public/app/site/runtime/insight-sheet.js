@@ -187,13 +187,15 @@ export function createInsightSheet(deps) {
     return parts;
   }
 
-  function formatInsightLeadSelection(selection, primaryEvent) {
-    const label = selection?.title || selection?.value || "Current scope";
-    if (!primaryEvent) return label;
-    if (isApiSignalEvent(primaryEvent)) {
-      return `${label} • ${getApiEventPresentation(primaryEvent).label}`;
+  function formatInsightLeadSupport(selection, primaryEvent, context) {
+    void primaryEvent;
+    const label = String(selection?.title || selection?.value || "").trim();
+    if (label && selection?.type && !["scope", "vendor"].includes(selection.type)) {
+      return `Locked selection: ${label}.`;
     }
-    return `${label} • ${String(primaryEvent?.kind || "event")}`;
+    const vendorName = String(context?.selectedVendor?.vendorName || "").trim();
+    if (vendorName) return `Vendor focus: ${vendorName}.`;
+    return "";
   }
 
   function setInsightSeverity(severity, confidence) {
@@ -351,10 +353,27 @@ export function createInsightSheet(deps) {
       manageLink.textContent = "Manage trusted sites";
       box.appendChild(manageLink);
     }
+
+    box.classList.toggle("hidden", box.childElementCount === 0);
   }
 
   function renderInsightActions(actions) {
     renderActionButtons(qs("insightActions"), actions, { includeManageLink: true });
+  }
+
+  function getInsightLeadActions(actions) {
+    const list = Array.isArray(actions) ? actions.filter(Boolean) : [];
+    if (!list.length) return [];
+    const preferred = list.find((action) => action?.type && action.type !== "export_evidence") || list[0];
+    return preferred ? [preferred] : [];
+  }
+
+  function setInsightLeadSupport(text) {
+    const el = qs("insightLeadSupport");
+    if (!el) return;
+    const content = String(text || "").trim();
+    el.textContent = content;
+    el.classList.toggle("hidden", !content);
   }
 
   function buildFallbackInsight(selection, evidence) {
@@ -433,23 +452,21 @@ export function createInsightSheet(deps) {
       qs("insightLeadSeverity").className = "insight-severity severity-info";
       qs("insightLeadSeverity").textContent = "Info";
     }
-    if (qs("insightLeadSelection")) qs("insightLeadSelection").textContent = "Current scope";
     if (qs("insightLeadSummary")) {
       qs("insightLeadSummary").textContent = "Waiting for captured activity in the current scope.";
     }
-    renderActionButtons(qs("insightLeadActions"), [], { maxItems: 2 });
+    setInsightLeadSupport("");
+    renderActionButtons(qs("insightLeadActions"), [], { maxItems: 1 });
   }
 
   function renderInsightLead(selection, evidence) {
     const model = buildInsightView(selection, evidence);
     activeEvidence = model.evs;
 
-    if (qs("insightLeadSelection")) {
-      qs("insightLeadSelection").textContent = formatInsightLeadSelection(selection, model.primaryEvent);
-    }
     if (qs("insightLeadSummary")) {
       qs("insightLeadSummary").textContent = model.insight?.summary || "No deterministic summary available for this scope.";
     }
+    setInsightLeadSupport(formatInsightLeadSupport(selection, model.primaryEvent, model.context));
     const badge = qs("insightLeadSeverity");
     if (badge) {
       badge.classList.remove("severity-info", "severity-caution", "severity-high");
@@ -464,7 +481,7 @@ export function createInsightSheet(deps) {
         badge.textContent = "Info";
       }
     }
-    renderActionButtons(qs("insightLeadActions"), model.insight?.actions || [], { maxItems: 2 });
+    renderActionButtons(qs("insightLeadActions"), getInsightLeadActions(model.insight?.actions || []), { maxItems: 1 });
     return model;
   }
 

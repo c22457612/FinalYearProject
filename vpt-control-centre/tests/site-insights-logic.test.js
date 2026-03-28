@@ -42,6 +42,26 @@ function loadRuntimeModuleExport(relPath, exportNames, extraSandbox = {}) {
   return sandbox.__exports;
 }
 
+function loadRuntimeModuleExportWithoutImports(relPath, exportNames, extraSandbox = {}) {
+  const full = path.join(__dirname, "..", relPath);
+  const src = fs.readFileSync(full, "utf8");
+  const transformed = `${src
+    .replace(/^import .*$/gm, "")
+    .replace(/export function /g, "function ")}\n;globalThis.__exports = { ${exportNames.join(", ")} };`;
+  const sandbox = {
+    console,
+    setTimeout,
+    clearTimeout,
+    Date,
+    URL,
+    URLSearchParams,
+    ...extraSandbox,
+  };
+  sandbox.globalThis = sandbox;
+  vm.runInNewContext(transformed, sandbox, { filename: full });
+  return sandbox.__exports;
+}
+
 test("vendor taxonomy maps Google domains", () => {
   const sandbox = createSandbox();
   loadBrowserModule("public/app/vendor-taxonomy.js", sandbox);
@@ -587,6 +607,7 @@ test("scope summary model stays compact for sparse and non-sparse scopes", () =>
   assert.match(richer.text, /18 events in scope/i);
   assert.match(richer.text, /50% blocked/i);
   assert.match(richer.text, /2\.3x peak burst/i);
+  assert.doesNotMatch(richer.text, /tracker\.example/i);
 });
 
 test("state guidance model keeps sparse actions capped at two and prioritized", () => {
@@ -639,7 +660,7 @@ test("vendor scope banner model produces integrated scope copy and vault link", 
   });
 
   assert.match(model.text, /Google scoped to 7 events/i);
-  assert.match(model.text, /Focused timeline is active/i);
+  assert.match(model.text, /Focused timeline active/i);
   assert.match(model.href, /vendor-vault\.html\?site=alpha\.local&vendor=Google/i);
 });
 
@@ -730,6 +751,67 @@ test("view navigation keeps advanced controls closed when entering power mode", 
 
   assert.equal(viewMode, "power");
   assert.equal(controls.advancedControlsPanel.open, false);
+});
+
+test("chart orchestration applies readable defaults in power mode for time-based views", () => {
+  const calls = [];
+  const { createChartOrchestrationController } = loadRuntimeModuleExportWithoutImports(
+    "public/app/site/runtime/chart-orchestration-controller.js",
+    ["createChartOrchestrationController"],
+    {
+      summarizeVisualCategoryCounts: () => ({ total: 0, blocked: 0, observed: 0, blockedApi: 0, observedApi: 0, api: 0, other: 0 }),
+    }
+  );
+
+  const controller = createChartOrchestrationController({
+    getSiteLens: () => null,
+    getSelectedVendor: () => null,
+    setSelectedVendor: () => {},
+    getVizMetric: () => "seen",
+    buildVendorRollup: () => [],
+    buildTimelineOption: () => ({ option: {}, meta: {} }),
+    buildVendorAllowedBlockedTimelineOption: () => ({ option: {}, meta: {} }),
+    buildVendorTopDomainsEndpointsOption: () => ({ option: {}, meta: {} }),
+    buildTopDomainsOption: () => ({ option: {}, meta: {} }),
+    buildKindsOption: () => ({ option: {}, meta: {} }),
+    buildApiGatingOption: () => ({ option: {}, meta: {} }),
+    buildResourceTypesOption: () => ({ option: {}, meta: {} }),
+    buildModeBreakdownOption: () => ({ option: {}, meta: {} }),
+    buildPartySplitOption: () => ({ option: {}, meta: {} }),
+    buildHourHeatmapOption: () => ({ option: {}, meta: {} }),
+    buildVendorOverviewOption: () => ({ option: {}, meta: {} }),
+    buildVendorBlockRateComparisonOption: () => ({ option: {}, meta: {} }),
+    buildVendorShareOverTimeOption: (events, options) => {
+      calls.push({ view: "vendorShareOverTime", options });
+      return { option: {}, meta: {} };
+    },
+    buildRiskTrendOption: (events, options) => {
+      calls.push({ view: "riskTrend", options });
+      return { option: {}, meta: {} };
+    },
+    buildBaselineDetectedBlockedTrendOption: (events, options) => {
+      calls.push({ view: "baselineDetectedBlockedTrend", options });
+      return { option: {}, meta: {} };
+    },
+    buildVendorKindMatrixOption: () => ({ option: {}, meta: {} }),
+    buildRuleIdFrequencyOption: () => ({ option: {}, meta: {} }),
+    setVizSelection: () => {},
+    renderVendorChips: () => {},
+    renderECharts: () => {},
+    focusVendorDetailsUx: () => {},
+    hideVendorSelectionCue: () => {},
+  });
+
+  const events = [{ id: "e1", ts: 1_000, kind: "network.observed" }];
+  controller.buildViewOption("vendorShareOverTime", events, { viewMode: "power" });
+  controller.buildViewOption("riskTrend", events, { viewMode: "power" });
+  controller.buildViewOption("baselineDetectedBlockedTrend", events, { viewMode: "power" });
+
+  assert.equal(calls.length, 3);
+  for (const call of calls) {
+    assert.equal(call.options.viewMode, "power");
+    assert.equal(call.options.densityAware, true);
+  }
 });
 
 test("site filter logic keeps API events compatible with surface and mitigation filters", () => {
@@ -875,6 +957,49 @@ test("insight summary text calls out browser API activity for API-only selection
   assert.match(insight.summary, /Browser API activity/i);
 });
 
+test("selected evidence digest model prefers compact formatted summary-first content", () => {
+  const { summarizeVisualCategoryCounts } = loadRuntimeModuleExport(
+    "public/app/site/filter-state.js",
+    ["summarizeVisualCategoryCounts"]
+  );
+  const { buildSidebarEvidenceDigestModel } = loadRuntimeModuleExportWithoutImports(
+    "public/app/site/runtime/sidebar-modules.js",
+    ["buildSidebarEvidenceDigestModel"],
+    {
+      summarizeVisualCategoryCounts,
+      getEventListContextText: () => "",
+      getEventListKindText: () => "",
+      getEventListMetaText: () => "",
+    }
+  );
+
+  const digest = buildSidebarEvidenceDigestModel({
+    selection: null,
+    evidence: [
+      { id: "e1", ts: 1_000, kind: "network.observed", data: { isThirdParty: true }, enrichment: { mitigationStatus: "observed_only" } },
+      { id: "e2", ts: 2_000, kind: "network.blocked", data: { isThirdParty: true }, enrichment: { mitigationStatus: "blocked" } },
+    ],
+    currentView: { id: "vendorOverview", title: "Vendor activity overview" },
+    viewMode: "power",
+    siteName: "alpha.local",
+    selectedVendor: null,
+    pickPrimarySelectedEvent: (events) => events[0] || null,
+    getInsightRules: () => ({
+      buildInsightResult: () => ({
+        summary: "Selected activity includes 2 events with third-party tracking signals.",
+        severity: "caution",
+        confidence: 0.8,
+        evidenceSummary: { total: 2, blocked: 1, observed: 1, blockedApi: 0, observedApi: 0, api: 0, other: 0 },
+      }),
+    }),
+  });
+
+  assert.equal(digest.insight.severity, "caution");
+  assert.equal(digest.hasLockedSelection, false);
+  assert.match(digest.supportLine, /Vendor activity overview digest/i);
+  assert.match(digest.mixText, /1 blocked, 1 observed/i);
+});
+
 test("timeline chart counts API blocked and observed buckets from semantic status", () => {
   const { createChartBuilders } = loadRuntimeModuleExport(
     "public/app/site/chart-builders.js",
@@ -975,6 +1100,119 @@ test("timeline keeps API as a first-class series in easy low-signal scopes", () 
   const seriesNames = (built.option.series || []).map((series) => series.name);
   assert.equal(seriesNames.includes("Events"), false);
   assert.equal(seriesNames.includes("Observed API"), true);
+});
+
+test("vendor share over time uses readable default zoom in low-signal power mode", () => {
+  const { createChartBuilders } = loadRuntimeModuleExport(
+    "public/app/site/chart-builders.js",
+    ["createChartBuilders"]
+  );
+
+  const eventA = {
+    id: "share-a",
+    ts: 60 * 60 * 1000,
+    kind: "network.observed",
+    data: { domain: "tracker-a.example", isThirdParty: true },
+  };
+  const eventB = {
+    id: "share-b",
+    ts: 2 * 60 * 60 * 1000,
+    kind: "network.observed",
+    data: { domain: "tracker-b.example", isThirdParty: true },
+  };
+
+  const builders = createChartBuilders({
+    vizOptions: {
+      metric: "seen",
+      seriesType: "auto",
+      topN: 20,
+      sort: "value_desc",
+      binSize: "5m",
+      normalize: false,
+      stackBars: true,
+    },
+    binSizeMs: { "5m": 5 * 60 * 1000 },
+    hoverPointStyle: { borderColor: "#38BDF8", borderWidth: 1 },
+    selectedPointStyle: { borderColor: "#A78BFA", borderWidth: 2 },
+    getRangeWindow: () => ({ from: 0, to: 24 * 60 * 60 * 1000 }),
+    buildVendorRollup: () => [
+      { vendorName: "Tracker A", seen: 1, evs: [eventA] },
+      { vendorName: "Tracker B", seen: 1, evs: [eventB] },
+    ],
+    getKindBucket: () => "observed",
+    getVisualCategoryBucket: () => "observed",
+    getVendorMetricValue: () => 0,
+    getResourceBucket: () => "other",
+    getPartyBucket: () => "third",
+    getPrivacyStatusBucket: () => "signal_detected",
+    getMitigationStatusBucket: () => "observed_only",
+    resourceLabels: {},
+    partyLabels: {},
+  });
+
+  const built = builders.buildVendorShareOverTimeOption([eventA, eventB], { viewMode: "power", densityAware: true });
+
+  assert.equal(built.meta.densityDefaults.applied, true);
+  assert.equal(built.meta.densityDefaults.simplifiedSeries, true);
+  assert.ok(
+    built.meta.densityDefaults.focusedWindow === true
+    || Number(built.meta.densityDefaults.appliedBinMs || 0) > Number(built.meta.densityDefaults.originalBinMs || 0)
+  );
+  assert.equal(built.option.series?.[0]?.type, "bar");
+});
+
+test("baseline trend uses readable default zoom in low-signal power mode", () => {
+  const { createChartBuilders } = loadRuntimeModuleExport(
+    "public/app/site/chart-builders.js",
+    ["createChartBuilders"]
+  );
+
+  const builders = createChartBuilders({
+    vizOptions: {
+      metric: "seen",
+      seriesType: "auto",
+      topN: 20,
+      sort: "value_desc",
+      binSize: "5m",
+      normalize: false,
+      stackBars: true,
+    },
+    binSizeMs: { "5m": 5 * 60 * 1000 },
+    hoverPointStyle: { borderColor: "#38BDF8", borderWidth: 1 },
+    selectedPointStyle: { borderColor: "#A78BFA", borderWidth: 2 },
+    getRangeWindow: () => ({ from: 0, to: 24 * 60 * 60 * 1000 }),
+    buildVendorRollup: () => [],
+    getKindBucket: () => "other",
+    getVisualCategoryBucket: () => "other",
+    getVendorMetricValue: () => 0,
+    getResourceBucket: () => "other",
+    getPartyBucket: () => "third",
+    getPrivacyStatusBucket: (ev) => ev.enrichment?.privacyStatus || "unknown",
+    getMitigationStatusBucket: (ev) => ev.enrichment?.mitigationStatus || "unknown",
+    resourceLabels: {},
+    partyLabels: {},
+  });
+
+  const built = builders.buildBaselineDetectedBlockedTrendOption([
+    {
+      id: "baseline-1",
+      ts: 60 * 60 * 1000,
+      kind: "network.observed",
+      enrichment: { privacyStatus: "baseline", mitigationStatus: "observed_only" },
+    },
+    {
+      id: "detected-1",
+      ts: 2 * 60 * 60 * 1000,
+      kind: "network.observed",
+      enrichment: { privacyStatus: "signal_detected", mitigationStatus: "observed_only" },
+    },
+  ], { viewMode: "power", densityAware: true });
+
+  assert.equal(built.meta.densityDefaults.applied, true);
+  assert.ok(
+    built.meta.densityDefaults.focusedWindow === true
+    || Number(built.meta.densityDefaults.appliedBinMs || 0) > Number(built.meta.densityDefaults.originalBinMs || 0)
+  );
 });
 
 test("browser api site narrative combines fingerprinting and sensitive-access meanings deterministically", () => {

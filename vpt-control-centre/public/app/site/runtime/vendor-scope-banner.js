@@ -8,8 +8,8 @@ export function buildVendorScopeBannerModel({
 
   const vendorLabel = selectedVendor.vendorName || selectedVendor.vendorId;
   const text = focusedLensPivotActive
-    ? `${vendorLabel} scoped to ${Number(scopedCount || 0)} events. Focused timeline is active because comparison is thin here.`
-    : `${vendorLabel} scoped to ${Number(scopedCount || 0)} events in the current chart scope.`;
+    ? `${vendorLabel} scoped to ${Number(scopedCount || 0)} events. Focused timeline active.`
+    : `${vendorLabel} scoped to ${Number(scopedCount || 0)} events.`;
 
   return {
     text,
@@ -60,7 +60,7 @@ export function createVendorScopeBanner(deps) {
     vaultLink.style.textDecoration = "none";
     vaultLink.target = "_blank";
     vaultLink.rel = "noopener noreferrer";
-    vaultLink.textContent = "Open Vendor Vault";
+    vaultLink.textContent = "Vendor Vault";
 
     actions.appendChild(vaultLink);
     box.appendChild(actions);

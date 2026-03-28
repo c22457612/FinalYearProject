@@ -256,18 +256,16 @@ const sidebarModules = createSidebarModules({
   qs,
   friendlyTime,
   pickPrimarySelectedEvent,
-  formatSelectedLead,
   getRangeKey,
   getViewMode: () => viewMode,
   getCurrentView: () => VIEWS[vizIndex] || VIEWS[0],
+  getSiteName: () => siteName,
+  getInsightRules,
   getFilterState: () => filterState,
   getSelectedVendor: () => selectedVendor,
-  getFilteredEvents: () => filteredEvents,
   getVizSelection: () => vizSelection,
   getChartEvents,
   getActiveVizOptionLabels,
-  getVendorMetricValue,
-  buildVendorRollup,
   partyLabels: PARTY_LABELS,
   resourceLabels: RESOURCE_LABELS,
   surfaceLabels: SURFACE_LABELS,
@@ -283,7 +281,7 @@ const sidebarModules = createSidebarModules({
 const insightVisibility = createInsightVisibility({
   qs,
   onSelectVendorProfileModule: () => {
-    sidebarModules.selectModule("vendorProfile");
+    sidebarModules.selectModule("selectedEvidence");
   },
 });
 

@@ -88,7 +88,7 @@ export function createInsightVisibility(deps) {
     if (!vendorName) return;
     showVendorSelectionCue(vendorName, count);
     if (typeof onSelectVendorProfileModule === "function") onSelectVendorProfileModule();
-    pulseElement(qs("sidebarModuleVendorProfile"));
+    pulseElement(qs("sidebarModuleSelectedEvidence"));
   }
 
   return {

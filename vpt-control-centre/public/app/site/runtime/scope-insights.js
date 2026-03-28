@@ -12,28 +12,23 @@ export function buildScopeSummaryModel({ events = [], kpis = {}, callouts = [] }
   const thirdPartyRatio = Number.isFinite(kpis?.thirdPartyRatio) ? Number(kpis.thirdPartyRatio) : 0;
   const peakBurst = Number.isFinite(kpis?.peakBurst) ? Number(kpis.peakBurst) : 0;
   const lowSample = total < 8;
-  const supportLine = Array.isArray(callouts) && callouts.length ? String(callouts[0] || "").trim() : "";
+  void callouts;
 
   const parts = [
     `${total} events in scope`,
     `${Math.round(blockRate * 100)}% blocked`,
-    `${Math.round(thirdPartyRatio * 100)}% third-party`,
   ];
-  if (peakBurst > 0 && total >= 8) {
-    parts.push(`${peakBurst.toFixed(1)}x peak burst`);
-  }
   if (lowSample) {
     parts.push("sample still thin");
-  }
-
-  let text = `${parts.join(" • ")}.`;
-  if (!lowSample && supportLine) {
-    text = `${text} ${supportLine}`;
+  } else if (peakBurst > 0 && total >= 8) {
+    parts.push(`${peakBurst.toFixed(1)}x peak burst`);
+  } else if (thirdPartyRatio > 0) {
+    parts.push(`${Math.round(thirdPartyRatio * 100)}% third-party`);
   } else if (blocked === 0 && observed === 0) {
-    text = `${text} Mostly non-network activity in this scope.`;
+    parts.push("mostly non-network");
   }
 
-  return { text };
+  return { text: `${parts.join(" • ")}.` };
 }
 
 export function createScopeInsights(deps) {

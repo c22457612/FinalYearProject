@@ -1623,6 +1623,7 @@ function buildVendorShareOverTimeOption(events, options = {}) {
   }
 
   const viewMode = String(options?.viewMode || "easy");
+  const densityAware = options?.densityAware === true;
   const rows = buildVendorRollup(events)
     .map((row) => ({
       label: String(row?.vendorName || row?.vendorId || "Unknown vendor"),
@@ -1646,34 +1647,83 @@ function buildVendorShareOverTimeOption(events, options = {}) {
   const list = Array.isArray(events) ? events : [];
   const start = from ?? (list[0]?.ts ?? Date.now());
   const end = to ?? (list[list.length - 1]?.ts ?? Date.now());
-  const binMs = getTimelineBinMs();
-  const bins = Math.max(1, Math.ceil(Math.max(1, end - start) / binMs));
-  const labels = [];
-  const binEvents = new Array(bins).fill(0).map(() => []);
+  const span = Math.max(1, end - start);
+  const baseBinMs = getTimelineBinMs();
+  const allowDensityBinOverride = densityAware && String(vizOptions.binSize || "5m") === "5m";
+  const allowSeriesSimplification = densityAware && String(vizOptions.seriesType || "auto") === "auto";
 
-  for (let i = 0; i < bins; i++) {
-    labels.push(new Date(start + i * binMs).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }));
+  const buildBuckets = (targetBinMs) => {
+    const bins = Math.max(1, Math.ceil(Math.max(1, span) / targetBinMs));
+    const labels = [];
+    const binEvents = new Array(bins).fill(0).map(() => []);
+
+    for (let i = 0; i < bins; i++) {
+      labels.push(new Date(start + i * targetBinMs).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }));
+    }
+
+    const pointsByLabel = new Map();
+    for (const row of topRows) {
+      pointsByLabel.set(row.label, new Array(bins).fill(0));
+    }
+
+    for (const row of topRows) {
+      const points = pointsByLabel.get(row.label);
+      for (const ev of row.evs) {
+        const ts = Number(ev?.ts);
+        if (!Number.isFinite(ts)) continue;
+        const idx = Math.min(bins - 1, Math.max(0, Math.floor((ts - start) / targetBinMs)));
+        points[idx] += 1;
+        binEvents[idx].push(ev);
+      }
+    }
+
+    return { bins, labels, binEvents, pointsByLabel };
+  };
+
+  let effectiveBinMs = baseBinMs;
+  let timeline = buildBuckets(effectiveBinMs);
+  const initialSignal = assessTimelineSignal({
+    totalBins: timeline.bins,
+    binEvents: timeline.binEvents,
+    totalEvents: list.length,
+  });
+  let densityBinApplied = false;
+
+  if (allowDensityBinOverride && initialSignal.isLowSignal) {
+    const suggestedBinMs = chooseDensityAwareBinMs({
+      spanMs: span,
+      currentBinMs: baseBinMs,
+      totalEvents: list.length,
+    });
+    if (suggestedBinMs > effectiveBinMs) {
+      effectiveBinMs = suggestedBinMs;
+      timeline = buildBuckets(effectiveBinMs);
+      densityBinApplied = true;
+    }
   }
+
+  const finalSignal = assessTimelineSignal({
+    totalBins: timeline.bins,
+    binEvents: timeline.binEvents,
+    totalEvents: list.length,
+  });
+  const simplifiedSeries = allowSeriesSimplification
+    && finalSignal.isLowSignal
+    && finalSignal.totalEvents <= LOW_SIGNAL_SIMPLE_SERIES_EVENT_THRESHOLD;
+  const focusedWindow = densityAware
+    && finalSignal.isLowSignal
+    && !!finalSignal.reasons?.includes("mostly-empty-timespan");
+  const defaultZoomWindow = focusedWindow
+    ? buildLowSignalDataZoomWindow({ totalBins: timeline.bins, binEvents: timeline.binEvents })
+    : null;
 
   const series = [];
   for (const row of topRows) {
-    const points = new Array(bins).fill(0);
-    for (const ev of row.evs) {
-      const ts = Number(ev?.ts);
-      if (!Number.isFinite(ts)) continue;
-      const idx = Math.min(bins - 1, Math.max(0, Math.floor((ts - start) / binMs)));
-      points[idx] += 1;
-      binEvents[idx].push(ev);
-    }
-
-    series.push({
+    const points = timeline.pointsByLabel.get(row.label) || [];
+    const baseSeries = {
       name: row.label,
-      type: "line",
       stack: "vendor-share",
       data: points,
-      smooth: 0.2,
-      symbol: "none",
-      areaStyle: { opacity: 0.22 },
       emphasis: {
         focus: "none",
         itemStyle: {
@@ -1688,6 +1738,22 @@ function buildVendorShareOverTimeOption(events, options = {}) {
           borderWidth: selectedPointStyle.borderWidth,
         },
       },
+    };
+
+    if (simplifiedSeries) {
+      series.push({
+        ...baseSeries,
+        type: "bar",
+      });
+      continue;
+    }
+
+    series.push({
+      ...baseSeries,
+      type: "line",
+      smooth: 0.2,
+      symbol: "none",
+      areaStyle: { opacity: 0.22 },
     });
   }
 
@@ -1719,12 +1785,36 @@ function buildVendorShareOverTimeOption(events, options = {}) {
       },
       legend: { top: 0, textStyle: TREND_LEGEND_TEXT_STYLE, itemWidth: 22, itemHeight: 12, itemGap: 14 },
       grid: { left: 40, right: 18, top: 36, bottom: 75 },
-      ...buildTrendAxes(labels),
+      ...buildTrendAxes(timeline.labels),
       toolbox: buildTrendToolbox(),
-      dataZoom: [{ type: "inside" }, { type: "slider", height: 18, bottom: 18 }],
+      dataZoom: [
+        {
+          type: "inside",
+          ...(defaultZoomWindow ? { start: defaultZoomWindow.start, end: defaultZoomWindow.end } : {}),
+        },
+        {
+          type: "slider",
+          height: 18,
+          bottom: 18,
+          ...(defaultZoomWindow ? { start: defaultZoomWindow.start, end: defaultZoomWindow.end } : {}),
+        },
+      ],
       series,
     },
-    meta: { start, binMs, binEvents, labels, stateGuidanceMessage },
+    meta: {
+      start,
+      binMs: effectiveBinMs,
+      binEvents: timeline.binEvents,
+      labels: timeline.labels,
+      densityDefaults: {
+        applied: densityBinApplied || simplifiedSeries || !!defaultZoomWindow,
+        originalBinMs: baseBinMs,
+        appliedBinMs: effectiveBinMs,
+        simplifiedSeries,
+        focusedWindow: !!defaultZoomWindow,
+      },
+      stateGuidanceMessage,
+    },
   };
 }
 
@@ -1740,47 +1830,121 @@ function riskBucketForEvent(ev) {
   return "info";
 }
 
-function buildRiskTrendOption(events) {
+function buildRiskTrendOption(events, options = {}) {
+  const viewMode = String(options?.viewMode || "easy");
+  const densityAware = options?.densityAware === true;
   const { from, to } = getRangeWindow();
   const start = from ?? (events[0]?.ts ?? Date.now());
   const end = to ?? (events[events.length - 1]?.ts ?? Date.now());
-  const binMs = getTimelineBinMs();
-  const bins = Math.max(1, Math.ceil(Math.max(1, end - start) / binMs));
+  const span = Math.max(1, end - start);
+  const baseBinMs = getTimelineBinMs();
+  const allowDensityBinOverride = densityAware && String(vizOptions.binSize || "5m") === "5m";
 
-  const labels = [];
-  const high = new Array(bins).fill(0);
-  const caution = new Array(bins).fill(0);
-  const info = new Array(bins).fill(0);
-  const binEvents = new Array(bins).fill(0).map(() => []);
+  const buildBuckets = (targetBinMs) => {
+    const bins = Math.max(1, Math.ceil(Math.max(1, span) / targetBinMs));
+    const labels = [];
+    const high = new Array(bins).fill(0);
+    const caution = new Array(bins).fill(0);
+    const info = new Array(bins).fill(0);
+    const binEvents = new Array(bins).fill(0).map(() => []);
 
-  for (const ev of events) {
-    if (!ev?.ts) continue;
-    const idx = Math.min(bins - 1, Math.max(0, Math.floor((ev.ts - start) / binMs)));
-    binEvents[idx].push(ev);
-    const bucket = riskBucketForEvent(ev);
-    if (bucket === "high") high[idx] += 1;
-    else if (bucket === "caution") caution[idx] += 1;
-    else info[idx] += 1;
+    for (const ev of events) {
+      if (!ev?.ts) continue;
+      const idx = Math.min(bins - 1, Math.max(0, Math.floor((ev.ts - start) / targetBinMs)));
+      binEvents[idx].push(ev);
+      const bucket = riskBucketForEvent(ev);
+      if (bucket === "high") high[idx] += 1;
+      else if (bucket === "caution") caution[idx] += 1;
+      else info[idx] += 1;
+    }
+
+    for (let i = 0; i < bins; i++) {
+      labels.push(new Date(start + i * targetBinMs).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }));
+    }
+
+    return { bins, labels, high, caution, info, binEvents };
+  };
+
+  let effectiveBinMs = baseBinMs;
+  let timeline = buildBuckets(effectiveBinMs);
+  const initialSignal = assessTimelineSignal({
+    totalBins: timeline.bins,
+    binEvents: timeline.binEvents,
+    totalEvents: Array.isArray(events) ? events.length : 0,
+  });
+  let densityBinApplied = false;
+
+  if (allowDensityBinOverride && initialSignal.isLowSignal) {
+    const suggestedBinMs = chooseDensityAwareBinMs({
+      spanMs: span,
+      currentBinMs: baseBinMs,
+      totalEvents: Array.isArray(events) ? events.length : 0,
+    });
+    if (suggestedBinMs > effectiveBinMs) {
+      effectiveBinMs = suggestedBinMs;
+      timeline = buildBuckets(effectiveBinMs);
+      densityBinApplied = true;
+    }
   }
 
-  for (let i = 0; i < bins; i++) {
-    labels.push(new Date(start + i * binMs).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }));
-  }
+  const finalSignal = assessTimelineSignal({
+    totalBins: timeline.bins,
+    binEvents: timeline.binEvents,
+    totalEvents: Array.isArray(events) ? events.length : 0,
+  });
+  const focusedWindow = densityAware
+    && finalSignal.isLowSignal
+    && !!finalSignal.reasons?.includes("mostly-empty-timespan");
+  const defaultZoomWindow = focusedWindow
+    ? buildLowSignalDataZoomWindow({ totalBins: timeline.bins, binEvents: timeline.binEvents })
+    : null;
+  const stateGuidanceMessage = buildTimelineGuidanceMessage({
+    signal: finalSignal,
+    densityApplied: densityBinApplied,
+    originalBinMs: baseBinMs,
+    appliedBinMs: effectiveBinMs,
+    focusedWindow: !!defaultZoomWindow,
+    viewMode,
+  });
 
   return {
     option: {
       tooltip: { trigger: "axis", formatter: buildTrendTooltipFormatter },
       legend: { top: 0, textStyle: TREND_LEGEND_TEXT_STYLE, itemWidth: 22, itemHeight: 12, itemGap: 14 },
       grid: { left: 40, right: 18, top: 18, bottom: 75 },
-      ...buildTrendAxes(labels),
-      dataZoom: [{ type: "inside" }, { type: "slider", height: 18, bottom: 18 }],
+      ...buildTrendAxes(timeline.labels),
+      dataZoom: [
+        {
+          type: "inside",
+          ...(defaultZoomWindow ? { start: defaultZoomWindow.start, end: defaultZoomWindow.end } : {}),
+        },
+        {
+          type: "slider",
+          height: 18,
+          bottom: 18,
+          ...(defaultZoomWindow ? { start: defaultZoomWindow.start, end: defaultZoomWindow.end } : {}),
+        },
+      ],
       series: [
-        buildSeries("High", high, { defaultType: "bar", stackKey: "risk" }),
-        buildSeries("Caution", caution, { defaultType: "bar", stackKey: "risk" }),
-        buildSeries("Info", info, { defaultType: "bar", stackKey: "risk" }),
+        buildSeries("High", timeline.high, { defaultType: "bar", stackKey: "risk" }),
+        buildSeries("Caution", timeline.caution, { defaultType: "bar", stackKey: "risk" }),
+        buildSeries("Info", timeline.info, { defaultType: "bar", stackKey: "risk" }),
       ],
     },
-    meta: { start, binMs, binEvents, labels },
+    meta: {
+      start,
+      binMs: effectiveBinMs,
+      binEvents: timeline.binEvents,
+      labels: timeline.labels,
+      densityDefaults: {
+        applied: densityBinApplied || !!defaultZoomWindow,
+        originalBinMs: baseBinMs,
+        appliedBinMs: effectiveBinMs,
+        simplifiedSeries: false,
+        focusedWindow: !!defaultZoomWindow,
+      },
+      stateGuidanceMessage,
+    },
   };
 }
 
@@ -1796,48 +1960,122 @@ function getPrivacyTrendBucket(ev) {
   return "unknown";
 }
 
-function buildBaselineDetectedBlockedTrendOption(events) {
+function buildBaselineDetectedBlockedTrendOption(events, options = {}) {
+  const viewMode = String(options?.viewMode || "easy");
+  const densityAware = options?.densityAware === true;
   const { from, to } = getRangeWindow();
   const start = from ?? (events[0]?.ts ?? Date.now());
   const end = to ?? (events[events.length - 1]?.ts ?? Date.now());
-  const binMs = getTimelineBinMs();
-  const bins = Math.max(1, Math.ceil(Math.max(1, end - start) / binMs));
+  const span = Math.max(1, end - start);
+  const baseBinMs = getTimelineBinMs();
+  const allowDensityBinOverride = densityAware && String(vizOptions.binSize || "5m") === "5m";
 
-  const labels = [];
-  const baseline = new Array(bins).fill(0);
-  const detected = new Array(bins).fill(0);
-  const blocked = new Array(bins).fill(0);
-  const binEvents = new Array(bins).fill(0).map(() => []);
+  const buildBuckets = (targetBinMs) => {
+    const bins = Math.max(1, Math.ceil(Math.max(1, span) / targetBinMs));
+    const labels = [];
+    const baseline = new Array(bins).fill(0);
+    const detected = new Array(bins).fill(0);
+    const blocked = new Array(bins).fill(0);
+    const binEvents = new Array(bins).fill(0).map(() => []);
 
-  for (const ev of events) {
-    if (!ev?.ts) continue;
-    const idx = Math.min(bins - 1, Math.max(0, Math.floor((ev.ts - start) / binMs)));
-    binEvents[idx].push(ev);
+    for (const ev of events) {
+      if (!ev?.ts) continue;
+      const idx = Math.min(bins - 1, Math.max(0, Math.floor((ev.ts - start) / targetBinMs)));
+      binEvents[idx].push(ev);
 
-    const bucket = getPrivacyTrendBucket(ev);
-    if (bucket === "baseline") baseline[idx] += 1;
-    else if (bucket === "blocked") blocked[idx] += 1;
-    else if (bucket === "detected") detected[idx] += 1;
+      const bucket = getPrivacyTrendBucket(ev);
+      if (bucket === "baseline") baseline[idx] += 1;
+      else if (bucket === "blocked") blocked[idx] += 1;
+      else if (bucket === "detected") detected[idx] += 1;
+    }
+
+    for (let i = 0; i < bins; i++) {
+      labels.push(new Date(start + i * targetBinMs).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }));
+    }
+
+    return { bins, labels, baseline, detected, blocked, binEvents };
+  };
+
+  let effectiveBinMs = baseBinMs;
+  let timeline = buildBuckets(effectiveBinMs);
+  const initialSignal = assessTimelineSignal({
+    totalBins: timeline.bins,
+    binEvents: timeline.binEvents,
+    totalEvents: Array.isArray(events) ? events.length : 0,
+  });
+  let densityBinApplied = false;
+
+  if (allowDensityBinOverride && initialSignal.isLowSignal) {
+    const suggestedBinMs = chooseDensityAwareBinMs({
+      spanMs: span,
+      currentBinMs: baseBinMs,
+      totalEvents: Array.isArray(events) ? events.length : 0,
+    });
+    if (suggestedBinMs > effectiveBinMs) {
+      effectiveBinMs = suggestedBinMs;
+      timeline = buildBuckets(effectiveBinMs);
+      densityBinApplied = true;
+    }
   }
 
-  for (let i = 0; i < bins; i++) {
-    labels.push(new Date(start + i * binMs).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }));
-  }
+  const finalSignal = assessTimelineSignal({
+    totalBins: timeline.bins,
+    binEvents: timeline.binEvents,
+    totalEvents: Array.isArray(events) ? events.length : 0,
+  });
+  const focusedWindow = densityAware
+    && finalSignal.isLowSignal
+    && !!finalSignal.reasons?.includes("mostly-empty-timespan");
+  const defaultZoomWindow = focusedWindow
+    ? buildLowSignalDataZoomWindow({ totalBins: timeline.bins, binEvents: timeline.binEvents })
+    : null;
+  const stateGuidanceMessage = buildTimelineGuidanceMessage({
+    signal: finalSignal,
+    densityApplied: densityBinApplied,
+    originalBinMs: baseBinMs,
+    appliedBinMs: effectiveBinMs,
+    focusedWindow: !!defaultZoomWindow,
+    viewMode,
+  });
 
   return {
     option: {
       tooltip: { trigger: "axis", formatter: buildTrendTooltipFormatter },
       legend: { top: 0, textStyle: TREND_LEGEND_TEXT_STYLE, itemWidth: 22, itemHeight: 12, itemGap: 14 },
       grid: { left: 40, right: 18, top: 36, bottom: 75 },
-      ...buildTrendAxes(labels),
-      dataZoom: [{ type: "inside" }, { type: "slider", height: 18, bottom: 18 }],
+      ...buildTrendAxes(timeline.labels),
+      dataZoom: [
+        {
+          type: "inside",
+          ...(defaultZoomWindow ? { start: defaultZoomWindow.start, end: defaultZoomWindow.end } : {}),
+        },
+        {
+          type: "slider",
+          height: 18,
+          bottom: 18,
+          ...(defaultZoomWindow ? { start: defaultZoomWindow.start, end: defaultZoomWindow.end } : {}),
+        },
+      ],
       series: [
-        buildSeries("Baseline (no signal)", baseline, { defaultType: "bar", stackKey: "privacy-story" }),
-        buildSeries("Detected", detected, { defaultType: "bar", stackKey: "privacy-story" }),
-        buildSeries("Blocked", blocked, { defaultType: "bar", stackKey: "privacy-story" }),
+        buildSeries("Baseline (no signal)", timeline.baseline, { defaultType: "bar", stackKey: "privacy-story" }),
+        buildSeries("Detected", timeline.detected, { defaultType: "bar", stackKey: "privacy-story" }),
+        buildSeries("Blocked", timeline.blocked, { defaultType: "bar", stackKey: "privacy-story" }),
       ],
     },
-    meta: { start, binMs, binEvents, labels },
+    meta: {
+      start,
+      binMs: effectiveBinMs,
+      binEvents: timeline.binEvents,
+      labels: timeline.labels,
+      densityDefaults: {
+        applied: densityBinApplied || !!defaultZoomWindow,
+        originalBinMs: baseBinMs,
+        appliedBinMs: effectiveBinMs,
+        simplifiedSeries: false,
+        focusedWindow: !!defaultZoomWindow,
+      },
+      stateGuidanceMessage,
+    },
   };
 }
 

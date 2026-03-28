@@ -103,7 +103,7 @@ export function createChartOrchestrationController(deps) {
 
   function buildViewOption(requestedViewId, events, context = {}) {
     const viewMode = String(context?.viewMode || "easy");
-    const densityAware = viewMode === "easy";
+    const densityAware = true;
     let effectiveViewId = requestedViewId;
     let lensPivotActive = false;
     let built;
@@ -134,6 +134,7 @@ export function createChartOrchestrationController(deps) {
       });
     } else if (requestedViewId === "vendorShareOverTime") {
       built = buildVendorShareOverTimeOption(events, {
+        densityAware,
         viewMode,
         selectedVendor: getSelectedVendor(),
       });
@@ -142,8 +143,8 @@ export function createChartOrchestrationController(deps) {
     } else if (requestedViewId === "vendorTopDomainsEndpoints") {
       built = buildVendorTopDomainsEndpointsOption(events, getSelectedVendor(), getVizMetric(), { densityAware, viewMode });
     }
-    else if (requestedViewId === "riskTrend") built = buildRiskTrendOption(events);
-    else if (requestedViewId === "baselineDetectedBlockedTrend") built = buildBaselineDetectedBlockedTrendOption(events);
+    else if (requestedViewId === "riskTrend") built = buildRiskTrendOption(events, { densityAware, viewMode });
+    else if (requestedViewId === "baselineDetectedBlockedTrend") built = buildBaselineDetectedBlockedTrendOption(events, { densityAware, viewMode });
     else if (requestedViewId === "timeline") built = buildTimelineOption(events, { densityAware, viewMode });
     else if (requestedViewId === "topSeen") built = buildTopDomainsOption(events, getVizMetric());
     else if (requestedViewId === "kinds") built = buildKindsOption(events);
