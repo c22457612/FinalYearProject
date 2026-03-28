@@ -2547,6 +2547,12 @@ async function loadExposureInventory() {
 }
 
 function bootVendorVault() {
+  window.VPT = window.VPT || {};
+  window.VPT.shell?.initShell?.({
+    currentSection: "vendor-vault",
+    persistKey: "vpt.control-centre.shell.collapsed",
+  });
+
   const params = new URLSearchParams(window.location.search);
   const site = String(params.get("site") || "").trim();
   const vendor = String(params.get("vendor") || "").trim();

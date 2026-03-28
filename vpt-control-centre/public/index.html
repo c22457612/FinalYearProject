@@ -8,24 +8,96 @@
   <link rel="stylesheet" href="css/dashboard.css" />
 </head>
 <body>
-  <header>
-    <div class="header-left">
+  <header class="app-header shell-header">
+    <div class="header-left shell-header-main">
+      <button
+        id="shellToggle"
+        class="shell-toggle"
+        type="button"
+        data-shell-toggle
+        aria-controls="appShellSidebar"
+        aria-expanded="true"
+        aria-label="Collapse navigation"
+      >
+        <span class="shell-toggle-line"></span>
+        <span class="shell-toggle-line"></span>
+        <span class="shell-toggle-line"></span>
+      </button>
+      <div class="shell-header-copy">
+        <div class="shell-header-context">Control Centre</div>
       <h1>Visual Privacy Toolkit – Control Centre</h1>
-      <span class="header-subtitle">Prototype live view (local only, no cloud)</span>
+      <h1 id="shellHeaderTitle">Home</h1>
+      </div>
     </div>
     <div id="connectionStatus" class="badge">Connecting…</div>
   </header>
 
-  <div class="app-shell">
+  <div class="app-shell" data-shell-root>
+    <button class="shell-backdrop" type="button" data-shell-backdrop tabindex="-1" aria-hidden="true"></button>
+
     <!-- Sidebar navigation -->
-    <aside class="sidebar">
-      <div class="sidebar-title">Sections</div>
-      <button class="nav-item active" data-view="home">Home</button>
-      <button class="nav-item" data-view="sites">Sites</button> 
-      <button class="nav-item" data-view="cookies">Cookies</button>
-      <button class="nav-item" data-view="trusted-sites">Trusted Sites</button>
-      <a class="nav-item" data-page="vendor-vault" href="/vendor-vault.html?scope=all">Vendor Vault</a>
-      <button class="nav-item" data-view="api-signals">Browser API</button>
+    <aside id="appShellSidebar" class="sidebar" data-shell-sidebar aria-label="Control Centre sections">
+      <div class="sidebar-main">
+        <div class="sidebar-top">
+          <div class="sidebar-brand">
+            <div class="sidebar-brand-mark">VPT</div>
+            <div class="sidebar-brand-copy">
+              <div class="sidebar-brand-title">Visual Privacy Toolkit</div>
+            </div>
+          </div>
+          <div class="sidebar-section-label">Navigation</div>
+        </div>
+
+        <nav class="sidebar-nav" aria-label="Primary">
+          <button class="nav-item active" type="button" data-view="home" title="Home" aria-label="Home">
+            <span class="nav-item-icon">HM</span>
+            <span class="nav-item-copy">
+              <span class="nav-item-label">Home</span>
+            </span>
+          </button>
+          <button class="nav-item" type="button" data-view="sites" title="Sites" aria-label="Sites">
+            <span class="nav-item-icon">ST</span>
+            <span class="nav-item-copy">
+              <span class="nav-item-label">Sites</span>
+            </span>
+          </button>
+          <button class="nav-item" type="button" data-view="cookies" title="Cookies" aria-label="Cookies">
+            <span class="nav-item-icon">CK</span>
+            <span class="nav-item-copy">
+              <span class="nav-item-label">Cookies</span>
+            </span>
+          </button>
+          <button class="nav-item" type="button" data-view="trusted-sites" title="Trusted Sites" aria-label="Trusted Sites">
+            <span class="nav-item-icon">TS</span>
+            <span class="nav-item-copy">
+              <span class="nav-item-label">Trusted Sites</span>
+            </span>
+          </button>
+          <a class="nav-item" data-page="vendor-vault" href="/vendor-vault.html?scope=all" title="Vendor Vault" aria-label="Vendor Vault">
+            <span class="nav-item-icon">VV</span>
+            <span class="nav-item-copy">
+              <span class="nav-item-label">Vendor Vault</span>
+            </span>
+          </a>
+          <button class="nav-item" type="button" data-view="api-signals" title="Browser API" aria-label="Browser API">
+            <span class="nav-item-icon">AP</span>
+            <span class="nav-item-copy">
+              <span class="nav-item-label">Browser API</span>
+            </span>
+          </button>
+        </nav>
+      </div>
+
+      <div class="sidebar-utilities">
+        <div class="sidebar-utility-card">
+          <div class="sidebar-utility-label">Backend</div>
+          <div id="connectionStatusShell" class="sidebar-utility-status" data-status="pending">Connecting...</div>
+        </div>
+        <div class="sidebar-utility-card sidebar-utility-card-note">
+          <div class="sidebar-utility-label">Mode</div>
+          <div class="sidebar-utility-value">Local control centre</div>
+        </div>
+      </div>
     </aside>
 
     <!-- Main content area (views switch inside here) -->
@@ -702,6 +774,7 @@
   <script type="module" src="app/features/cookies.js"></script>
   <script type="module" src="app/features/trusted-sites.js"></script>
   <script type="module" src="app/features/api-signals.js"></script>
+  <script src="app/shell.js" defer></script>
   <script src="app/state.js" defer></script>
   <script src="dashboard.js" defer></script>
 

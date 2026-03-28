@@ -57,6 +57,36 @@ function appendPoliciesToCache(created) {
   recomputePolicyState(latestPoliciesCache);
 }
 
+function setConnectionStatus(state, text) {
+  const statusElements = [
+    document.getElementById("connectionStatus"),
+    document.getElementById("connectionStatusShell"),
+  ].filter(Boolean);
+
+  statusElements.forEach((statusEl) => {
+    statusEl.textContent = text;
+    statusEl.dataset.status = state;
+    statusEl.title = text;
+    statusEl.setAttribute("aria-label", text);
+    statusEl.style.color = state === "online" ? "#10b981" : state === "offline" ? "#f97316" : "";
+  });
+}
+
+function setShellHeaderTitle(view) {
+  const titleEl = document.getElementById("shellHeaderTitle");
+  if (!titleEl) return;
+
+  const labels = {
+    home: "Home",
+    sites: "Sites",
+    cookies: "Cookies",
+    "trusted-sites": "Trusted Sites",
+    "api-signals": "Browser API",
+  };
+
+  titleEl.textContent = labels[view] || "Home";
+}
+
 function renderSummary(events, sites) {
   const total = events.length;
   const siteCount = sites.length;
@@ -113,7 +143,7 @@ function renderSites(sites) {
 // ---- Poll loop ----
 
 async function fetchAndRender() {
-  const statusEl = document.getElementById("connectionStatus");
+  const statusEl = document.getElementById("connectionStatusShell") || document.getElementById("connectionStatus");
   try {
     const { events, sites, policies } = await api.fetchDashboardData();
 
@@ -131,8 +161,7 @@ async function fetchAndRender() {
     // update trustedSites set from policies
     recomputePolicyState(policies);
 
-    statusEl.textContent = "Connected to local backend";
-    statusEl.style.color = "#10b981";
+    setConnectionStatus("online", "Connected to local backend");
 
     renderSummary(events, sites);
     latestEvents = events; // keep for cookies back button etc.
@@ -147,6 +176,7 @@ async function fetchAndRender() {
     window.VPT?.features?.apiSignals?.renderApiSignalsView?.(events, { policies: latestPoliciesCache });
   } catch (err) {
     console.error("fetch error", err);
+    if (statusEl) statusEl.dataset.status = "offline";
     statusEl.textContent = "Backend unavailable – is server.js running?";
     statusEl.style.color = "#f97316";
   }
@@ -227,6 +257,20 @@ window.addEventListener("load", () => {
   const apiSignalsView = document.getElementById("view-api-signals");
   const navItems = document.querySelectorAll(".nav-item[data-view]");
 
+  function resolveInitialView() {
+    const params = new URLSearchParams(window.location.search);
+    const requested = String(params.get("view") || "").trim().toLowerCase();
+    if (requested === "sites" || requested === "cookies" || requested === "trusted-sites" || requested === "api-signals" || requested === "home") {
+      return requested;
+    }
+    return "home";
+  }
+
+  const shellController = window.VPT?.shell?.initShell?.({
+    currentSection: resolveInitialView(),
+    persistKey: "vpt.control-centre.shell.collapsed",
+  });
+
   function switchView(view) {
     if (!homeView || !cookiesView || !sitesView || !trustedSitesView || !apiSignalsView) return;
 
@@ -257,6 +301,8 @@ window.addEventListener("load", () => {
     navItems.forEach(btn => {
       btn.classList.toggle("active", btn.dataset.view === view);
     });
+    setShellHeaderTitle(view);
+    shellController?.setActiveSection?.(view);
   }
 
 
@@ -266,15 +312,6 @@ window.addEventListener("load", () => {
       switchView(view);
     });
   });
-
-  function resolveInitialView() {
-    const params = new URLSearchParams(window.location.search);
-    const requested = String(params.get("view") || "").trim().toLowerCase();
-    if (requested === "sites" || requested === "cookies" || requested === "trusted-sites" || requested === "api-signals" || requested === "home") {
-      return requested;
-    }
-    return "home";
-  }
 
   switchView(resolveInitialView());
 
