@@ -327,6 +327,52 @@ test("insight case sheet presentation keeps metrics compact and folds API into b
   assert.equal(presentation.metrics.length, 5);
 });
 
+test("insight case sheet presentation assigns restrained semantic tones to metrics", () => {
+  const { buildInsightCaseSheetPresentation } = loadRuntimeModuleExportWithoutImports(
+    "public/app/site/runtime/insight-sheet.js",
+    ["buildInsightCaseSheetPresentation"],
+    {
+      isApiSignalEvent: () => false,
+    }
+  );
+
+  const presentation = buildInsightCaseSheetPresentation({
+    insight: {
+      summary: "Selected activity includes 6 events.",
+      severity: "info",
+      confidence: 0.62,
+      evidenceSummary: {
+        total: 6,
+        blocked: 2,
+        observed: 4,
+        blockedApi: 0,
+        observedApi: 0,
+        other: 0,
+      },
+      actions: [],
+    },
+    evidence: [
+      { kind: "network.blocked", data: { isThirdParty: true, resourceType: "script" } },
+      { kind: "network.observed", data: { isThirdParty: true, resourceType: "script" } },
+      { kind: "network.observed", data: { isThirdParty: true, resourceType: "image" } },
+      { kind: "network.observed", data: { isThirdParty: false, resourceType: "image" } },
+      { kind: "network.observed", data: { isThirdParty: false, resourceType: "image" } },
+      { kind: "network.observed", data: { isThirdParty: false, resourceType: "image" } },
+    ],
+  });
+
+  assert.deepEqual(
+    Array.from(presentation.metrics, (metric) => `${metric.label}:${metric.tone}`),
+    [
+      "Events:neutral",
+      "Blocked:blocked",
+      "Observed:observed",
+      "Third-party:neutral",
+      "Signals:signals",
+    ]
+  );
+});
+
 test("insight case sheet presentation reports footer visibility when actions are present", () => {
   const { buildInsightCaseSheetPresentation } = loadRuntimeModuleExportWithoutImports(
     "public/app/site/runtime/insight-sheet.js",
@@ -374,8 +420,10 @@ test("insight case sheet presentation reports footer visibility when actions are
 
   assert.equal(withActions.footer.hasActions, true);
   assert.equal(withActions.footer.hasTechnical, true);
+  assert.equal(withActions.footer.primaryActionIndex, 0);
   assert.equal(withoutActions.footer.hasActions, false);
   assert.equal(withoutActions.footer.hasTechnical, false);
+  assert.equal(withoutActions.footer.primaryActionIndex, -1);
 });
 
 test("site lens pivots vendor overview for selected vendor when comparison cardinality is low", () => {

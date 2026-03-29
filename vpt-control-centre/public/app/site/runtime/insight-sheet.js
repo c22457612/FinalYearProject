@@ -115,21 +115,21 @@ export function buildInsightCaseSheetPresentation({ insight = null, evidence = [
 
   const metrics = [];
   if (total > 0) {
-    metrics.push({ label: "Events", value: String(total), note: "captured in scope" });
-    metrics.push({ label: "Blocked", value: String(blocked), note: "including API" });
-    metrics.push({ label: "Observed", value: String(observed), note: "including API" });
+    metrics.push({ label: "Events", value: String(total), note: "captured in scope", tone: "neutral" });
+    metrics.push({ label: "Blocked", value: String(blocked), note: "including API", tone: "blocked" });
+    metrics.push({ label: "Observed", value: String(observed), note: "including API", tone: "observed" });
   }
   if (signalCounts.thirdParty > 0) {
-    metrics.push({ label: "Third-party", value: String(signalCounts.thirdParty), note: "requests" });
+    metrics.push({ label: "Third-party", value: String(signalCounts.thirdParty), note: "requests", tone: "neutral" });
   }
   if (signalCounts.scripts > 0) {
-    metrics.push({ label: "Signals", value: String(signalCounts.scripts), note: "script requests" });
+    metrics.push({ label: "Signals", value: String(signalCounts.scripts), note: "script requests", tone: "signals" });
   } else if (signalCounts.xhrFetch > 0) {
-    metrics.push({ label: "Signals", value: String(signalCounts.xhrFetch), note: "XHR/fetch requests" });
+    metrics.push({ label: "Signals", value: String(signalCounts.xhrFetch), note: "XHR/fetch requests", tone: "signals" });
   } else if (signalCounts.api > 0) {
-    metrics.push({ label: "Signals", value: String(signalCounts.api), note: "Browser API events" });
+    metrics.push({ label: "Signals", value: String(signalCounts.api), note: "Browser API events", tone: "signals" });
   } else if (other > 0) {
-    metrics.push({ label: "Other", value: String(other), note: "other events" });
+    metrics.push({ label: "Other", value: String(other), note: "other events", tone: "neutral" });
   }
 
   return {
@@ -148,6 +148,7 @@ export function buildInsightCaseSheetPresentation({ insight = null, evidence = [
     footer: {
       hasActions: Array.isArray(insight?.actions) && insight.actions.length > 0,
       hasTechnical: Array.isArray(evidence) && evidence.length > 0,
+      primaryActionIndex: Array.isArray(insight?.actions) && insight.actions.length > 0 ? 0 : -1,
     },
   };
 }
@@ -464,16 +465,20 @@ export function createInsightSheet(deps) {
   function renderActionButtons(box, actions, {
     maxItems = Infinity,
     includeManageLink = false,
+    primaryActionIndex = -1,
   } = {}) {
     if (!box) return;
     box.innerHTML = "";
 
     const list = Array.isArray(actions) ? actions.slice(0, maxItems) : [];
     const hasTrustAction = list.some((action) => action?.type === "trust_site");
-    for (const action of list) {
+    list.forEach((action, index) => {
       const btn = document.createElement("button");
       btn.type = "button";
       btn.className = "insight-action-btn";
+      if (index === primaryActionIndex) {
+        btn.classList.add("insight-action-btn-primary");
+      }
       btn.textContent = action.label || action.type;
       btn.addEventListener("click", async () => {
         const run = async () => {
@@ -498,7 +503,7 @@ export function createInsightSheet(deps) {
         await run();
       });
       box.appendChild(btn);
-    }
+    });
 
     if (includeManageLink && hasTrustAction) {
       const manageLink = document.createElement("a");
@@ -511,8 +516,11 @@ export function createInsightSheet(deps) {
     box.classList.toggle("hidden", box.childElementCount === 0);
   }
 
-  function renderInsightActions(actions) {
-    renderActionButtons(qs("insightActions"), actions, { includeManageLink: true });
+  function renderInsightActions(actions, footerModel = null) {
+    renderActionButtons(qs("insightActions"), actions, {
+      includeManageLink: true,
+      primaryActionIndex: Number(footerModel?.primaryActionIndex ?? -1),
+    });
     syncInsightFooterVisibility();
   }
 
@@ -616,6 +624,7 @@ export function createInsightSheet(deps) {
     for (const metric of list) {
       const item = document.createElement("div");
       item.className = "insight-case-metric";
+      item.dataset.tone = String(metric.tone || "neutral");
 
       const label = document.createElement("div");
       label.className = "insight-case-metric-label";
@@ -847,7 +856,7 @@ export function createInsightSheet(deps) {
       closeDrawer();
     }
 
-    renderInsightActions(insight.actions || []);
+    renderInsightActions(insight.actions || [], caseSheet.footer);
     if (forceScroll || allowAutoScroll) {
       ensureInsightVisible({ force: !!forceScroll, source: scrollSource });
     }
