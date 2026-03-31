@@ -228,141 +228,138 @@
 
       <!-- COOKIES VIEW -->
       <main id="view-cookies" class="cookies-view hidden">
-        <section id="cookiesHighlightsSection" class="cookies-hero-row">
-          <div class="panel cookies-wall-card cookies-hero-card">
-            <div class="panel-header cookies-hero-header">
-              <div>
-                <div class="panel-title">Highlights</div>
-                <div id="cookiesSummarySubtitle" class="panel-subtitle">
-                  Curated sites from current cookie activity.
+        <section id="cookiesSelectorView" class="cookies-selector-view">
+          <div class="panel cookies-selector-shell">
+            <div class="panel-header cookies-selector-header">
+              <div class="cookies-selector-copy">
+                <div class="panel-title">Cookies</div>
+                <div id="cookiesSelectorSubtitle" class="panel-subtitle">
+                  Browse sites with detected cookies, then open one site for a focused review.
                 </div>
               </div>
-              <div class="cookies-highlights-actions">
-                <button id="cookiesOpenAllSitesBtn" class="btn-secondary" type="button">
-                  View all sites (0)
+              <div class="cookies-selector-header-rule" aria-hidden="true"></div>
+              <div class="cookies-selector-controls" role="search">
+                <input
+                  id="cookiesSelectorSearch"
+                  class="cookies-selector-search"
+                  type="search"
+                  placeholder="Search sites"
+                  aria-label="Search cookie sites"
+                />
+                <select id="cookiesSelectorSort" class="cookies-selector-sort" aria-label="Sort cookie sites">
+                  <option value="review-priority">Review priority</option>
+                  <option value="most-recent">Most recent</option>
+                  <option value="a-z">A-Z</option>
+                  <option value="most-cookies">Most cookies</option>
+                </select>
+              </div>
+            </div>
+            <div id="cookiesSelectorMeta" class="cookies-selector-meta" aria-live="polite">0 sites</div>
+            <div id="cookiesSelectorEmpty" class="cookies-empty-state hidden">
+              <div class="cookies-empty-title">No cookie snapshots yet</div>
+              <p class="cookies-empty-copy">Browse a site with cookie capture enabled, then return here to review it.</p>
+            </div>
+            <div id="cookiesSelectorGrid" class="cookies-selector-grid"></div>
+            <section class="cookies-legend-card cookies-legend-card-selector" aria-labelledby="cookiesLegendSelectorTitle">
+              <div class="cookies-legend-header">
+                <div>
+                  <div id="cookiesLegendSelectorTitle" class="cookies-legend-title">Legend</div>
+                  <div class="cookies-legend-subtitle">A quick reference for the role and review labels used throughout this Cookies page.</div>
+                </div>
+              </div>
+              <div id="cookiesSelectorLegend" class="cookies-legend-body"></div>
+            </section>
+          </div>
+        </section>
+
+        <section id="cookiesInspectorView" class="cookies-inspector-view hidden">
+          <div class="panel cookies-inspector-shell">
+            <div class="cookies-inspector-topbar">
+              <div class="cookies-inspector-topbar-side cookies-inspector-topbar-side-left">
+                <button id="cookiesInspectorBackBtn" class="btn-secondary" type="button">
+                  &larr; Back to sites
                 </button>
               </div>
-            </div>
-            <div id="cookiesHighlightsTrack" class="cookies-highlights-track"></div>
-            <div id="cookiesHighlightsEmpty" class="cookies-hero-empty hidden">
-              <strong>No highlights available yet.</strong>
-              <span>Browse a site with capture enabled, then revisit this page.</span>
-            </div>
-          </div>
-        </section>
-
-        <section id="cookiesFocusBanner" class="panel cookies-focus-banner hidden">
-          <div class="cookies-focus-banner-text">
-            Focused on: <strong id="cookiesFocusedSiteLabel">-</strong>
-          </div>
-          <button id="cookiesClearFocusBtn" class="btn-secondary" type="button">Clear focus</button>
-        </section>
-
-        <section id="cookiesFocusedInsightsRow" class="cookies-focused-row hidden">
-          <div class="panel cookies-focused-card">
-            <div class="panel-header">
-              <div>
-                <div class="panel-title">Focused insights</div>
-                <div class="panel-subtitle">Party split and key stats for the focused site.</div>
+              <div class="cookies-inspector-title-block">
+                <div class="cookies-inspector-title-kicker">Cookie inspector</div>
+                <div class="panel-title" id="cookiesInspectorSiteTitle">Site cookies</div>
+                <div id="cookiesInspectorSiteMeta" class="panel-subtitle">Select a site to inspect its cookies.</div>
               </div>
-            </div>
-            <div id="cookieFocusedInsightsVisual" class="cookies-focused-visual"></div>
-          </div>
-        </section>
-
-        <section id="cookiesGlobalKpiRow" class="cookies-kpi-row">
-          <div class="panel cookies-kpi-card">
-            <div class="cookies-kpi-label">Total cookie signals/events</div>
-            <div id="cookieKpiTotalSignals" class="cookies-kpi-value">0</div>
-          </div>
-          <div class="panel cookies-kpi-card">
-            <div class="cookies-kpi-label">Distinct sites</div>
-            <div id="cookieKpiDistinctSites" class="cookies-kpi-value">0</div>
-          </div>
-          <div class="panel cookies-kpi-card">
-            <div class="cookies-kpi-label">Distinct domains/vendors</div>
-            <div id="cookieKpiDistinctActors" class="cookies-kpi-value">0</div>
-          </div>
-          <div class="panel cookies-kpi-card">
-            <div class="cookies-kpi-label">Last seen</div>
-            <div id="cookieKpiLastSeen" class="cookies-kpi-value cookies-kpi-time">-</div>
-          </div>
-        </section>
-
-        <section id="cookiesGlobalBreakdownRow" class="cookies-breakdown-row">
-          <div class="panel cookies-breakdown-card">
-            <div class="panel-header">
-              <div>
-                <div class="panel-title">First-party vs third-party split</div>
-                <div class="panel-subtitle">Donut split for the current scope</div>
-              </div>
-            </div>
-            <div id="cookiePartySplitVisual" class="cookies-party-visual"></div>
-            <p id="cookieSignalsDisclaimer" class="cookies-signals-disclaimer"></p>
-          </div>
-
-          <div class="panel cookies-breakdown-card cookies-narrative-card">
-            <div class="panel-header">
-              <div>
-                <div class="panel-title">Why this matters</div>
-                <div class="panel-subtitle">Guidance from observed cookie signals</div>
-              </div>
-            </div>
-            <div id="cookieWhyMattersPanel" class="cookies-narrative-panel"></div>
-          </div>
-        </section>
-
-        <section id="cookiesEmptyState" class="panel cookies-empty-state hidden">
-          <div class="panel-body">
-            <p class="muted">No cookie activity observed for this scope.</p>
-          </div>
-        </section>
-
-        <section id="cookiesDetailView" class="cookies-detail-view hidden">
-          <div class="panel cookies-detail-panel">
-            <div class="panel-header cookies-detail-header">
-              <button id="cookiesBackBtn" class="btn-secondary">
-                <- Back to highlights
-              </button>
-              <div>
-                <div class="panel-title" id="cookies-detail-title">Cookie details</div>
-                <div id="cookies-details-subtitle" class="panel-subtitle">
-                  Click a site card to see its cookies.
+              <div class="cookies-inspector-topbar-side cookies-inspector-topbar-side-right">
+                <div class="cookies-inspector-actions">
+                  <button id="cookiesClearSiteBtn" class="btn-secondary" type="button">
+                    Clear site cookies
+                  </button>
+                  <a id="cookiesVisualizerLink" class="btn-secondary cookies-visualizer-link" href="/site.html">
+                    Open in visualizer
+                  </a>
                 </div>
               </div>
             </div>
-            <div id="cookies-details-body" class="panel-body cookies-details-body">
-              <div class="details-placeholder">No site selected.</div>
-            </div>
-          </div>
-        </section>
 
-        <section
-          id="cookiesAllSitesModal"
-          class="cookies-modal hidden"
-          role="dialog"
-          aria-modal="true"
-          aria-labelledby="cookiesAllSitesTitle"
-        >
-          <div id="cookiesAllSitesBackdrop" class="cookies-modal-backdrop"></div>
-          <div id="cookiesAllSitesPanel" class="cookies-modal-panel" tabindex="-1">
-            <div class="cookies-modal-scroll">
-              <div class="cookies-modal-sticky">
-                <div class="cookies-modal-title-row">
-                  <div id="cookiesAllSitesTitle" class="panel-title">All sites</div>
-                  <button id="cookiesAllSitesCloseBtn" class="cookies-modal-close" type="button" aria-label="Close all sites modal">X</button>
+            <div id="cookiesClearStatus" class="cookies-clear-status" aria-live="polite"></div>
+
+            <div class="cookies-inspector-main">
+              <div class="cookies-inspector-side">
+                <section class="cookies-summary-card">
+                  <div class="cookies-summary-kicker">What stands out</div>
+                  <div id="cookiesInspectorSummary" class="cookies-summary-copy">
+                    Select a site to review the latest cookie snapshot.
+                  </div>
+                  <div id="cookiesInspectorHonesty" class="cookies-summary-honesty"></div>
+                </section>
+
+                <section class="cookies-support-card">
+                  <div class="cookies-support-title">Current mix</div>
+                  <div id="cookiesInspectorVisual" class="cookies-support-visual"></div>
+                </section>
+              </div>
+
+              <div class="cookies-review-column">
+                <div class="cookies-review-header">
+                  <div>
+                    <div class="panel-title">Review cookies</div>
+                    <div id="cookiesReviewMeta" class="panel-subtitle">Latest snapshot for the selected site.</div>
+                  </div>
                 </div>
-                <div class="cookies-modal-controls">
-                  <input id="cookiesAllSitesSearch" class="cookies-modal-search" type="search" placeholder="Search site..." />
-                  <select id="cookiesAllSitesSort" class="cookies-modal-sort">
-                    <option value="activity">Most activity</option>
-                    <option value="third-party">Most third-party</option>
-                    <option value="recent">Most recent</option>
+
+                <div class="cookies-review-controls">
+                  <input
+                    id="cookiesCookieSearch"
+                    class="cookies-cookie-search"
+                    type="search"
+                    placeholder="Search cookie name or domain"
+                    aria-label="Search cookies"
+                  />
+                  <select id="cookiesCookiePartyFilter" class="cookies-cookie-filter" aria-label="Filter cookies by party">
+                    <option value="all">All parties</option>
+                    <option value="first-party">First-party</option>
+                    <option value="third-party">Third-party</option>
+                    <option value="unclear">Unclear</option>
+                  </select>
+                  <select id="cookiesCookieSort" class="cookies-cookie-sort" aria-label="Sort cookies">
+                    <option value="review-priority">Review priority</option>
+                    <option value="third-party first">Third-party first</option>
+                    <option value="longest-lived">Longest-lived</option>
+                    <option value="a-z">A-Z</option>
                   </select>
                 </div>
+
+                <div id="cookiesInspectorListNote" class="cookies-list-note"></div>
+                <div id="cookiesCookieListEmpty" class="cookies-empty-hint hidden"></div>
+                <div id="cookiesCookieList" class="cookies-cookie-list"></div>
               </div>
-              <div id="cookiesAllSitesGrid" class="cookies-modal-grid"></div>
             </div>
+
+            <section class="cookies-legend-card cookies-legend-card-inspector" aria-labelledby="cookiesLegendInspectorTitle">
+              <div class="cookies-legend-header">
+                <div>
+                  <div id="cookiesLegendInspectorTitle" class="cookies-legend-title">Legend</div>
+                  <div class="cookies-legend-subtitle">A quick reference for the role and review labels used throughout this Cookies page.</div>
+                </div>
+              </div>
+              <div id="cookiesInspectorLegend" class="cookies-legend-body"></div>
+            </section>
           </div>
         </section>
       </main>

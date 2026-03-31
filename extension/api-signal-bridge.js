@@ -5,6 +5,9 @@
   const gateShared = globalThis.__VPTApiGateShared || null;
   const SOURCE_TAG = "vpt_api_signal";
   const GATE_SOURCE_TAG = gateShared?.CONFIG_SOURCE_TAG || "vpt_api_gate";
+  const COOKIE_CONTROL_SOURCE_TAG = "vpt_cookie_control";
+  const COOKIE_CONTROL_REQUEST = "cookie_bridge_request";
+  const COOKIE_CONTROL_RESPONSE = "cookie_bridge_response";
   const CANVAS_OPS = new Set(["getImageData", "toDataURL", "toBlob", "readPixels"]);
   const CLIPBOARD_METHODS = new Set(["read", "readText", "write", "writeText"]);
   const CLIPBOARD_ACCESS_TYPES = new Set(gateShared?.CLIPBOARD_ACCESS_TYPES || ["read", "write"]);
@@ -358,9 +361,56 @@
     return { surface, action };
   }
 
+  function sanitizeCookieControlRequest(data) {
+    if (!data || typeof data !== "object") return null;
+    if (data.source !== COOKIE_CONTROL_SOURCE_TAG || data.type !== COOKIE_CONTROL_REQUEST) return null;
+
+    const action = asSafeString(data.action, 32);
+    if (action !== "clearForSite" && action !== "sendSnapshot") return null;
+
+    const requestId = asSafeString(data.requestId, 120);
+    if (!requestId) return null;
+
+    const payload = data.payload && typeof data.payload === "object" ? data.payload : {};
+    const url = asSafeString(payload.url, 2048);
+    if (!url || !/^https?:/i.test(url)) return null;
+
+    return { action, requestId, url };
+  }
+
+  function postCookieControlResponse(requestId, status, payload = {}) {
+    if (!requestId) return;
+    window.postMessage(
+      {
+        source: COOKIE_CONTROL_SOURCE_TAG,
+        type: COOKIE_CONTROL_RESPONSE,
+        requestId,
+        status,
+        ...payload,
+      },
+      "*"
+    );
+  }
+
   window.addEventListener("message", (event) => {
     const data = normalizeMessageData(event.data);
     if (!data) return;
+    if (isLoopbackControlCentrePage()) {
+      const cookieRequest = sanitizeCookieControlRequest(data);
+      if (cookieRequest) {
+        chrome.runtime.sendMessage({
+          type: cookieRequest.action === "clearForSite" ? "cookies:clearForSite" : "cookies:sendSnapshot",
+          url: cookieRequest.url,
+        }).then((result) => {
+          postCookieControlResponse(cookieRequest.requestId, "ok", { result });
+        }).catch((error) => {
+          postCookieControlResponse(cookieRequest.requestId, "error", {
+            error: error?.message || String(error || "cookie_bridge_failed"),
+          });
+        });
+        return;
+      }
+    }
     if (
       data.source === GATE_SOURCE_TAG
       && (data.type === "api_gate_state_request" || data.type === "canvas_gate_state_request")
