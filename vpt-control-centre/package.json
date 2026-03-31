@@ -5,7 +5,10 @@
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
     "start": "node server.js",
-    "backfill:enrichment": "node scripts/backfill-enrichment.js"
+    "backfill:enrichment": "node scripts/backfill-enrichment.js",
+    "seed:cookies-polish-2": "node scripts/seed-cookies-polish-2.js",
+    "seed:cookies-demo": "node scripts/seed-cookies-demo.js",
+    "clean:dummy-seed": "node scripts/clean-dummy-seed.js"
   },
   "keywords": [],
   "author": "",
