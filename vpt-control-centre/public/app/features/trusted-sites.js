@@ -1,4 +1,5 @@
 const viewState = {
+  subview: "trusted",
   latestSites: [],
   latestPolicies: { latestTs: 0, items: [] },
   pendingSite: "",
@@ -9,6 +10,7 @@ const viewState = {
 
 let formBound = false;
 let listBound = false;
+let subviewBound = false;
 let getLatestSitesCb = null;
 let getLatestPoliciesCb = null;
 let onPoliciesMutatedCb = null;
@@ -126,6 +128,16 @@ function sortedTrustedSites(entries, siteIndex) {
     });
 }
 
+function sortedObservedSites(siteIndex) {
+  return Array.from(siteIndex.values())
+    .slice()
+    .sort((a, b) => {
+      const diff = (Number(b?.lastSeen) || 0) - (Number(a?.lastSeen) || 0);
+      if (diff !== 0) return diff;
+      return normalizeOptional(a?.site).localeCompare(normalizeOptional(b?.site));
+    });
+}
+
 function mergePoliciesIntoViewState(created) {
   const createdItems = Array.isArray(created) ? created.filter(Boolean) : [created].filter(Boolean);
   if (!createdItems.length) return;
@@ -153,21 +165,36 @@ function latestTrustPolicyTs(policiesResponse) {
   }, 0);
 }
 
-function summaryCardText(entries, siteIndex) {
-  const now = Date.now();
-  const recentWindowMs = 24 * 60 * 60 * 1000;
-  const activeCount = entries.filter((entry) => {
-    const summary = siteIndex.get(entry.site);
-    return summary?.lastSeen && (now - Number(summary.lastSeen)) <= recentWindowMs;
-  }).length;
-  const lastChangedTs = latestTrustPolicyTs(viewState.latestPolicies);
+function syncSubview() {
+  const trustedPanel = document.getElementById("trustedSitesTrustedPanel");
+  const observedPanel = document.getElementById("trustedSitesObservedPanel");
+  const buttons = document.querySelectorAll("[data-trusted-sites-subview]");
 
-  const countEl = document.getElementById("trustedSitesStatCount");
-  const recentEl = document.getElementById("trustedSitesStatRecent");
+  trustedPanel?.classList.toggle("hidden", viewState.subview !== "trusted");
+  observedPanel?.classList.toggle("hidden", viewState.subview !== "observed");
+
+  buttons.forEach((button) => {
+    const active = button.dataset.trustedSitesSubview === viewState.subview;
+    button.classList.toggle("active", active);
+    button.setAttribute("aria-selected", active ? "true" : "false");
+  });
+}
+
+function renderStatusStrip(snapshot, siteIndex) {
+  const trustedCountEl = document.getElementById("trustedSitesStatCount");
+  const observedCountEl = document.getElementById("trustedSitesStatObserved");
   const lastChangedEl = document.getElementById("trustedSitesStatLastChanged");
-  if (countEl) countEl.textContent = String(entries.length);
-  if (recentEl) recentEl.textContent = String(activeCount);
+  const trustedTabCountEl = document.getElementById("trustedSitesSubviewTrustedCount");
+  const observedTabCountEl = document.getElementById("trustedSitesSubviewObservedCount");
+  const lastChangedTs = latestTrustPolicyTs(viewState.latestPolicies);
+  const trustedCount = snapshot.length;
+  const observedCount = siteIndex.size;
+
+  if (trustedCountEl) trustedCountEl.textContent = String(trustedCount);
+  if (observedCountEl) observedCountEl.textContent = String(observedCount);
   if (lastChangedEl) lastChangedEl.textContent = lastChangedTs ? formatFriendlyTime(lastChangedTs) : "-";
+  if (trustedTabCountEl) trustedTabCountEl.textContent = String(trustedCount);
+  if (observedTabCountEl) observedTabCountEl.textContent = String(observedCount);
 }
 
 function renderForm(snapshot) {
@@ -188,49 +215,55 @@ function renderForm(snapshot) {
     status.textContent = viewState.formMessage;
   }
 
-  if (input && !viewState.formPending && !currentValue && !snapshot.length && !viewState.formMessage) {
+  if (input && !viewState.formPending && !currentValue && !snapshot.length && !viewState.formMessage && status) {
     status.textContent = "";
   }
 }
 
-function trustedSiteRowHtml(entry, summary) {
-  const isPending = viewState.pendingSite === entry.site;
-  const contextHtml = summary
-    ? `
-      <div class="trusted-sites-context-grid">
-        <div class="trusted-sites-context-item">
-          <span class="trusted-sites-context-label">Last seen</span>
-          <span class="trusted-sites-context-value">${escape(formatFriendlyTime(Number(summary.lastSeen) || 0))}</span>
-        </div>
-        <div class="trusted-sites-context-item">
-          <span class="trusted-sites-context-label">Events</span>
-          <span class="trusted-sites-context-value">${escape(String(Number(summary.totalEvents) || 0))}</span>
-        </div>
-        <div class="trusted-sites-context-item">
-          <span class="trusted-sites-context-label">Blocked</span>
-          <span class="trusted-sites-context-value">${escape(String(Number(summary.blockedCount) || 0))}</span>
-        </div>
-      </div>
-    `
-    : `
+function buildContextHtml(summary) {
+  if (!summary) {
+    return `
       <div class="trusted-sites-context-empty">
-        VPT has not recently observed privacy-related activity for this domain, but trust is still active in the current policy history.
+        VPT has not recently observed privacy-related activity for this domain, but trust remains active in the current policy history.
       </div>
     `;
+  }
 
   return `
-    <article class="trusted-sites-row">
+    <div class="trusted-sites-context-grid">
+      <div class="trusted-sites-context-item">
+        <span class="trusted-sites-context-label">Last seen</span>
+        <span class="trusted-sites-context-value">${escape(formatFriendlyTime(Number(summary.lastSeen) || 0))}</span>
+      </div>
+      <div class="trusted-sites-context-item">
+        <span class="trusted-sites-context-label">Events</span>
+        <span class="trusted-sites-context-value">${escape(String(Number(summary.totalEvents) || 0))}</span>
+      </div>
+      <div class="trusted-sites-context-item">
+        <span class="trusted-sites-context-label">Blocked</span>
+        <span class="trusted-sites-context-value">${escape(String(Number(summary.blockedCount) || 0))}</span>
+      </div>
+    </div>
+  `;
+}
+
+function trustedSiteRowHtml(entry, summary) {
+  const isPending = viewState.pendingSite === entry.site;
+
+  return `
+    <article class="trusted-sites-row trusted-sites-row-trusted">
       <div class="trusted-sites-row-main">
         <div class="trusted-sites-row-head">
           <div class="trusted-sites-domain">${escape(entry.site)}</div>
-          <span class="trusted-sites-badge">Trusted</span>
+          <div class="trusted-sites-badge-group">
+            <span class="trusted-sites-badge trusted-sites-badge-trusted">Trusted now</span>
+          </div>
         </div>
-        ${contextHtml}
+        ${buildContextHtml(summary)}
       </div>
       <div class="trusted-sites-row-actions">
-        <a class="btn-secondary trusted-sites-view-link" href="/site.html?site=${encodeURIComponent(entry.site)}">View site</a>
         <button
-          class="btn-secondary trusted-sites-untrust-btn"
+          class="btn-secondary trusted-sites-untrust-btn trusted-sites-row-action-primary"
           type="button"
           data-trusted-site-action="untrust"
           data-site="${escape(entry.site)}"
@@ -238,6 +271,7 @@ function trustedSiteRowHtml(entry, summary) {
         >
           ${isPending ? "Removing..." : "Untrust site"}
         </button>
+        <a class="btn-secondary trusted-sites-view-link" href="/site.html?site=${encodeURIComponent(entry.site)}">View site</a>
       </div>
     </article>
   `;
@@ -248,13 +282,22 @@ function recentSiteRowHtml(site, isTrusted) {
   const totalEvents = Number(site?.totalEvents) || 0;
   const blockedCount = Number(site?.blockedCount) || 0;
   const normalizedSite = normalizeOptional(site?.site).toLowerCase();
+  const pendingUntrust = viewState.pendingSite === normalizedSite;
+  const badges = isTrusted
+    ? `
+      <span class="trusted-sites-badge trusted-sites-badge-trusted">Trusted now</span>
+      <span class="trusted-sites-badge trusted-sites-badge-observed">Observed recently</span>
+    `
+    : '<span class="trusted-sites-badge trusted-sites-badge-observed">Observed recently</span>';
 
   return `
-    <article class="trusted-sites-row">
+    <article class="trusted-sites-row trusted-sites-row-observed">
       <div class="trusted-sites-row-main">
         <div class="trusted-sites-row-head">
           <div class="trusted-sites-domain">${escape(site?.site || "unknown")}</div>
-          ${isTrusted ? '<span class="trusted-sites-badge">Trusted</span>' : '<span class="trusted-sites-badge trusted-sites-badge-muted">Observed by VPT</span>'}
+          <div class="trusted-sites-badge-group">
+            ${badges}
+          </div>
         </div>
         <div class="trusted-sites-context-grid">
           <div class="trusted-sites-context-item">
@@ -272,19 +315,18 @@ function recentSiteRowHtml(site, isTrusted) {
         </div>
       </div>
       <div class="trusted-sites-row-actions">
-        <a class="btn-secondary trusted-sites-view-link" href="/site.html?site=${encodeURIComponent(site?.site || "")}">View site</a>
         ${isTrusted
           ? `<button
-              class="btn-secondary trusted-sites-untrust-btn"
+              class="btn-secondary trusted-sites-untrust-btn trusted-sites-row-action-primary"
               type="button"
               data-trusted-site-action="untrust"
               data-site="${escape(normalizedSite)}"
-              ${viewState.pendingSite === normalizedSite ? "disabled" : ""}
+              ${pendingUntrust ? "disabled" : ""}
             >
-              ${viewState.pendingSite === normalizedSite ? "Removing..." : "Untrust site"}
+              ${pendingUntrust ? "Removing..." : "Untrust site"}
             </button>`
           : `<button
-              class="btn-secondary trusted-sites-trust-btn"
+              class="btn-secondary trusted-sites-trust-btn trusted-sites-row-action-primary"
               type="button"
               data-trusted-site-action="trust"
               data-site="${escape(normalizedSite)}"
@@ -293,6 +335,7 @@ function recentSiteRowHtml(site, isTrusted) {
               ${viewState.formPending ? "Trusting..." : "Trust site"}
             </button>`
         }
+        <a class="btn-secondary trusted-sites-view-link" href="/site.html?site=${encodeURIComponent(site?.site || "")}">View site</a>
       </div>
     </article>
   `;
@@ -305,12 +348,12 @@ function renderTrustedSitesList(snapshot, siteIndex) {
   if (!meta || !empty || !list) return;
 
   if (!snapshot.length) {
-    meta.textContent = "No trusted sites are currently configured yet.";
+    meta.textContent = "No trusted domains are configured yet.";
     empty.classList.remove("hidden");
     empty.innerHTML = `
       <div class="trusted-sites-empty-title">No trusted sites yet</div>
       <p class="trusted-sites-empty-copy">
-        Trust a domain manually to make it appear here. You do not need to wait for VPT to observe an event for that site first.
+        Trust a domain manually to add it here. You do not need to wait for VPT to observe a privacy event first.
       </p>
     `;
     list.innerHTML = "";
@@ -318,7 +361,7 @@ function renderTrustedSitesList(snapshot, siteIndex) {
   }
 
   const withContext = snapshot.filter((entry) => siteIndex.has(entry.site)).length;
-  meta.textContent = `${snapshot.length} trusted site${snapshot.length === 1 ? "" : "s"} configured. ${withContext} currently also have observed VPT context available.`;
+  meta.textContent = `${snapshot.length} trusted site${snapshot.length === 1 ? "" : "s"} configured. ${withContext} ${withContext === 1 ? "also has" : "also have"} recent observed context available.`;
   empty.classList.add("hidden");
   list.innerHTML = sortedTrustedSites(snapshot, siteIndex)
     .map((entry) => trustedSiteRowHtml(entry, siteIndex.get(entry.site)))
@@ -331,10 +374,7 @@ function renderRecentSites(snapshot, siteIndex) {
   const list = document.getElementById("trustedSitesRecentList");
   if (!meta || !empty || !list) return;
 
-  const rows = Array.from(siteIndex.values())
-    .slice()
-    .sort((a, b) => (Number(b?.lastSeen) || 0) - (Number(a?.lastSeen) || 0))
-    .slice(0, 6);
+  const rows = sortedObservedSites(siteIndex);
 
   if (!rows.length) {
     meta.textContent = "No recently observed privacy-event sites are available yet.";
@@ -342,16 +382,17 @@ function renderRecentSites(snapshot, siteIndex) {
     empty.innerHTML = `
       <div class="trusted-sites-empty-title">No observed privacy-event sites yet</div>
       <p class="trusted-sites-empty-copy">
-        This area is populated only from captured VPT events, not raw browser history. A site you visited may not appear here if VPT did not record privacy-related activity for it. You can still trust any domain manually above.
+        This list is populated only from captured VPT privacy events, not raw browser history. You can still trust any domain manually above.
       </p>
     `;
     list.innerHTML = "";
     return;
   }
 
-  meta.textContent = `Showing ${rows.length} site${rows.length === 1 ? "" : "s"} with recently observed privacy-related VPT activity. This is a convenience list, not a full visit history.`;
-  empty.classList.add("hidden");
   const trustedSet = new Set(snapshot.map((entry) => entry.site));
+  const trustedOverlap = rows.filter((site) => trustedSet.has(normalizeOptional(site?.site).toLowerCase())).length;
+  meta.textContent = `Showing ${rows.length} recently observed site${rows.length === 1 ? "" : "s"} from captured VPT privacy events only. ${trustedOverlap} ${trustedOverlap === 1 ? "is" : "are"} already trusted.`;
+  empty.classList.add("hidden");
   list.innerHTML = rows
     .map((site) => recentSiteRowHtml(site, trustedSet.has(normalizeOptional(site?.site).toLowerCase())))
     .join("");
@@ -370,10 +411,11 @@ function renderTrustedSitesView(sites, options = {}) {
 
   const snapshot = normalizePolicyState(viewState.latestPolicies);
   const siteIndex = buildSiteSummaryIndex(viewState.latestSites);
-  summaryCardText(snapshot, siteIndex);
+  renderStatusStrip(snapshot, siteIndex);
   renderForm(snapshot);
   renderTrustedSitesList(snapshot, siteIndex);
   renderRecentSites(snapshot, siteIndex);
+  syncSubview();
 }
 
 async function submitTrustSite(site) {
@@ -506,6 +548,7 @@ function bindList() {
     if (!site || viewState.pendingSite) return;
     void handleUntrust(site);
   });
+
   document.getElementById("trustedSitesRecentList")?.addEventListener("click", (event) => {
     const target = event.target;
     if (!(target instanceof Element)) return;
@@ -525,7 +568,19 @@ function bindList() {
       void handleUntrust(site);
     }
   });
+
   listBound = true;
+}
+
+function bindSubviewControls() {
+  if (subviewBound) return;
+  document.querySelectorAll("[data-trusted-sites-subview]").forEach((button) => {
+    button.addEventListener("click", () => {
+      viewState.subview = button.dataset.trustedSitesSubview === "observed" ? "observed" : "trusted";
+      syncSubview();
+    });
+  });
+  subviewBound = true;
 }
 
 function initTrustedSitesFeature({ getLatestSites, getLatestPolicies, onPoliciesMutated } = {}) {
@@ -534,6 +589,7 @@ function initTrustedSitesFeature({ getLatestSites, getLatestPolicies, onPolicies
   onPoliciesMutatedCb = typeof onPoliciesMutated === "function" ? onPoliciesMutated : null;
   bindForm();
   bindList();
+  bindSubviewControls();
 }
 
 export { initTrustedSitesFeature, renderTrustedSitesView };
