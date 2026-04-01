@@ -167,7 +167,7 @@ function renderReviewChip(review) {
 }
 
 function buildDonutGradient(segments, total) {
-  if (!total) return "conic-gradient(rgba(148, 163, 184, 0.4) 0 100%)";
+  if (!total) return "conic-gradient(var(--divider) 0 100%)";
   let cursor = 0;
   const stops = [];
   for (const segment of segments) {
@@ -180,7 +180,7 @@ function buildDonutGradient(segments, total) {
     cursor = end;
   }
   if (cursor < 100) {
-    stops.push(`rgba(148, 163, 184, 0.18) ${cursor.toFixed(2)}% 100%`);
+    stops.push(`var(--divider) ${cursor.toFixed(2)}% 100%`);
   }
   return `conic-gradient(${stops.join(", ")})`;
 }
@@ -188,10 +188,19 @@ function buildDonutGradient(segments, total) {
 function renderDonutBlock({ total, centerLabel, segments }) {
   const totalValue = Math.max(0, Number(total) || 0);
   const gradient = buildDonutGradient(segments, totalValue);
+  const legendHead = `
+    <div class="cookies-donut-legend-head">
+      <span>Group</span>
+      <span>Count</span>
+      <span>Share</span>
+    </div>
+  `;
   const legend = segments.map((segment) => `
     <div class="cookies-donut-legend-row">
-      <span class="cookies-donut-dot" style="background:${segment.color};"></span>
-      <span class="cookies-donut-name">${escapeHtml(segment.label)}</span>
+      <span class="cookies-donut-label">
+        <span class="cookies-donut-dot" style="background:${segment.color};"></span>
+        <span class="cookies-donut-name">${escapeHtml(segment.label)}</span>
+      </span>
       <strong class="cookies-donut-count">${formatCount(segment.value)}</strong>
       <span class="cookies-donut-pct">${percent(segment.value, totalValue)}%</span>
     </div>
@@ -199,15 +208,24 @@ function renderDonutBlock({ total, centerLabel, segments }) {
 
   return `
     <div class="cookies-donut-block">
-      <div class="cookies-donut-wrap">
-        <div class="cookies-donut-ring" style="background:${gradient};">
-          <div class="cookies-donut-center">
-            <strong>${formatCount(totalValue)}</strong>
-            <span>${escapeHtml(centerLabel)}</span>
+      <div class="cookies-donut-summary">
+        <div class="cookies-donut-summary-label">Latest snapshot evidence</div>
+        <div class="cookies-donut-summary-copy">Party split from the latest observed cookie inventory for this site.</div>
+      </div>
+      <div class="cookies-donut-layout">
+        <div class="cookies-donut-wrap">
+          <div class="cookies-donut-ring" style="background:${gradient};">
+            <div class="cookies-donut-center">
+              <strong>${formatCount(totalValue)}</strong>
+              <span>${escapeHtml(centerLabel)}</span>
+            </div>
           </div>
         </div>
+        <div class="cookies-donut-legend">
+          ${legendHead}
+          ${legend}
+        </div>
       </div>
-      <div class="cookies-donut-legend">${legend}</div>
     </div>
   `;
 }
@@ -498,7 +516,10 @@ function sortInspectorCookies(cookies, sortMode) {
 
 function buildInspectorSummary(record) {
   if (!record || record.cookieCount <= 0) {
-    return "No cookies were found in the latest snapshot for this site. That can mean the site is currently clean or that its cookie state changed since the last time it was captured.";
+    return {
+      lead: "No cookies were found in the latest snapshot for this site.",
+      evidence: "Capture a fresh snapshot if the site's cookie state may have changed since the last review.",
+    };
   }
 
   const total = record.cookieCount;
@@ -508,29 +529,47 @@ function buildInspectorSummary(record) {
   const analyticsCount = record.cookies.filter((cookie) => cookie.role === "Analytics or measurement").length;
   const advertisingCount = record.cookies.filter((cookie) => cookie.role === "Advertising or attribution").length;
   const serviceCount = record.cookies.filter((cookie) => cookie.role === "Cross-site service / embedded content").length;
-  const parts = [];
+  const sessionCount = record.cookies.filter((cookie) => cookie.role === "Session or sign-in state").length;
+  const securityCount = record.cookies.filter((cookie) => cookie.role === "Security or CSRF protection").length;
 
-  parts.push(`${record.site} currently shows ${total} cookie${total === 1 ? "" : "s"} in the latest snapshot.`);
-
+  let lead = `${record.site} currently shows ${total} cookie${total === 1 ? "" : "s"} in the latest snapshot.`;
   if (third > 0) {
-    parts.push(`${third} appear to come from outside services, which is usually the first group worth reviewing.`);
-  } else if (first > 0) {
-    parts.push("Most of them look tied to the site itself rather than outside services.");
-  }
-
-  if (advertisingCount > 0) {
-    parts.push(`${advertisingCount} look closest to advertising or attribution cookies, so clearing them is less likely to affect core site use.`);
-  } else if (analyticsCount > 0) {
-    parts.push(`${analyticsCount} look closest to analytics or measurement identifiers, which often reset tracking continuity when cleared.`);
-  } else if (serviceCount > 0) {
-    parts.push(`${serviceCount} seem related to embedded or cross-site services such as chat, video, or payments.`);
+    lead = `${formatCount(third)} of ${formatCount(total)} cookies look third-party. Review external services and embedded vendors first.`;
   } else if (unknown > 0) {
-    parts.push(`${unknown} still have unclear role or party signals, so the explanations below should be treated as hints rather than certainty.`);
-  } else {
-    parts.push("The list below is ordered to surface the cookies most worth checking first.");
+    lead = `${formatCount(unknown)} of ${formatCount(total)} cookies still have unclear ownership or role signals. Review names, domains, and flags before clearing.`;
+  } else if (first > 0) {
+    lead = `Most of this site's current cookies look first-party. Start with lower-risk labels before clearing core site state.`;
   }
 
-  return parts.slice(0, 3).join(" ");
+  let evidenceNote = "Rows are ordered to surface the cookies most worth checking first.";
+  if (advertisingCount > 0) {
+    evidenceNote = `${formatCount(advertisingCount)} look closest to advertising or attribution, which is usually lower-risk to clear than sign-in or protection state.`;
+  } else if (analyticsCount > 0) {
+    evidenceNote = `${formatCount(analyticsCount)} look closest to analytics or measurement identifiers, so clearing them may reset cross-visit continuity.`;
+  } else if (serviceCount > 0) {
+    evidenceNote = `${formatCount(serviceCount)} appear tied to cross-site services such as chat, video, payments, or support tools.`;
+  } else if (securityCount > 0) {
+    evidenceNote = `${formatCount(securityCount)} look closest to security or CSRF protection, so treat clearing with higher caution.`;
+  } else if (sessionCount > 0) {
+    evidenceNote = `${formatCount(sessionCount)} appear tied to session or sign-in state, which can end the current visit if cleared.`;
+  } else if (unknown > 0) {
+    evidenceNote = `${formatCount(unknown)} remain unclear, so the row explanations below should be treated as heuristics rather than proof.`;
+  }
+
+  return {
+    lead,
+    evidence: `Snapshot mix: 1P ${formatCount(first)} | 3P ${formatCount(third)} | U ${formatCount(unknown)}. ${evidenceNote}`,
+  };
+}
+
+function renderInspectorSummaryHtml(summary) {
+  return `
+    <div class="cookies-summary-line">${escapeHtml(summary?.lead || "")}</div>
+    <div class="cookies-summary-evidence">
+      <span class="cookies-summary-evidence-label">Current evidence</span>
+      <span class="cookies-summary-evidence-copy">${escapeHtml(summary?.evidence || "")}</span>
+    </div>
+  `;
 }
 
 function buildSelectorMeta(filteredCount, totalCount) {
@@ -583,47 +622,63 @@ function renderCookieRowHtml(cookie, expanded) {
         class="cookies-cookie-toggle"
         aria-expanded="${expanded ? "true" : "false"}"
       >
-        <span class="cookies-cookie-main">
-          <span class="cookies-cookie-name">${escapeHtml(cookie.name)}</span>
-          <span class="cookies-cookie-domain">${escapeHtml(cookie.domain || "No domain recorded")}</span>
+        <span class="cookies-cookie-strip">
+          <span class="cookies-cookie-header">
+            <span class="cookies-cookie-main">
+              <span class="cookies-cookie-name">${escapeHtml(cookie.name)}</span>
+              <span class="cookies-cookie-domain">${escapeHtml(cookie.domain || "No domain recorded")}</span>
+            </span>
+            <span class="cookies-cookie-classifications">
+              <span class="cookies-cookie-role">${renderRoleChip(cookie.role)}</span>
+              <span class="cookies-cookie-party cookies-cookie-party-${escapeHtml(cookie.party)}">${escapeHtml(partyLabel(cookie.party))}</span>
+              <span class="cookies-cookie-review">${renderReviewChip(cookie.usefulness)}</span>
+              <span class="cookies-cookie-confidence cookies-cookie-confidence-${escapeHtml(cookie.confidence.toLowerCase())}">${escapeHtml(cookie.confidence)}</span>
+            </span>
+          </span>
+          <span class="cookies-cookie-effect-block">
+            <span class="cookies-cookie-effect-label">Likely effect of clearing</span>
+            <span class="cookies-cookie-effect">${escapeHtml(cookie.effect)}</span>
+          </span>
         </span>
-        <span class="cookies-cookie-party cookies-cookie-party-${escapeHtml(cookie.party)}">${escapeHtml(partyLabel(cookie.party))}</span>
-        <span class="cookies-cookie-role">${renderRoleChip(cookie.role)}</span>
-        <span class="cookies-cookie-confidence cookies-cookie-confidence-${escapeHtml(cookie.confidence.toLowerCase())}">${escapeHtml(cookie.confidence)}</span>
-        <span class="cookies-cookie-effect">${escapeHtml(cookie.effect)}</span>
       </button>
       ${expanded ? `
         <div class="cookies-cookie-detail">
-          <div class="cookies-cookie-detail-grid">
-            <div class="cookies-cookie-detail-block">
-              <div class="cookies-cookie-detail-label">Likely role</div>
-              <div class="cookies-cookie-detail-value">${renderRoleChip(cookie.role)}</div>
-            </div>
-            <div class="cookies-cookie-detail-block">
-              <div class="cookies-cookie-detail-label">Review label</div>
-              <div class="cookies-cookie-detail-value">${renderReviewChip(cookie.usefulness)}</div>
-            </div>
-            <div class="cookies-cookie-detail-block">
-              <div class="cookies-cookie-detail-label">Expires</div>
-              <div class="cookies-cookie-detail-value">${escapeHtml(cookie.expiryText)}</div>
-            </div>
-            <div class="cookies-cookie-detail-block">
-              <div class="cookies-cookie-detail-label">Path</div>
-              <div class="cookies-cookie-detail-value">${escapeHtml(cookie.path)}</div>
+          <div class="cookies-cookie-detail-section">
+            <div class="cookies-cookie-detail-section-title">Inspection detail</div>
+            <div class="cookies-cookie-detail-grid">
+              <div class="cookies-cookie-detail-block">
+                <div class="cookies-cookie-detail-label">Likely role</div>
+                <div class="cookies-cookie-detail-value">${renderRoleChip(cookie.role)}</div>
+              </div>
+              <div class="cookies-cookie-detail-block">
+                <div class="cookies-cookie-detail-label">Review label</div>
+                <div class="cookies-cookie-detail-value">${renderReviewChip(cookie.usefulness)}</div>
+              </div>
+              <div class="cookies-cookie-detail-block">
+                <div class="cookies-cookie-detail-label">Expires</div>
+                <div class="cookies-cookie-detail-value">${escapeHtml(cookie.expiryText)}</div>
+              </div>
+              <div class="cookies-cookie-detail-block">
+                <div class="cookies-cookie-detail-label">Path</div>
+                <div class="cookies-cookie-detail-value">${escapeHtml(cookie.path)}</div>
+              </div>
             </div>
           </div>
-          <div class="cookies-cookie-detail-stack">
-            <div class="cookies-cookie-detail-copy">
-              <strong>Why this is the current guess:</strong> ${escapeHtml(cookie.reasoning)}
-            </div>
-            <div class="cookies-cookie-detail-copy">
-              <strong>Flags:</strong> ${escapeHtml(flagsText)}
-            </div>
-            <div class="cookies-cookie-detail-copy">
-              <strong>Likely effect of clearing:</strong> ${escapeHtml(cookie.effect)}
-            </div>
-            <div class="cookies-cookie-detail-note">
-              This is still a heuristic. VPT is inferring role from cookie names, domains, and settings rather than confirming how the site or vendor actually uses the cookie.
+          <div class="cookies-cookie-detail-section">
+            <div class="cookies-cookie-detail-section-title">Heuristic notes</div>
+            <div class="cookies-cookie-detail-stack">
+              <div class="cookies-cookie-detail-copy">
+                <strong>Why this is the current guess:</strong> ${escapeHtml(cookie.reasoning)}
+              </div>
+              <div class="cookies-cookie-detail-copy">
+                <strong>Flags:</strong> ${escapeHtml(flagsText)}
+              </div>
+              <div class="cookies-cookie-detail-copy">
+                <strong>Likely effect of clearing:</strong> ${escapeHtml(cookie.effect)}
+              </div>
+              <div class="cookies-cookie-detail-note">
+                This is still a heuristic. VPT is inferring role from cookie names, domains, and settings rather than confirming how the site or vendor actually uses the cookie.
+              </div>
             </div>
           </div>
         </div>
@@ -705,7 +760,7 @@ function renderInspectorView() {
 
   title.textContent = record.site;
   meta.textContent = `${formatCount(record.cookieCount)} cookies in the latest snapshot | ${formatCount(record.thirdCount)} third-party | last seen ${friendlyTime(record.lastSeenTs)}`;
-  summary.textContent = buildInspectorSummary(record);
+  summary.innerHTML = renderInspectorSummaryHtml(buildInspectorSummary(record));
   honesty.textContent = "Roles and confidence are inferred from names, domains, and cookie settings. They are useful hints, not proof of exact purpose.";
   visualizerLink.href = `/site.html?site=${encodeURIComponent(record.site)}`;
   legend.innerHTML = renderLegendHtml();
@@ -718,9 +773,9 @@ function renderInspectorView() {
       total,
       centerLabel: "cookies",
       segments: [
-        { label: "First-party", value: record.firstCount, color: "rgba(34, 197, 94, 0.95)" },
-        { label: "Third-party", value: record.thirdCount, color: "rgba(59, 130, 246, 0.98)" },
-        { label: "Unclear", value: record.unknownCount, color: "rgba(148, 163, 184, 0.95)" },
+        { label: "First-party", value: record.firstCount, color: "var(--success-text)" },
+        { label: "Third-party", value: record.thirdCount, color: "var(--accent)" },
+        { label: "Unclear", value: record.unknownCount, color: "var(--text-faint)" },
       ],
     });
   }
@@ -739,7 +794,7 @@ function renderInspectorView() {
   }
 
   reviewMeta.textContent = buildReviewMeta(ordered.length, record.cookies.length);
-  listNote.textContent = "Cookie rows are ordered for review first. Expand any row for the heuristic basis, flags, and technical detail.";
+  listNote.textContent = "Rows are ordered for inspection first. Expand one for the heuristic basis, technical flags, and clear-effect notes.";
   empty.classList.toggle("hidden", ordered.length > 0);
   empty.textContent = record.cookies.length
     ? "No cookies match the current filter."

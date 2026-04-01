@@ -250,19 +250,25 @@
                 </div>
               </div>
               <div class="cookies-selector-controls-wrap" role="search">
-                <input
-                  id="cookiesSelectorSearch"
-                  class="cookies-selector-search"
-                  type="search"
-                  placeholder="Search sites"
-                  aria-label="Search cookie sites"
-                />
-                <select id="cookiesSelectorSort" class="cookies-selector-sort" aria-label="Sort cookie sites">
-                  <option value="review-priority">Review priority</option>
-                  <option value="most-recent">Most recent</option>
-                  <option value="a-z">A-Z</option>
-                  <option value="most-cookies">Most cookies</option>
-                </select>
+                <div class="cookies-toolbar cookies-toolbar-selector">
+                  <div class="cookies-toolbar-group cookies-toolbar-group-search">
+                    <input
+                      id="cookiesSelectorSearch"
+                      class="cookies-selector-search"
+                      type="search"
+                      placeholder="Search sites"
+                      aria-label="Search cookie sites"
+                    />
+                  </div>
+                  <div class="cookies-toolbar-group cookies-toolbar-group-sort">
+                    <select id="cookiesSelectorSort" class="cookies-selector-sort" aria-label="Sort cookie sites">
+                      <option value="review-priority">Review priority</option>
+                      <option value="most-recent">Most recent</option>
+                      <option value="a-z">A-Z</option>
+                      <option value="most-cookies">Most cookies</option>
+                    </select>
+                  </div>
+                </div>
               </div>
             </div>
             <div id="cookiesSelectorMeta" class="cookies-selector-meta" aria-live="polite">0 sites</div>
@@ -312,17 +318,19 @@
 
             <div class="cookies-inspector-main">
               <div class="cookies-inspector-side">
-                <section class="cookies-summary-card">
-                  <div class="cookies-summary-kicker">What stands out</div>
-                  <div id="cookiesInspectorSummary" class="cookies-summary-copy">
-                    Select a site to review the latest cookie snapshot.
-                  </div>
-                  <div id="cookiesInspectorHonesty" class="cookies-summary-honesty"></div>
-                </section>
-
                 <section class="cookies-support-card">
                   <div class="cookies-support-title">Current mix</div>
                   <div id="cookiesInspectorVisual" class="cookies-support-visual"></div>
+                </section>
+
+                <section class="cookies-summary-card">
+                  <div class="cookies-summary-kicker">What stands out</div>
+                  <div class="cookies-summary-body">
+                    <div id="cookiesInspectorSummary" class="cookies-summary-copy">
+                      Select a site to review the latest cookie snapshot.
+                    </div>
+                    <div id="cookiesInspectorHonesty" class="cookies-summary-honesty"></div>
+                  </div>
                 </section>
               </div>
 
@@ -334,26 +342,32 @@
                   </div>
                 </div>
 
-                <div class="cookies-review-controls">
-                  <input
-                    id="cookiesCookieSearch"
-                    class="cookies-cookie-search"
-                    type="search"
-                    placeholder="Search cookie name or domain"
-                    aria-label="Search cookies"
-                  />
-                  <select id="cookiesCookiePartyFilter" class="cookies-cookie-filter" aria-label="Filter cookies by party">
-                    <option value="all">All parties</option>
-                    <option value="first-party">First-party</option>
-                    <option value="third-party">Third-party</option>
-                    <option value="unclear">Unclear</option>
-                  </select>
-                  <select id="cookiesCookieSort" class="cookies-cookie-sort" aria-label="Sort cookies">
-                    <option value="review-priority">Review priority</option>
-                    <option value="third-party first">Third-party first</option>
-                    <option value="longest-lived">Longest-lived</option>
-                    <option value="a-z">A-Z</option>
-                  </select>
+                <div class="cookies-review-controls" role="search">
+                  <div class="cookies-toolbar cookies-toolbar-review">
+                    <div class="cookies-toolbar-group cookies-toolbar-group-search">
+                      <input
+                        id="cookiesCookieSearch"
+                        class="cookies-cookie-search"
+                        type="search"
+                        placeholder="Search cookie name or domain"
+                        aria-label="Search cookies"
+                      />
+                    </div>
+                    <div class="cookies-toolbar-group cookies-toolbar-group-filters">
+                      <select id="cookiesCookiePartyFilter" class="cookies-cookie-filter" aria-label="Filter cookies by party">
+                        <option value="all">All parties</option>
+                        <option value="first-party">First-party</option>
+                        <option value="third-party">Third-party</option>
+                        <option value="unclear">Unclear</option>
+                      </select>
+                      <select id="cookiesCookieSort" class="cookies-cookie-sort" aria-label="Sort cookies">
+                        <option value="review-priority">Review priority</option>
+                        <option value="third-party first">Third-party first</option>
+                        <option value="longest-lived">Longest-lived</option>
+                        <option value="a-z">A-Z</option>
+                      </select>
+                    </div>
+                  </div>
                 </div>
 
                 <div id="cookiesInspectorListNote" class="cookies-list-note"></div>
