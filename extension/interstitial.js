@@ -32,7 +32,8 @@
   const trustBtn = document.getElementById("trust");
   const trustLabelEl = document.getElementById("trustLabel");
   const commandOptionEls = Array.from(document.querySelectorAll("[data-command-option]"));
-  let selectedCommandIndex = Math.max(0, commandOptionEls.indexOf(enterBtn));
+  let activeCommandIndex = -1;
+  let isPointerInsideCommandArea = false;
 
   function isEnabledCommand(button) {
     return !!button && button.disabled !== true;
@@ -51,16 +52,12 @@
     return -1;
   }
 
-  function applyCommandSelection(nextIndex, options = {}) {
+  function applyActiveCommand(nextIndex, options = {}) {
     const safeIndex = Number.isInteger(nextIndex) ? nextIndex : -1;
-    selectedCommandIndex = safeIndex;
+    activeCommandIndex = safeIndex;
 
     commandOptionEls.forEach((button, index) => {
-      const isSelected = index === safeIndex;
-      button.dataset.selected = isSelected ? "true" : "false";
-      if (!isSelected) {
-        button.dataset.previewed = "false";
-      }
+      button.dataset.active = index === safeIndex ? "true" : "false";
     });
 
     if (options.focus === true && safeIndex >= 0 && commandOptionEls[safeIndex]) {
@@ -68,51 +65,44 @@
     }
   }
 
-  function syncCommandSelection(options = {}) {
-    const currentButton = commandOptionEls[selectedCommandIndex];
-    const nextIndex = isEnabledCommand(currentButton)
-      ? selectedCommandIndex
-      : findFirstEnabledCommandIndex(options.preferredIndex ?? 0);
-    applyCommandSelection(nextIndex, { focus: options.focus === true });
+  function resetCommandActiveState(options = {}) {
+    const nextIndex = findFirstEnabledCommandIndex(options.preferredIndex ?? 0);
+    applyActiveCommand(nextIndex, { focus: options.focus === true });
+  }
+
+  function syncCommandActiveState(options = {}) {
+    const currentButton = commandOptionEls[activeCommandIndex];
+    if (isEnabledCommand(currentButton)) {
+      applyActiveCommand(activeCommandIndex, { focus: options.focus === true });
+      return;
+    }
+
+    resetCommandActiveState(options);
   }
 
   function moveCommandSelection(step, options = {}) {
     if (!commandOptionEls.length) return;
     if (!commandOptionEls.some(isEnabledCommand)) return;
 
-    let nextIndex = selectedCommandIndex;
+    let nextIndex = activeCommandIndex;
     if (nextIndex < 0 || !isEnabledCommand(commandOptionEls[nextIndex])) {
       nextIndex = findFirstEnabledCommandIndex(step > 0 ? 0 : commandOptionEls.length - 1);
-      applyCommandSelection(nextIndex, { focus: options.focus === true });
+      applyActiveCommand(nextIndex, { focus: options.focus === true });
       return;
     }
 
     for (let attempt = 0; attempt < commandOptionEls.length; attempt += 1) {
       nextIndex = (nextIndex + step + commandOptionEls.length) % commandOptionEls.length;
       if (isEnabledCommand(commandOptionEls[nextIndex])) {
-        applyCommandSelection(nextIndex, { focus: options.focus === true });
+        applyActiveCommand(nextIndex, { focus: options.focus === true });
         return;
       }
     }
   }
 
-  function getSelectedCommandButton() {
-    if (selectedCommandIndex < 0) return null;
-    return commandOptionEls[selectedCommandIndex] || null;
-  }
-
-  function previewCommandButton(button) {
-    commandOptionEls.forEach((option) => {
-      option.dataset.previewed = option === button ? "true" : "false";
-    });
-  }
-
-  function clearCommandPreview() {
-    commandOptionEls.forEach((option) => {
-      if (option.dataset.selected !== "true") {
-        option.dataset.previewed = "false";
-      }
-    });
+  function getActiveCommandButton() {
+    if (activeCommandIndex < 0) return null;
+    return commandOptionEls[activeCommandIndex] || null;
   }
 
   function normalizeThemeId(themeId) {
@@ -229,7 +219,7 @@
         sectionState: "unsupported",
       });
       trustBtn.disabled = true;
-      syncCommandSelection();
+      syncCommandActiveState();
       return;
     }
 
@@ -267,7 +257,7 @@
     }
 
     trustBtn.disabled = false;
-    syncCommandSelection();
+    syncCommandActiveState();
   }
 
   function parseReceiptEntry(entry) {
@@ -293,7 +283,7 @@
       receiptEl.replaceChildren();
       receiptEmptyEl.hidden = false;
       receiptStatusChipEl.dataset.tone = "empty";
-      receiptStatusChipEl.textContent = "No receipt";
+      receiptStatusChipEl.textContent = "No evidence";
       return;
     }
 
@@ -305,10 +295,20 @@
         const item = document.createElement("li");
         item.className = "receipt-row";
 
+        const entryBlock = document.createElement("div");
+        entryBlock.className = "receipt-entry";
+
         const domain = document.createElement("span");
         domain.className = "receipt-domain";
         domain.textContent = entry.domain || "(unknown)";
-        item.appendChild(domain);
+        entryBlock.appendChild(domain);
+
+        const note = document.createElement("span");
+        note.className = "receipt-note";
+        note.textContent = entry.blocked ? "Observed during preview and blocked." : "Observed during preview.";
+        entryBlock.appendChild(note);
+
+        item.appendChild(entryBlock);
 
         if (entry.blocked) {
           const flag = document.createElement("span");
@@ -325,7 +325,7 @@
     receiptEl.hidden = false;
     receiptEmptyEl.hidden = true;
     receiptStatusChipEl.dataset.tone = "stored";
-    receiptStatusChipEl.textContent = "Receipt stored";
+    receiptStatusChipEl.textContent = "Preview evidence";
   }
 
   let siteBase = "";
@@ -337,30 +337,36 @@
 
   setSiteLabels(siteBase);
   refreshTheme();
-  syncCommandSelection();
+  resetCommandActiveState();
 
   if (actionsEl) {
     commandOptionEls.forEach((button, index) => {
-      button.dataset.selected = index === selectedCommandIndex ? "true" : "false";
-      button.dataset.previewed = "false";
+      button.dataset.active = "false";
 
       button.addEventListener("mouseenter", () => {
         if (!isEnabledCommand(button)) return;
-        previewCommandButton(button);
+        isPointerInsideCommandArea = true;
+        applyActiveCommand(index);
       });
 
-      button.addEventListener("mouseleave", () => {
-        clearCommandPreview();
+      button.addEventListener("focus", () => {
+        if (!isEnabledCommand(button)) return;
+        applyActiveCommand(index);
       });
 
       button.addEventListener("click", () => {
         if (!isEnabledCommand(button)) return;
-        applyCommandSelection(index);
+        applyActiveCommand(index);
       });
     });
 
+    actionsEl.addEventListener("mouseenter", () => {
+      isPointerInsideCommandArea = true;
+    });
+
     actionsEl.addEventListener("mouseleave", () => {
-      clearCommandPreview();
+      isPointerInsideCommandArea = false;
+      resetCommandActiveState();
     });
   }
 
@@ -387,15 +393,15 @@
       return;
     }
 
-    const selectedButton = getSelectedCommandButton();
-    if (!isEnabledCommand(selectedButton)) return;
+    const activeButton = getActiveCommandButton();
+    if (!isEnabledCommand(activeButton)) return;
 
-    if (activeIsCommand && activeElement === selectedButton) {
+    if (activeIsCommand && activeElement === activeButton) {
       return;
     }
 
     event.preventDefault();
-    selectedButton.click();
+    activeButton.click();
   });
 
   chrome.storage.local.get(["privacyMode", "captureEnabled"]).then(({ privacyMode, captureEnabled }) => {
@@ -416,7 +422,11 @@
       previewLabelEl.textContent = isCaptureEnabled ? "Preview first" : "Preview unavailable";
     }
 
-    syncCommandSelection();
+    if (isPointerInsideCommandArea) {
+      syncCommandActiveState();
+    } else {
+      resetCommandActiveState();
+    }
   });
 
   chrome.runtime.sendMessage({
@@ -450,7 +460,11 @@
       sectionState: "supported",
     });
     trustBtn.disabled = true;
-    syncCommandSelection();
+    if (isPointerInsideCommandArea) {
+      syncCommandActiveState();
+    } else {
+      resetCommandActiveState();
+    }
   });
 
   enterBtn?.addEventListener("click", async () => {
@@ -462,7 +476,7 @@
   trustBtn?.addEventListener("click", async () => {
     if (!siteBase || !dest) return;
     trustBtn.disabled = true;
-    syncCommandSelection();
+    syncCommandActiveState();
     if (trustLabelEl) {
       trustLabelEl.textContent = "Saving trust...";
     }
@@ -494,7 +508,11 @@
         sectionState: "supported",
       });
       trustBtn.disabled = false;
-      syncCommandSelection();
+      if (isPointerInsideCommandArea) {
+        syncCommandActiveState();
+      } else {
+        resetCommandActiveState();
+      }
     }
   });
 
