@@ -4,6 +4,18 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <title>VPT Control Centre - Settings</title>
+  <script>
+    (function () {
+      const fallback = "midnight";
+      const allowed = new Set(["midnight", "amber", "oxblood", "daybreak"]);
+      try {
+        const stored = String(window.localStorage.getItem("vpt.control-centre.theme") || "").trim().toLowerCase();
+        document.documentElement.dataset.theme = allowed.has(stored) ? stored : fallback;
+      } catch (_err) {
+        document.documentElement.dataset.theme = fallback;
+      }
+    })();
+  </script>
   <link rel="stylesheet" href="css/base.css" />
   <link rel="stylesheet" href="css/settings.css" />
 </head>
@@ -106,25 +118,26 @@
             <div class="panel-header">
               <div>
                 <div class="panel-title">Settings</div>
-                <div class="panel-subtitle">Scaffold for upcoming configuration work</div>
+                <div class="panel-subtitle">Curated display system and local product preferences</div>
               </div>
             </div>
             <p class="settings-intro-copy">
-              This page is intentionally minimal. It exists to validate the Control Centre shell composition before real settings are added.
+              Theme selection is intentionally bounded. Choose one of the curated Control Centre themes below to adjust the shared visual system without introducing custom color editing.
             </p>
           </div>
 
-          <section class="settings-grid" aria-label="Settings scaffold sections">
-            <article class="panel settings-card">
+          <section class="settings-grid" aria-label="Settings sections">
+            <article class="panel settings-card settings-card-display">
               <div class="panel-header">
                 <div>
                   <div class="panel-title">Display</div>
                   <div class="panel-subtitle">Shell and presentation preferences</div>
                 </div>
               </div>
-              <p class="settings-card-copy">Display preferences to be added.</p>
+              <p class="settings-card-copy">Choose from the curated Control Centre themes. The active theme applies across the shared shell, cards, states, and charts.</p>
+              <div id="themeSelector" class="settings-theme-grid" role="radiogroup" aria-label="Theme selector"></div>
               <p class="settings-card-note">
-                This area will hold future shell and visual presentation options once those behaviors are defined.
+                Theme choice is stored locally in this browser. No custom theme builder or arbitrary color picker is provided in this pass.
               </p>
             </article>
 

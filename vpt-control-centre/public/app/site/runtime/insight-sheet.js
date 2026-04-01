@@ -375,7 +375,7 @@ export function createInsightSheet(deps) {
     const el = qs("actionToast");
     if (!el) return;
     el.textContent = message || "";
-    el.style.borderColor = isError ? "rgba(251,113,133,0.55)" : "rgba(148,163,184,0.3)";
+    el.classList.toggle("is-error", Boolean(isError));
     el.classList.remove("hidden");
     setTimeout(() => {
       el.classList.add("hidden");

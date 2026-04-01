@@ -77,7 +77,6 @@ function setConnectionStatus(state, text) {
     statusEl.dataset.status = state;
     statusEl.title = text;
     statusEl.setAttribute("aria-label", text);
-    statusEl.style.color = state === "online" ? "#10b981" : state === "offline" ? "#f97316" : "";
   });
 }
 
@@ -341,7 +340,6 @@ async function fetchAndRender() {
     console.error("fetch error", err);
     if (statusEl) statusEl.dataset.status = "offline";
     statusEl.textContent = "Backend unavailable – is server.js running?";
-    statusEl.style.color = "#f97316";
   }
 }
 

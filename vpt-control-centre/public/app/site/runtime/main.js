@@ -73,19 +73,42 @@ const chartRenderPerfState = {
   viewMode: "",
   vizSignature: "",
 };
-const CHART_SELECTED_ACCENT = "#A78BFA";
-const CHART_HOVER_ACCENT = "#38BDF8";
-const CHART_SELECTED_BAND_FILL = "rgba(167,139,250,0.14)";
-const CHART_HOVER_BAND_FILL = "rgba(56,189,248,0.10)";
 const INTERACTION_OVERLAY_SERIES_ID = "__vpt-interaction-overlay";
-const SELECTED_POINT_STYLE = Object.freeze({
-  borderColor: CHART_SELECTED_ACCENT,
+const chartThemeState = {
+  selectedAccent: "#a9bfe8",
+  hoverAccent: "#86a8d8",
+  selectedBandFill: "rgba(126, 163, 212, 0.16)",
+  hoverBandFill: "rgba(126, 163, 212, 0.10)",
+};
+const SELECTED_POINT_STYLE = {
+  borderColor: chartThemeState.selectedAccent,
   borderWidth: 2,
-});
-const HOVER_POINT_STYLE = Object.freeze({
-  borderColor: CHART_HOVER_ACCENT,
+};
+const HOVER_POINT_STYLE = {
+  borderColor: chartThemeState.hoverAccent,
   borderWidth: 1,
-});
+};
+
+function getThemeChartTokens() {
+  return window.VPT?.theme?.getChartTokens?.() || {
+    selectedAccent: "#a9bfe8",
+    hoverAccent: "#86a8d8",
+    selectedBandFill: "rgba(126, 163, 212, 0.16)",
+    hoverBandFill: "rgba(126, 163, 212, 0.10)",
+  };
+}
+
+function syncChartThemeState() {
+  const tokens = getThemeChartTokens();
+  chartThemeState.selectedAccent = tokens.selectedAccent;
+  chartThemeState.hoverAccent = tokens.hoverAccent;
+  chartThemeState.selectedBandFill = tokens.selectedBandFill;
+  chartThemeState.hoverBandFill = tokens.hoverBandFill;
+  SELECTED_POINT_STYLE.borderColor = tokens.selectedAccent;
+  HOVER_POINT_STYLE.borderColor = tokens.hoverAccent;
+}
+
+syncChartThemeState();
 
 let filterState = defaultFilterState();
 let vizOptions = defaultVizOptions();
@@ -178,6 +201,7 @@ const chartBuilders = createChartBuilders({
   binSizeMs: BIN_SIZE_MS,
   hoverPointStyle: HOVER_POINT_STYLE,
   selectedPointStyle: SELECTED_POINT_STYLE,
+  getChartThemeTokens,
   getRangeWindow,
   buildVendorRollup,
   getKindBucket,
@@ -255,7 +279,9 @@ function setStatus(ok, text) {
   const el = qs("siteConnectionStatus");
   if (!el) return;
   el.textContent = text;
-  el.style.color = ok ? "#10b981" : "#f97316";
+  el.dataset.status = ok ? "online" : "offline";
+  el.title = text;
+  el.setAttribute("aria-label", text);
 }
 
 function getRangeKey() {
@@ -977,7 +1003,7 @@ function buildInteractionOverlaySeries(marker) {
       silent: true,
       label: { show: false },
       lineStyle: {
-        color: CHART_SELECTED_ACCENT,
+        color: chartThemeState.selectedAccent,
         width: 2,
         type: "solid",
       },
@@ -985,7 +1011,7 @@ function buildInteractionOverlaySeries(marker) {
     },
     markArea: {
       silent: true,
-      itemStyle: { color: CHART_SELECTED_BAND_FILL },
+      itemStyle: { color: chartThemeState.selectedBandFill },
       data: marker ? [[{ xAxis: marker.start }, { xAxis: marker.end }]] : [],
     },
   };
@@ -1211,10 +1237,10 @@ function applyHoverPointerToXAxis(axis) {
       snap: true,
       type: "shadow",
       shadowStyle: {
-        color: CHART_HOVER_BAND_FILL,
+        color: chartThemeState.hoverBandFill,
       },
       lineStyle: {
-        color: CHART_HOVER_ACCENT,
+        color: chartThemeState.hoverAccent,
         width: 1,
         type: "dashed",
       },
@@ -1236,10 +1262,10 @@ function applyHoverPointerToYAxis(axis) {
       snap: true,
       type: "shadow",
       shadowStyle: {
-        color: CHART_HOVER_BAND_FILL,
+        color: chartThemeState.hoverBandFill,
       },
       lineStyle: {
-        color: CHART_HOVER_ACCENT,
+        color: chartThemeState.hoverAccent,
         width: 1,
         type: "dashed",
       },
@@ -1328,7 +1354,7 @@ function applyHoverPointerConfigToOption(option, { disablePointer = false, point
         type: pointerAxis === "y" ? "shadow" : "line",
         snap: pointerAxis !== "y",
         lineStyle: {
-          color: CHART_HOVER_ACCENT,
+          color: chartThemeState.hoverAccent,
           width: 1,
           type: "dashed",
         },
@@ -1370,7 +1396,7 @@ function decorateSeriesInteractionStyles(option) {
         focus: "none",
         itemStyle: {
           ...((series.emphasis && series.emphasis.itemStyle) || {}),
-          borderColor: CHART_HOVER_ACCENT,
+          borderColor: chartThemeState.hoverAccent,
           borderWidth: 1,
         },
       },
@@ -1378,7 +1404,7 @@ function decorateSeriesInteractionStyles(option) {
         ...(series.select || {}),
         itemStyle: {
           ...((series.select && series.select.itemStyle) || {}),
-          borderColor: CHART_SELECTED_ACCENT,
+          borderColor: chartThemeState.selectedAccent,
           borderWidth: 2,
         },
       },

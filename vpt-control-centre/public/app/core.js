@@ -1,4 +1,5 @@
 // public/app/core.js
+import "./theme.js";
 import * as api from "./api.js";
 import * as utils from "./utils.js";
 

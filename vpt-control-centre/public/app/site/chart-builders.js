@@ -4,6 +4,7 @@ export function createChartBuilders(deps) {
     binSizeMs,
     hoverPointStyle,
     selectedPointStyle,
+    getChartThemeTokens,
     getRangeWindow,
     buildVendorRollup,
     getKindBucket,
@@ -17,14 +18,35 @@ export function createChartBuilders(deps) {
     partyLabels,
   } = deps;
 
+function readChartTheme() {
+  return typeof getChartThemeTokens === "function"
+    ? getChartThemeTokens()
+    : {
+        emptyText: "#94a3b8",
+        axisLine: "#7388a2",
+        axisLabel: "#cbd5e1",
+        axisName: "#e2e8f0",
+        legendText: "#e2e8f0",
+        toolboxBorder: "#cbd5e1",
+        toolboxFill: "rgba(148,163,184,0.18)",
+        toolboxFillHover: "rgba(126,163,212,0.24)",
+        seriesBlocked: "#7fa3d4",
+        seriesObserved: "#6fb390",
+        seriesBlockedApi: "#8e7bc0",
+        seriesObservedApi: "#bd829d",
+        seriesOther: "#caab68",
+      };
+}
+
 function buildEmptyChartOption(message) {
+  const chartTheme = readChartTheme();
   return {
     title: {
       text: message,
       left: "center",
       top: "middle",
       textStyle: {
-        color: "#94a3b8",
+        color: chartTheme.emptyText,
         fontSize: 14,
         fontWeight: 500,
       },
@@ -49,7 +71,7 @@ function buildSeries(name, data, { defaultType = "bar", stackKey = null } = {}) 
   const type = getSeriesType(defaultType);
   const series = { name, type, data };
   series.selectedMode = "single";
-  const categoryColor = CATEGORY_SERIES_COLORS[name];
+  const categoryColor = getCategorySeriesColors()[name];
   if (categoryColor) {
     series.itemStyle = { ...(series.itemStyle || {}), color: categoryColor };
     series.lineStyle = { ...(series.lineStyle || {}), color: categoryColor };
@@ -175,6 +197,7 @@ function buildTrendTooltipFormatter(params) {
 }
 
 function buildTrendAxes(labels) {
+  const chartTheme = readChartTheme();
   return {
     xAxis: {
       type: "category",
@@ -182,6 +205,16 @@ function buildTrendAxes(labels) {
       name: "Time",
       nameLocation: "middle",
       nameGap: 34,
+      axisLine: {
+        lineStyle: { color: chartTheme.axisLine },
+      },
+      axisLabel: {
+        color: chartTheme.axisLabel,
+      },
+      nameTextStyle: {
+        color: chartTheme.axisName,
+        fontWeight: 700,
+      },
     },
     yAxis: {
       type: "value",
@@ -189,24 +222,47 @@ function buildTrendAxes(labels) {
       nameLocation: "middle",
       nameGap: 52,
       minInterval: 1,
+      axisLine: {
+        lineStyle: { color: chartTheme.axisLine },
+      },
+      axisLabel: {
+        color: chartTheme.axisLabel,
+      },
+      splitLine: {
+        lineStyle: {
+          color: chartTheme.toolboxFill,
+        },
+      },
+      nameTextStyle: {
+        color: chartTheme.axisName,
+        fontWeight: 700,
+      },
     },
   };
 }
 
-const TREND_LEGEND_TEXT_STYLE = Object.freeze({
-  color: "#ffffff",
-  fontSize: 14,
-  fontWeight: 700,
-});
-const CATEGORY_SERIES_COLORS = Object.freeze({
-  Blocked: "#5470C6",
-  Observed: "#91CC75",
-  "Blocked API": "#9A60B4",
-  "Observed API": "#EA7CCC",
-  Other: "#FAC858",
-});
+function getTrendLegendTextStyle() {
+  const chartTheme = readChartTheme();
+  return {
+    color: chartTheme.legendText,
+    fontSize: 14,
+    fontWeight: 700,
+  };
+}
+
+function getCategorySeriesColors() {
+  const chartTheme = readChartTheme();
+  return {
+    Blocked: chartTheme.seriesBlocked,
+    Observed: chartTheme.seriesObserved,
+    "Blocked API": chartTheme.seriesBlockedApi,
+    "Observed API": chartTheme.seriesObservedApi,
+    Other: chartTheme.seriesOther,
+  };
+}
 
 function buildTrendToolbox() {
+  const chartTheme = readChartTheme();
   return {
     right: 12,
     top: -2,
@@ -214,35 +270,27 @@ function buildTrendToolbox() {
     itemGap: 12,
     showTitle: true,
     iconStyle: {
-      borderColor: "#ffffff",
+      borderColor: chartTheme.toolboxBorder,
       borderWidth: 2.2,
-      color: "rgba(148,163,184,0.22)",
+      color: chartTheme.toolboxFill,
     },
     textStyle: {
-      color: "#ffffff",
+      color: chartTheme.legendText,
       fontSize: 14,
       fontWeight: 700,
       padding: [9, 0, 0, 0],
-      textBorderColor: "rgba(2,6,23,0.95)",
-      textBorderWidth: 6,
-      textShadowColor: "rgba(2,6,23,0.98)",
-      textShadowBlur: 6,
     },
     emphasis: {
       iconStyle: {
-        borderColor: "#ffffff",
-        color: "rgba(56,189,248,0.42)",
+        borderColor: chartTheme.toolboxBorder,
+        color: chartTheme.toolboxFillHover,
         borderWidth: 2.4,
       },
       textStyle: {
-        color: "#ffffff",
+        color: chartTheme.legendText,
         fontSize: 14,
         fontWeight: 700,
         padding: [10, 0, 0, 0],
-        textBorderColor: "rgba(2,6,23,0.98)",
-        textBorderWidth: 6,
-        textShadowColor: "rgba(2,6,23,0.98)",
-        textShadowBlur: 7,
       },
     },
     feature: {
@@ -509,7 +557,7 @@ function buildTimelineOption(events, options = {}) {
   return {
     option: {
       tooltip: { trigger: "axis", formatter: buildTrendTooltipFormatter },
-      legend: { top: 0, textStyle: TREND_LEGEND_TEXT_STYLE, itemWidth: 22, itemHeight: 12, itemGap: 14 },
+      legend: { top: 0, textStyle: getTrendLegendTextStyle(), itemWidth: 22, itemHeight: 12, itemGap: 14 },
       toolbox: buildTrendToolbox(),
       brush: {
         xAxisIndex: 0,
@@ -654,7 +702,7 @@ function buildVendorAllowedBlockedTimelineOption(events, options = {}) {
   return {
     option: {
       tooltip: { trigger: "axis", formatter: buildTrendTooltipFormatter },
-      legend: { top: 0, textStyle: TREND_LEGEND_TEXT_STYLE, itemWidth: 22, itemHeight: 12, itemGap: 14 },
+      legend: { top: 0, textStyle: getTrendLegendTextStyle(), itemWidth: 22, itemHeight: 12, itemGap: 14 },
       toolbox: buildTrendToolbox(),
       brush: {
         xAxisIndex: 0,
@@ -1022,6 +1070,7 @@ function buildVendorTopDomainsEndpointsOption(events, selectedVendor, metric = "
 
   const topBucket = ranked[0] || null;
   let compactSummary = null;
+  const chartTheme = readChartTheme();
   let option = {
     tooltip: {
       trigger: "item",
@@ -1064,18 +1113,18 @@ function buildVendorTopDomainsEndpointsOption(events, selectedVendor, metric = "
       nameLocation: "middle",
       nameGap: 34,
       nameTextStyle: {
-        color: "#e2e8f0",
+        color: chartTheme.axisName,
         fontWeight: 700,
         fontSize: 12,
       },
       max: vizOptions.normalize ? 100 : null,
       axisLine: {
         show: true,
-        lineStyle: { color: "#94a3b8" },
+        lineStyle: { color: chartTheme.axisLine },
       },
       axisTick: { show: true },
       axisLabel: {
-        color: "#cbd5e1",
+        color: chartTheme.axisLabel,
         ...(vizOptions.normalize ? { formatter: "{value}%" } : {}),
       },
     },
@@ -1086,7 +1135,7 @@ function buildVendorTopDomainsEndpointsOption(events, selectedVendor, metric = "
       nameRotate: 0,
       nameGap: 92,
       nameTextStyle: {
-        color: "#e2e8f0",
+        color: chartTheme.axisName,
         fontWeight: 700,
         fontSize: 12,
         align: "right",
@@ -1096,11 +1145,11 @@ function buildVendorTopDomainsEndpointsOption(events, selectedVendor, metric = "
       data: categoryKeys,
       axisLine: {
         show: true,
-        lineStyle: { color: "#94a3b8" },
+        lineStyle: { color: chartTheme.axisLine },
       },
       axisTick: { show: true },
       axisLabel: {
-        color: "#cbd5e1",
+        color: chartTheme.axisLabel,
         formatter: (value) => displayLabelByBucketKey.get(String(value || "")) || String(value || ""),
       },
     },
@@ -1800,7 +1849,7 @@ function buildVendorShareOverTimeOption(events, options = {}) {
           return lines.join("<br/>");
         },
       },
-      legend: { top: 0, textStyle: TREND_LEGEND_TEXT_STYLE, itemWidth: 22, itemHeight: 12, itemGap: 14 },
+      legend: { top: 0, textStyle: getTrendLegendTextStyle(), itemWidth: 22, itemHeight: 12, itemGap: 14 },
       grid: { left: 40, right: 18, top: 36, bottom: 75 },
       ...buildTrendAxes(timeline.labels),
       toolbox: buildTrendToolbox(),
@@ -1927,7 +1976,7 @@ function buildRiskTrendOption(events, options = {}) {
   return {
     option: {
       tooltip: { trigger: "axis", formatter: buildTrendTooltipFormatter },
-      legend: { top: 0, textStyle: TREND_LEGEND_TEXT_STYLE, itemWidth: 22, itemHeight: 12, itemGap: 14 },
+      legend: { top: 0, textStyle: getTrendLegendTextStyle(), itemWidth: 22, itemHeight: 12, itemGap: 14 },
       grid: { left: 40, right: 18, top: 18, bottom: 75 },
       ...buildTrendAxes(timeline.labels),
       dataZoom: [
@@ -2058,7 +2107,7 @@ function buildBaselineDetectedBlockedTrendOption(events, options = {}) {
   return {
     option: {
       tooltip: { trigger: "axis", formatter: buildTrendTooltipFormatter },
-      legend: { top: 0, textStyle: TREND_LEGEND_TEXT_STYLE, itemWidth: 22, itemHeight: 12, itemGap: 14 },
+      legend: { top: 0, textStyle: getTrendLegendTextStyle(), itemWidth: 22, itemHeight: 12, itemGap: 14 },
       grid: { left: 40, right: 18, top: 36, bottom: 75 },
       ...buildTrendAxes(timeline.labels),
       dataZoom: [
