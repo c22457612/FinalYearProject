@@ -13,6 +13,8 @@ const clearCookiesBtn = document.getElementById("clearCookiesBtn");
 const currentSiteTrustBtn = document.getElementById("currentSiteTrustBtn");
 const currentSiteTrustSite = document.getElementById("currentSiteTrustSite");
 const currentSiteTrustStatus = document.getElementById("currentSiteTrustStatus");
+const currentSiteTrustChip = document.getElementById("currentSiteTrustChip");
+const currentSiteTrustSummary = document.getElementById("currentSiteTrustSummary");
 const currentSiteTrustHeadline = document.getElementById("currentSiteTrustHeadline");
 const currentSiteTrustCopy = document.getElementById("currentSiteTrustCopy");
 const openTrustedSitesBtn = document.getElementById("openTrustedSitesBtn");
@@ -23,12 +25,17 @@ const apiPolicyGrid = document.getElementById("apiPolicyGrid");
 const CONTROL_CENTRE_URL = "http://127.0.0.1:4141/";
 const TRUSTED_SITES_MANAGER_URL = `${CONTROL_CENTRE_URL}?view=trusted-sites`;
 const API_CONTROLS_URL = `${CONTROL_CENTRE_URL}?view=api-signals`;
+const THEME_API_URL = `${CONTROL_CENTRE_URL}api/ui/theme`;
+
+const POPUP_THEME_STORAGE_KEY = "vpt.popup.theme";
+const DEFAULT_THEME_ID = "midnight";
+const THEME_IDS = new Set(["midnight", "amber", "oxblood", "daybreak"]);
 
 const API_POLICY_ACTION_LABELS = {
   observe: "Observe",
   warn: "Warn",
   block: "Block",
-  allow_trusted: "Allow on trusted sites",
+  allow_trusted: "Allow trusted",
 };
 
 const API_POLICY_SURFACES = [
@@ -47,6 +54,44 @@ let currentSiteTrustState = {
 };
 let captureEnabled = true;
 
+function normalizeThemeId(themeId) {
+  const candidate = String(themeId || "").trim().toLowerCase();
+  return THEME_IDS.has(candidate) ? candidate : DEFAULT_THEME_ID;
+}
+
+function persistPopupTheme(themeId) {
+  try {
+    window.localStorage.setItem(POPUP_THEME_STORAGE_KEY, normalizeThemeId(themeId));
+  } catch (_error) {
+    // Ignore storage failures and keep the current session theme.
+  }
+}
+
+function applyPopupTheme(themeId) {
+  const nextTheme = normalizeThemeId(themeId);
+  document.documentElement.dataset.theme = nextTheme;
+  document.documentElement.style.colorScheme = nextTheme === "daybreak" ? "light" : "dark";
+  persistPopupTheme(nextTheme);
+  return nextTheme;
+}
+
+async function refreshPopupTheme() {
+  try {
+    const response = await fetch(THEME_API_URL, {
+      method: "GET",
+      headers: { Accept: "application/json" },
+      cache: "no-store",
+    });
+    if (!response.ok) {
+      throw new Error(`theme_http_${response.status}`);
+    }
+    const payload = await response.json();
+    applyPopupTheme(payload?.themeId);
+  } catch (_error) {
+    applyPopupTheme(document.documentElement.dataset.theme || DEFAULT_THEME_ID);
+  }
+}
+
 function setStatus(message, tone = "") {
   if (!statusEl) return;
   statusEl.textContent = message;
@@ -57,14 +102,28 @@ function getPolicyActionLabel(value) {
   return API_POLICY_ACTION_LABELS[String(value || "").trim()] || "Observe";
 }
 
+function getPolicyTone(value) {
+  const action = String(value || "").trim();
+  if (action === "block") return "danger";
+  if (action === "warn") return "warn";
+  if (action === "allow_trusted") return "success";
+  return "";
+}
+
 function renderApiPolicySummary(policy = {}) {
   if (!apiPolicyGrid) return;
-  apiPolicyGrid.innerHTML = API_POLICY_SURFACES.map(([key, label]) => `
-    <div class="api-policy-item">
-      <span class="api-policy-label">${label}</span>
-      <span class="api-policy-value">${getPolicyActionLabel(policy[key])}</span>
-    </div>
-  `).join("");
+  apiPolicyGrid.innerHTML = API_POLICY_SURFACES.map(([key, label]) => {
+    const action = String(policy[key] || "").trim() || "observe";
+    return `
+      <div class="api-policy-row">
+        <div class="api-policy-main">
+          <span class="api-policy-name">${label}</span>
+          <span class="api-policy-copy">Live Browser API action</span>
+        </div>
+        <span class="api-policy-chip" data-tone="${getPolicyTone(action)}">${getPolicyActionLabel(action)}</span>
+      </div>
+    `;
+  }).join("");
 }
 
 function syncCaptureUi() {
@@ -72,14 +131,21 @@ function syncCaptureUi() {
     captureEnabledChk.checked = captureEnabled;
   }
   if (captureStateLabel) {
-    captureStateLabel.textContent = captureEnabled ? "On" : "Paused";
+    captureStateLabel.textContent = captureEnabled ? "Enabled" : "Paused";
   }
   if (cookieSnapshotBtn) {
     cookieSnapshotBtn.disabled = !captureEnabled || !currentSiteTrustState.supported;
-    cookieSnapshotBtn.textContent = captureEnabled
-      ? "Send cookie snapshot"
-      : "Capture paused";
+    cookieSnapshotBtn.textContent = captureEnabled ? "Send snapshot" : "Capture paused";
   }
+}
+
+function setTrustPresentation(chipText, chipTone, headline, copy, buttonText, summaryTone = chipTone) {
+  currentSiteTrustChip.textContent = chipText;
+  currentSiteTrustChip.dataset.tone = chipTone;
+  currentSiteTrustHeadline.textContent = headline;
+  currentSiteTrustCopy.textContent = copy;
+  currentSiteTrustSummary.dataset.tone = summaryTone;
+  currentSiteTrustBtn.textContent = buttonText;
 }
 
 function setCurrentSiteTrustUi(state = {}) {
@@ -96,9 +162,13 @@ function setCurrentSiteTrustUi(state = {}) {
   if (loading) {
     currentSiteTrustSite.textContent = "Checking current site...";
     currentSiteTrustStatus.textContent = "Reading current-site trust state.";
-    currentSiteTrustHeadline.textContent = "Checking trust state";
-    currentSiteTrustCopy.textContent = "Trust affects the navigation shortcut and any Browser API surfaces set to Allow on trusted sites.";
-    currentSiteTrustBtn.textContent = "Checking...";
+    setTrustPresentation(
+      "Checking",
+      "unsupported",
+      "Checking trust state",
+      "Trust affects navigation prompts and Browser API surfaces set to allow on trusted sites.",
+      "Checking..."
+    );
     currentSiteTrustBtn.disabled = true;
     if (openSiteInsightsBtn) openSiteInsightsBtn.disabled = true;
     return;
@@ -107,9 +177,13 @@ function setCurrentSiteTrustUi(state = {}) {
   if (!supported || !site) {
     currentSiteTrustSite.textContent = "No supported website";
     currentSiteTrustStatus.textContent = "Current-site actions are available only on normal http or https pages.";
-    currentSiteTrustHeadline.textContent = "Trust unavailable here";
-    currentSiteTrustCopy.textContent = "Open a normal website tab to trust it or jump into Site Insights.";
-    currentSiteTrustBtn.textContent = "Trust current site";
+    setTrustPresentation(
+      "Unsupported",
+      "unsupported",
+      "Trust unavailable here",
+      "Open a normal website tab to trust it or jump into Site Insights.",
+      "Trust site"
+    );
     currentSiteTrustBtn.disabled = true;
     if (openSiteInsightsBtn) openSiteInsightsBtn.disabled = true;
     syncCaptureUi();
@@ -121,14 +195,36 @@ function setCurrentSiteTrustUi(state = {}) {
     ? "Saved locally. Control Centre sync is pending."
     : enabled
       ? "Trusted-site allow rules are active."
-      : "Trusted-site allow rules are currently paused.";
-  currentSiteTrustHeadline.textContent = isTrusted
-    ? `${site} is trusted`
-    : `${site} is not trusted`;
-  currentSiteTrustCopy.textContent = isTrusted
-    ? "Trusted sites skip the navigation trust prompt and allow Browser API surfaces that are set to Allow on trusted sites."
-    : "Trust this site if you want it to skip the navigation trust prompt and use Allow on trusted sites Browser API actions.";
-  currentSiteTrustBtn.textContent = isTrusted ? "Remove trust for this site" : "Trust this site";
+      : "Trusted-site allow rules are paused.";
+
+  if (syncPending) {
+    setTrustPresentation(
+      "Sync pending",
+      "pending",
+      isTrusted ? `${site} is trusted` : `${site} is not trusted`,
+      isTrusted
+        ? "Trusted-site state is saved locally and waiting to sync to the Control Centre."
+        : "Untrusted state is saved locally and waiting to sync to the Control Centre.",
+      isTrusted ? "Remove trust" : "Trust site"
+    );
+  } else if (isTrusted) {
+    setTrustPresentation(
+      "Trusted",
+      "trusted",
+      `${site} is trusted`,
+      "Skips the first-visit prompt and allows Browser API surfaces set to trusted-site allowance.",
+      "Remove trust"
+    );
+  } else {
+    setTrustPresentation(
+      "Not trusted",
+      "untrusted",
+      `${site} is not trusted`,
+      "Trust this site to skip the first-visit prompt and use trusted-site Browser API allowances.",
+      "Trust site"
+    );
+  }
+
   currentSiteTrustBtn.disabled = busy;
   if (openSiteInsightsBtn) openSiteInsightsBtn.disabled = false;
   syncCaptureUi();
@@ -254,14 +350,18 @@ async function load() {
   renderApiPolicySummary({});
 
   await Promise.all([
+    refreshPopupTheme(),
     updateCookieCount(),
     refreshCurrentSiteTrust(),
     refreshApiPolicySummary(),
   ]);
 
-  setStatus(captureEnabled
-    ? "Ready. Capture and protection are active."
-    : "Capture is paused. Protection and trust rules still run.", captureEnabled ? "" : "warn");
+  setStatus(
+    captureEnabled
+      ? "Ready. Capture and protection are active."
+      : "Capture is paused. Protection and trust rules still run.",
+    captureEnabled ? "" : "warn"
+  );
 }
 
 modeSel.addEventListener("change", async () => {
@@ -313,149 +413,137 @@ apiNotificationsEnabledChk?.addEventListener("change", async () => {
   );
 });
 
-if (clearCookiesBtn) {
-  clearCookiesBtn.addEventListener("click", async () => {
-    try {
-      const url = await getCurrentTabUrl();
-      if (!url || !/^https?:/i.test(url)) {
-        setStatus("Can only clear cookies on normal websites.", "warn");
-        return;
-      }
-
-      clearCookiesBtn.disabled = true;
-      clearCookiesBtn.textContent = "Clearing...";
-
-      const res = await chrome.runtime.sendMessage({
-        type: "cookies:clearForSite",
-        url,
-      });
-
-      if (!res || !res.ok) {
-        setStatus("Failed to clear cookies for this site.", "warn");
-      } else if ((res.cleared || 0) === 0) {
-        setStatus("No site cookies needed clearing.", "warn");
-      } else {
-        setStatus(`Cleared ${res.cleared} cookie${res.cleared === 1 ? "" : "s"}.`, "success");
-      }
-
-      await updateCookieCount();
-    } catch (error) {
-      console.error("Failed to clear cookies", error);
-      setStatus("Error clearing site cookies.", "warn");
-    } finally {
-      clearCookiesBtn.disabled = false;
-      clearCookiesBtn.textContent = "Clear site cookies";
-    }
-  });
-}
-
-if (currentSiteTrustBtn) {
-  currentSiteTrustBtn.addEventListener("click", async () => {
-    if (!currentSiteTrustState.supported || !currentSiteTrustState.site) return;
-
-    const nextTrusted = !currentSiteTrustState.isTrusted;
-    currentSiteTrustBtn.disabled = true;
-    currentSiteTrustBtn.textContent = nextTrusted ? "Saving trust..." : "Removing trust...";
-
-    try {
-      const url = await getCurrentTabUrl();
-      const res = await chrome.runtime.sendMessage({
-        type: "trustedSites:setCurrentSiteTrust",
-        url,
-        trusted: nextTrusted,
-      });
-
-      if (!res || !res.ok) {
-        throw new Error(res?.error || "Could not update current-site trust.");
-      }
-
-      currentSiteTrustState = {
-        supported: !!res.supported,
-        site: res.site || "",
-        isTrusted: !!res.isTrusted,
-        enabled: res.enabled !== false,
-        syncPending: !!res.syncPending,
-      };
-      trustedSitesEnabledChk.checked = res.enabled !== false;
-      setCurrentSiteTrustUi(currentSiteTrustState);
-      const synced = res.synced !== false;
-      setStatus(
-        synced
-          ? (nextTrusted
-            ? `${currentSiteTrustState.site} is now trusted.`
-            : `${currentSiteTrustState.site} is no longer trusted.`)
-          : (nextTrusted
-            ? `${currentSiteTrustState.site} is trusted locally. Backend sync is pending.`
-            : `${currentSiteTrustState.site} was removed from local trust. Backend sync is pending.`),
-        synced ? "success" : "warn"
-      );
-    } catch (error) {
-      console.error("Failed to update current-site trust", error);
-      setStatus(error?.message || "Error updating current-site trust.", "warn");
-      setCurrentSiteTrustUi({
-        ...currentSiteTrustState,
-        busy: false,
-      });
-    } finally {
-      await refreshCurrentSiteTrust();
-    }
-  });
-}
-
-if (openSiteInsightsBtn) {
-  openSiteInsightsBtn.addEventListener("click", async () => {
-    if (!currentSiteTrustState.supported || !currentSiteTrustState.site) return;
-    await openControlCentreUrl(`${CONTROL_CENTRE_URL}site.html?site=${encodeURIComponent(currentSiteTrustState.site)}`);
-  });
-}
-
-if (openTrustedSitesBtn) {
-  openTrustedSitesBtn.addEventListener("click", async () => {
-    await openControlCentreUrl(TRUSTED_SITES_MANAGER_URL);
-  });
-}
-
-if (openApiControlsBtn) {
-  openApiControlsBtn.addEventListener("click", async () => {
-    await openControlCentreUrl(API_CONTROLS_URL);
-  });
-}
-
-if (cookieSnapshotBtn) {
-  cookieSnapshotBtn.addEventListener("click", async () => {
-    if (!captureEnabled) {
-      setStatus("Capture is paused. Resume capture before sending a cookie snapshot.", "warn");
+clearCookiesBtn?.addEventListener("click", async () => {
+  try {
+    const url = await getCurrentTabUrl();
+    if (!url || !/^https?:/i.test(url)) {
+      setStatus("Can only clear cookies on normal websites.", "warn");
       return;
     }
 
-    try {
-      const url = await getCurrentTabUrl();
-      if (!url || !/^https?:/i.test(url)) {
-        setStatus("Cookie snapshots are available only on normal websites.", "warn");
-        return;
-      }
+    clearCookiesBtn.disabled = true;
+    clearCookiesBtn.textContent = "Clearing...";
 
-      cookieSnapshotBtn.disabled = true;
-      cookieSnapshotBtn.textContent = "Sending...";
+    const res = await chrome.runtime.sendMessage({
+      type: "cookies:clearForSite",
+      url,
+    });
 
-      const res = await chrome.runtime.sendMessage({
-        type: "cookies:sendSnapshot",
-        url,
-      });
-
-      if (!res || !res.ok) {
-        setStatus("Cookie snapshot failed.", "warn");
-      } else {
-        setStatus(`Cookie snapshot sent (${res.count || 0} cookies).`, "success");
-      }
-    } catch (error) {
-      console.error("Failed to send cookie snapshot", error);
-      setStatus("Cookie snapshot error.", "warn");
-    } finally {
-      syncCaptureUi();
+    if (!res || !res.ok) {
+      setStatus("Failed to clear cookies for this site.", "warn");
+    } else if ((res.cleared || 0) === 0) {
+      setStatus("No site cookies needed clearing.", "warn");
+    } else {
+      setStatus(`Cleared ${res.cleared} cookie${res.cleared === 1 ? "" : "s"}.`, "success");
     }
-  });
-}
+
+    await updateCookieCount();
+  } catch (error) {
+    console.error("Failed to clear cookies", error);
+    setStatus("Error clearing site cookies.", "warn");
+  } finally {
+    clearCookiesBtn.disabled = false;
+    clearCookiesBtn.textContent = "Clear cookies";
+  }
+});
+
+currentSiteTrustBtn?.addEventListener("click", async () => {
+  if (!currentSiteTrustState.supported || !currentSiteTrustState.site) return;
+
+  const nextTrusted = !currentSiteTrustState.isTrusted;
+  currentSiteTrustBtn.disabled = true;
+  currentSiteTrustBtn.textContent = nextTrusted ? "Saving trust..." : "Removing trust...";
+
+  try {
+    const url = await getCurrentTabUrl();
+    const res = await chrome.runtime.sendMessage({
+      type: "trustedSites:setCurrentSiteTrust",
+      url,
+      trusted: nextTrusted,
+    });
+
+    if (!res || !res.ok) {
+      throw new Error(res?.error || "Could not update current-site trust.");
+    }
+
+    currentSiteTrustState = {
+      supported: !!res.supported,
+      site: res.site || "",
+      isTrusted: !!res.isTrusted,
+      enabled: res.enabled !== false,
+      syncPending: !!res.syncPending,
+    };
+    trustedSitesEnabledChk.checked = res.enabled !== false;
+    setCurrentSiteTrustUi(currentSiteTrustState);
+    const synced = res.synced !== false;
+    setStatus(
+      synced
+        ? (nextTrusted
+          ? `${currentSiteTrustState.site} is now trusted.`
+          : `${currentSiteTrustState.site} is no longer trusted.`)
+        : (nextTrusted
+          ? `${currentSiteTrustState.site} is trusted locally. Backend sync is pending.`
+          : `${currentSiteTrustState.site} was removed from local trust. Backend sync is pending.`),
+      synced ? "success" : "warn"
+    );
+  } catch (error) {
+    console.error("Failed to update current-site trust", error);
+    setStatus(error?.message || "Error updating current-site trust.", "warn");
+    setCurrentSiteTrustUi({
+      ...currentSiteTrustState,
+      busy: false,
+    });
+  } finally {
+    await refreshCurrentSiteTrust();
+  }
+});
+
+openSiteInsightsBtn?.addEventListener("click", async () => {
+  if (!currentSiteTrustState.supported || !currentSiteTrustState.site) return;
+  await openControlCentreUrl(`${CONTROL_CENTRE_URL}site.html?site=${encodeURIComponent(currentSiteTrustState.site)}`);
+});
+
+openTrustedSitesBtn?.addEventListener("click", async () => {
+  await openControlCentreUrl(TRUSTED_SITES_MANAGER_URL);
+});
+
+openApiControlsBtn?.addEventListener("click", async () => {
+  await openControlCentreUrl(API_CONTROLS_URL);
+});
+
+cookieSnapshotBtn?.addEventListener("click", async () => {
+  if (!captureEnabled) {
+    setStatus("Capture is paused. Resume capture before sending a cookie snapshot.", "warn");
+    return;
+  }
+
+  try {
+    const url = await getCurrentTabUrl();
+    if (!url || !/^https?:/i.test(url)) {
+      setStatus("Cookie snapshots are available only on normal websites.", "warn");
+      return;
+    }
+
+    cookieSnapshotBtn.disabled = true;
+    cookieSnapshotBtn.textContent = "Sending...";
+
+    const res = await chrome.runtime.sendMessage({
+      type: "cookies:sendSnapshot",
+      url,
+    });
+
+    if (!res || !res.ok) {
+      setStatus("Cookie snapshot failed.", "warn");
+    } else {
+      setStatus(`Cookie snapshot sent (${res.count || 0} cookies).`, "success");
+    }
+  } catch (error) {
+    console.error("Failed to send cookie snapshot", error);
+    setStatus("Cookie snapshot error.", "warn");
+  } finally {
+    syncCaptureUi();
+  }
+});
 
 chrome.runtime.onMessage.addListener((msg) => {
   if (msg?.type === "stats") {

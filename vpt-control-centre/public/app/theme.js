@@ -1,5 +1,6 @@
 const THEME_STORAGE_KEY = "vpt.control-centre.theme";
 const DEFAULT_THEME_ID = "midnight";
+const THEME_SYNC_ENDPOINT = "/api/ui/theme";
 const THEMES = Object.freeze([
   {
     id: "midnight",
@@ -52,6 +53,8 @@ const THEMES = Object.freeze([
 ]);
 
 const THEME_IDS = new Set(THEMES.map((theme) => theme.id));
+let lastSyncedThemeId = "";
+let pendingThemeSyncId = "";
 
 function normalizeThemeId(themeId) {
   const candidate = String(themeId || "").trim().toLowerCase();
@@ -74,6 +77,38 @@ function persistTheme(themeId) {
   }
 }
 
+function syncThemeToBackend(themeId) {
+  const nextTheme = normalizeThemeId(themeId);
+  if (lastSyncedThemeId === nextTheme || pendingThemeSyncId === nextTheme) {
+    return;
+  }
+
+  pendingThemeSyncId = nextTheme;
+  fetch(THEME_SYNC_ENDPOINT, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Accept: "application/json",
+    },
+    body: JSON.stringify({ themeId: nextTheme }),
+    keepalive: true,
+  })
+    .then((response) => {
+      if (!response.ok) {
+        throw new Error(`theme_sync_http_${response.status}`);
+      }
+      lastSyncedThemeId = nextTheme;
+    })
+    .catch(() => {
+      // Ignore backend sync failures and keep local theme state.
+    })
+    .finally(() => {
+      if (pendingThemeSyncId === nextTheme) {
+        pendingThemeSyncId = "";
+      }
+    });
+}
+
 function applyTheme(themeId) {
   const nextTheme = normalizeThemeId(themeId);
   document.documentElement.dataset.theme = nextTheme;
@@ -81,6 +116,7 @@ function applyTheme(themeId) {
     document.documentElement.style.colorScheme = nextTheme === "daybreak" ? "light" : "dark";
   }
   document.documentElement.style.colorScheme = nextTheme === "daybreak" ? "light" : "dark";
+  syncThemeToBackend(nextTheme);
   return nextTheme;
 }
 

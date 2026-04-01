@@ -3,219 +3,509 @@
   <head>
     <meta charset="utf-8" />
     <title>Visual Privacy Toolkit</title>
+    <script src="popup-theme.js"></script>
     <style>
+      @font-face {
+        font-family: "IBM Plex Sans";
+        src: url("fonts/ibm-plex-sans/IBMPlexSans-Regular.woff2") format("woff2");
+        font-style: normal;
+        font-weight: 400;
+        font-display: swap;
+      }
+
+      @font-face {
+        font-family: "IBM Plex Sans";
+        src: url("fonts/ibm-plex-sans/IBMPlexSans-Medium.woff2") format("woff2");
+        font-style: normal;
+        font-weight: 500;
+        font-display: swap;
+      }
+
+      @font-face {
+        font-family: "IBM Plex Sans";
+        src: url("fonts/ibm-plex-sans/IBMPlexSans-SemiBold.woff2") format("woff2");
+        font-style: normal;
+        font-weight: 600;
+        font-display: swap;
+      }
+
+      @font-face {
+        font-family: "IBM Plex Sans";
+        src: url("fonts/ibm-plex-sans/IBMPlexSans-Bold.woff2") format("woff2");
+        font-style: normal;
+        font-weight: 700;
+        font-display: swap;
+      }
+
       :root {
         --space-2xs: 0.2rem;
-        --space-xs: 0.4rem;
+        --space-xs: 0.38rem;
         --space-sm: 0.6rem;
-        --space-md: 0.85rem;
-        --space-lg: 1.1rem;
-        --radius-sm: 0.55rem;
-        --radius-md: 0.85rem;
+        --space-md: 0.82rem;
+        --space-lg: 1rem;
+        --radius-sm: 0.42rem;
+        --radius-md: 0.7rem;
         --radius-pill: 999px;
+        --font-ui: "IBM Plex Sans", "Segoe UI", system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
+        --surface-page: #020304;
+        --surface-shell: #050607;
+        --surface-panel: #0f1216;
+        --surface-raised: #15191f;
+        --surface-selected: #191f27;
+        --surface-hover: #13181f;
+        --surface-muted: rgba(11, 13, 16, 0.96);
+        --border-subtle-color: #252c35;
+        --border-strong: #4b586b;
+        --divider: rgba(120, 130, 144, 0.2);
+        --text-primary: #e8edf4;
+        --text-secondary: #d0d8e3;
+        --text-muted: #9ea9b8;
+        --text-faint: #798594;
+        --text-inverse: #07101d;
+        --accent: #83afe8;
+        --accent-strong: #b8d7ff;
+        --accent-soft-fill: rgba(131, 175, 232, 0.1);
+        --accent-soft-fill-strong: rgba(131, 175, 232, 0.16);
+        --accent-border: rgba(164, 201, 255, 0.42);
+        --accent-contrast: #f2f7ff;
+        --accent-rail: rgba(164, 201, 255, 0.98);
+        --success-fill: rgba(28, 95, 74, 0.42);
+        --success-border: rgba(78, 193, 149, 0.34);
+        --success-text: #8fe0bc;
+        --warning-fill: rgba(101, 63, 18, 0.44);
+        --warning-border: rgba(227, 162, 79, 0.42);
+        --warning-text: #f1c87f;
+        --danger-fill: rgba(113, 34, 43, 0.42);
+        --danger-border: rgba(208, 104, 115, 0.42);
+        --danger-text: #f0b6be;
+        --button-primary-fill: var(--accent-soft-fill);
+        --button-primary-fill-hover: var(--accent-soft-fill-strong);
+        --button-primary-border: var(--accent-border);
+        --button-primary-text: var(--text-primary);
+        --button-secondary-fill: transparent;
+        --button-secondary-fill-hover: var(--accent-soft-fill);
+        --button-secondary-border: rgba(106, 117, 133, 0.44);
+        --button-secondary-text: var(--text-primary);
+        --focus-ring: rgba(164, 201, 255, 0.24);
+      }
 
-        --color-bg: #0f172a;
-        --color-panel: #111c30;
-        --color-panel-strong: #07111f;
-        --color-text: #e2e8f0;
-        --color-muted: #9fb0c9;
-        --color-border: #243449;
-        --color-accent: #34d399;
-        --color-accent-soft: rgba(52, 211, 153, 0.16);
-        --color-warn: #f59e0b;
+      :root[data-theme="amber"] {
+        --surface-page: #010101;
+        --surface-shell: #050505;
+        --surface-panel: #111315;
+        --surface-raised: #171a1d;
+        --surface-selected: #1c2024;
+        --surface-hover: #15191d;
+        --surface-muted: rgba(9, 10, 11, 0.96);
+        --border-subtle-color: #272c31;
+        --border-strong: #59616b;
+        --divider: rgba(123, 130, 139, 0.2);
+        --text-primary: #f4efe8;
+        --text-secondary: #e4ddd2;
+        --text-muted: #b9b0a3;
+        --text-faint: #91897d;
+        --accent: #ff8a1c;
+        --accent-strong: #ffb24f;
+        --accent-soft-fill: rgba(255, 138, 28, 0.1);
+        --accent-soft-fill-strong: rgba(255, 138, 28, 0.16);
+        --accent-border: rgba(255, 158, 52, 0.48);
+        --accent-contrast: #fff7ea;
+        --accent-rail: rgba(255, 158, 52, 0.98);
+      }
+
+      :root[data-theme="oxblood"] {
+        --surface-page: #010101;
+        --surface-shell: #040405;
+        --surface-panel: #101214;
+        --surface-raised: #17191d;
+        --surface-selected: #1c2024;
+        --surface-hover: #15181c;
+        --surface-muted: rgba(9, 10, 11, 0.96);
+        --border-subtle-color: #262a2f;
+        --border-strong: #59616a;
+        --divider: rgba(123, 130, 139, 0.2);
+        --text-primary: #f4edef;
+        --text-secondary: #e6dadd;
+        --text-muted: #b8a9ad;
+        --text-faint: #8e8186;
+        --accent: #ff4735;
+        --accent-strong: #ff7c68;
+        --accent-soft-fill: rgba(255, 71, 53, 0.1);
+        --accent-soft-fill-strong: rgba(255, 71, 53, 0.16);
+        --accent-border: rgba(255, 103, 84, 0.5);
+        --accent-contrast: #fff4f7;
+        --accent-rail: rgba(255, 103, 84, 0.98);
+      }
+
+      :root[data-theme="daybreak"] {
+        --surface-page: #f6f9fc;
+        --surface-shell: #edf2f7;
+        --surface-panel: #ffffff;
+        --surface-raised: #f9fbfd;
+        --surface-selected: #eef4fb;
+        --surface-hover: #f3f7fb;
+        --surface-muted: rgba(241, 245, 250, 0.98);
+        --border-subtle-color: #a9b9ca;
+        --border-strong: #607791;
+        --divider: rgba(66, 85, 110, 0.26);
+        --text-primary: #05080d;
+        --text-secondary: #132131;
+        --text-muted: #27394d;
+        --text-faint: #44596f;
+        --text-inverse: #f5f9fd;
+        --accent: #1f5fa9;
+        --accent-strong: #0d437b;
+        --accent-soft-fill: rgba(31, 95, 169, 0.15);
+        --accent-soft-fill-strong: rgba(31, 95, 169, 0.24);
+        --accent-border: rgba(31, 95, 169, 0.62);
+        --accent-contrast: #0d437b;
+        --accent-rail: rgba(13, 67, 123, 0.98);
+        --success-fill: rgba(21, 114, 82, 0.16);
+        --success-border: rgba(21, 114, 82, 0.44);
+        --success-text: #084f34;
+        --warning-fill: rgba(157, 104, 18, 0.16);
+        --warning-border: rgba(157, 104, 18, 0.46);
+        --warning-text: #5d3605;
+        --danger-fill: rgba(171, 53, 53, 0.16);
+        --danger-border: rgba(171, 53, 53, 0.42);
+        --danger-text: #671313;
+        --button-primary-fill: rgba(31, 95, 169, 0.09);
+        --button-primary-fill-hover: rgba(31, 95, 169, 0.15);
+        --button-primary-border: rgba(31, 95, 169, 0.46);
+        --button-secondary-fill-hover: rgba(31, 95, 169, 0.07);
+        --button-secondary-border: rgba(117, 137, 160, 0.46);
+        --focus-ring: rgba(31, 95, 169, 0.18);
       }
 
       * {
         box-sizing: border-box;
       }
 
+      html,
       body {
         margin: 0;
         min-width: 332px;
         max-width: 332px;
+        background: var(--surface-page);
+        color: var(--text-primary);
+        font: 13px/1.4 var(--font-ui);
+      }
+
+      body {
         padding: var(--space-sm);
-        font: 13px/1.45 "Segoe UI", "Helvetica Neue", sans-serif;
-        background:
-          radial-gradient(circle at top right, rgba(52, 211, 153, 0.12), transparent 40%),
-          linear-gradient(180deg, #101a2d 0%, #0a1322 100%);
-        color: var(--color-text);
       }
 
-      .shell {
-        display: grid;
-        gap: var(--space-sm);
-      }
-
-      .card {
-        background: rgba(7, 17, 31, 0.9);
-        border: 1px solid var(--color-border);
-        border-radius: var(--radius-md);
-        padding: var(--space-md);
-        box-shadow: 0 18px 32px rgba(2, 6, 23, 0.42);
-      }
-
-      .hero {
-        display: grid;
-        gap: var(--space-sm);
-      }
-
-      .eyebrow {
-        margin: 0;
-        color: var(--color-accent);
-        text-transform: uppercase;
-        letter-spacing: 0.08em;
-        font-size: 11px;
-        font-weight: 700;
-      }
-
-      h1 {
-        margin: 0;
-        font-size: 18px;
-        line-height: 1.2;
-      }
-
-      .subtitle,
-      .support,
-      .section-copy,
-      .status-copy {
-        margin: 0;
-        color: var(--color-muted);
-      }
-
-      .hero-grid,
-      .summary-grid,
-      .api-policy-grid {
-        display: grid;
-        gap: var(--space-xs);
-      }
-
-      .hero-grid,
-      .summary-grid {
-        grid-template-columns: repeat(2, minmax(0, 1fr));
-      }
-
-      .stat,
-      .api-policy-item {
-        border: 1px solid var(--color-border);
-        border-radius: var(--radius-sm);
-        background: rgba(17, 28, 48, 0.95);
-        padding: 0.55rem 0.65rem;
-      }
-
-      .stat-label,
-      .api-policy-label,
-      .section-kicker {
-        display: block;
-        color: var(--color-muted);
-        font-size: 11px;
-        text-transform: uppercase;
-        letter-spacing: 0.06em;
-      }
-
-      .stat-value,
-      .api-policy-value {
-        display: block;
-        margin-top: var(--space-2xs);
-        font-size: 15px;
-        font-weight: 700;
-        color: var(--color-text);
-      }
-
-      .section {
-        display: grid;
-        gap: var(--space-sm);
-      }
-
-      .section-header {
-        display: grid;
-        gap: var(--space-2xs);
-      }
-
-      .field-row {
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-        gap: var(--space-sm);
-      }
-
-      .field-main {
-        flex: 1;
-        min-width: 0;
-      }
-
-      .field-label {
-        display: block;
-        font-weight: 600;
-      }
-
-      .field-help {
-        display: block;
-        margin-top: 0.15rem;
-        color: var(--color-muted);
-        font-size: 12px;
-      }
-
-      .site-name {
-        font-size: 16px;
-        font-weight: 700;
-        word-break: break-word;
-      }
-
-      .site-status {
-        padding: 0.5rem 0.65rem;
-        border-radius: var(--radius-sm);
-        border: 1px solid var(--color-border);
-        background: rgba(17, 28, 48, 0.72);
-      }
-
-      .site-status strong {
-        color: var(--color-text);
-      }
-
-      .actions {
-        display: grid;
-        gap: var(--space-xs);
-      }
-
-      .split-actions {
-        display: grid;
-        gap: var(--space-xs);
-        grid-template-columns: repeat(2, minmax(0, 1fr));
+      button,
+      select,
+      input {
+        font: inherit;
       }
 
       button,
       select {
         width: 100%;
-        border: 1px solid var(--color-border);
-        border-radius: var(--radius-pill);
-        background: var(--color-panel);
-        color: var(--color-text);
-        padding: 0.5rem 0.75rem;
-        font: inherit;
+        min-height: 34px;
+        border-radius: var(--radius-sm);
+        border: 1px solid var(--button-secondary-border);
+        background: var(--button-secondary-fill);
+        color: var(--button-secondary-text);
       }
 
       button {
         cursor: pointer;
+        padding: 0.48rem 0.68rem;
+        text-align: left;
       }
 
       button:hover,
       select:hover {
-        border-color: #43617f;
+        border-color: var(--accent-border);
+        background: var(--button-secondary-fill-hover);
+      }
+
+      button:focus-visible,
+      select:focus-visible,
+      input:focus-visible {
+        outline: none;
+        box-shadow: 0 0 0 3px var(--focus-ring);
       }
 
       button:disabled,
       select:disabled {
-        opacity: 0.65;
+        opacity: 0.62;
         cursor: default;
       }
 
+      .popup-shell {
+        display: grid;
+        gap: var(--space-sm);
+      }
+
+      .console-shell {
+        border: 1px solid var(--border-subtle-color);
+        border-radius: var(--radius-md);
+        background: var(--surface-shell);
+        overflow: hidden;
+      }
+
+      .console-section {
+        display: grid;
+        gap: var(--space-sm);
+        padding: var(--space-md);
+        border-top: 1px solid var(--divider);
+      }
+
+      .console-section:first-child {
+        border-top: 0;
+      }
+
+      .console-section.is-primary {
+        position: relative;
+        padding-left: calc(var(--space-md) + 0.34rem);
+        background: var(--surface-panel);
+      }
+
+      .console-section.is-primary::before {
+        content: "";
+        position: absolute;
+        top: var(--space-md);
+        bottom: var(--space-md);
+        left: var(--space-sm);
+        width: 2px;
+        border-radius: 999px;
+        background: var(--accent-rail);
+      }
+
+      .console-head,
+      .section-head {
+        display: grid;
+        gap: var(--space-xs);
+      }
+
+      .console-eyebrow,
+      .section-kicker,
+      .metric-label,
+      .summary-label {
+        margin: 0;
+        color: var(--text-faint);
+        font-size: 10px;
+        font-weight: 600;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+      }
+
+      .site-head {
+        display: grid;
+        gap: var(--space-sm);
+      }
+
+      .site-title-row,
+      .metric-strip,
+      .action-row,
+      .cookie-strip {
+        display: grid;
+        gap: var(--space-xs);
+      }
+
+      .site-title-row {
+        grid-template-columns: minmax(0, 1fr) auto;
+        align-items: start;
+      }
+
+      .site-name {
+        min-width: 0;
+        font-size: 16px;
+        font-weight: 700;
+        line-height: 1.2;
+        word-break: break-word;
+      }
+
+      .state-chip,
+      .api-policy-chip {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        min-height: 22px;
+        padding: 0.12rem 0.48rem;
+        border-radius: var(--radius-pill);
+        border: 1px solid var(--border-subtle-color);
+        background: var(--surface-muted);
+        color: var(--text-secondary);
+        font-size: 11px;
+        font-weight: 600;
+        white-space: nowrap;
+      }
+
+      .state-chip[data-tone="trusted"] {
+        border-color: var(--success-border);
+        background: var(--success-fill);
+        color: var(--success-text);
+      }
+
+      .state-chip[data-tone="untrusted"],
+      .api-policy-chip[data-tone="warn"] {
+        border-color: var(--warning-border);
+        background: var(--warning-fill);
+        color: var(--warning-text);
+      }
+
+      .state-chip[data-tone="unsupported"] {
+        border-color: var(--border-subtle-color);
+        background: var(--surface-muted);
+        color: var(--text-muted);
+      }
+
+      .state-chip[data-tone="pending"],
+      .api-policy-chip[data-tone="success"] {
+        border-color: var(--success-border);
+        background: var(--success-fill);
+        color: var(--success-text);
+      }
+
+      .api-policy-chip[data-tone="danger"] {
+        border-color: var(--danger-border);
+        background: var(--danger-fill);
+        color: var(--danger-text);
+      }
+
+      .site-status-line,
+      .section-copy,
+      .summary-copy,
+      .control-help,
+      .status-banner {
+        color: var(--text-muted);
+      }
+
+      .site-status-line,
+      .summary-copy,
+      .section-copy,
+      .control-help {
+        margin: 0;
+      }
+
+      .metric-strip,
+      .cookie-strip {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
+
+      .metric,
+      .cookie-metric {
+        display: grid;
+        gap: 0.15rem;
+        padding: 0.45rem 0.55rem;
+        border: 1px solid var(--border-subtle-color);
+        border-radius: var(--radius-sm);
+        background: var(--surface-raised);
+      }
+
+      .metric-value,
+      .cookie-value {
+        font-size: 14px;
+        font-weight: 700;
+        color: var(--text-primary);
+      }
+
+      .summary-strip {
+        display: grid;
+        gap: 0.2rem;
+        padding: 0.55rem 0.62rem;
+        border: 1px solid var(--border-subtle-color);
+        border-radius: var(--radius-sm);
+        background: var(--surface-raised);
+      }
+
+      .summary-strip[data-tone="trusted"],
+      .summary-strip[data-tone="pending"] {
+        border-color: var(--success-border);
+      }
+
+      .summary-strip[data-tone="untrusted"] {
+        border-color: var(--warning-border);
+      }
+
+      .summary-headline {
+        display: block;
+        color: var(--text-primary);
+        font-size: 13px;
+        font-weight: 600;
+      }
+
+      .action-stack {
+        display: grid;
+        gap: var(--space-xs);
+      }
+
+      .action-row {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
+
       .btn-primary {
-        border-color: rgba(52, 211, 153, 0.6);
-        background: linear-gradient(180deg, rgba(52, 211, 153, 0.24), rgba(16, 185, 129, 0.2));
+        border-color: var(--button-primary-border);
+        background: var(--button-primary-fill);
+        color: var(--button-primary-text);
+        font-weight: 600;
+      }
+
+      .btn-primary:hover {
+        background: var(--button-primary-fill-hover);
       }
 
       .btn-secondary {
-        background: rgba(17, 28, 48, 0.72);
+        text-align: center;
+      }
+
+      .control-list,
+      .api-policy-list {
+        display: grid;
+      }
+
+      .control-row,
+      .api-policy-row {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) auto;
+        gap: var(--space-sm);
+        align-items: center;
+        padding: 0.55rem 0;
+        border-top: 1px solid var(--divider);
+      }
+
+      .control-row:first-child,
+      .api-policy-row:first-child {
+        border-top: 0;
+        padding-top: 0;
+      }
+
+      .control-row:last-child,
+      .api-policy-row:last-child {
+        padding-bottom: 0;
+      }
+
+      .control-main,
+      .api-policy-main {
+        min-width: 0;
+      }
+
+      .control-label,
+      .api-policy-name {
+        display: block;
+        color: var(--text-primary);
+        font-weight: 600;
+      }
+
+      .control-help,
+      .api-policy-copy {
+        display: block;
+        margin-top: 0.12rem;
+        font-size: 12px;
+      }
+
+      .select-wrap {
+        width: 118px;
+      }
+
+      select {
+        padding: 0.38rem 1.7rem 0.38rem 0.58rem;
+        background: var(--surface-panel);
       }
 
       .toggle {
@@ -223,12 +513,12 @@
         -webkit-appearance: none;
         width: 42px;
         height: 24px;
+        margin: 0;
         border-radius: 999px;
-        border: 1px solid var(--color-border);
-        background: #334155;
+        border: 1px solid var(--border-subtle-color);
+        background: var(--surface-raised);
         position: relative;
         cursor: pointer;
-        flex: 0 0 auto;
       }
 
       .toggle::after {
@@ -239,173 +529,173 @@
         width: 18px;
         height: 18px;
         border-radius: 50%;
-        background: #f8fafc;
+        background: var(--text-secondary);
         transition: transform 120ms ease;
       }
 
       .toggle:checked {
-        background: var(--color-accent);
-        border-color: var(--color-accent);
+        border-color: var(--accent-border);
+        background: var(--accent);
       }
 
       .toggle:checked::after {
         transform: translateX(18px);
+        background: var(--accent-contrast);
       }
 
       .status-banner {
-        padding: 0.65rem 0.75rem;
+        padding: 0.58rem 0.68rem;
+        border: 1px solid var(--border-subtle-color);
         border-radius: var(--radius-sm);
-        border: 1px solid var(--color-border);
-        background: rgba(17, 28, 48, 0.9);
-        color: var(--color-muted);
-        min-height: 44px;
+        background: var(--surface-shell);
+        min-height: 40px;
       }
 
       .status-banner[data-tone="success"] {
-        border-color: rgba(52, 211, 153, 0.45);
-        background: var(--color-accent-soft);
-        color: #d1fae5;
+        border-color: var(--success-border);
+        background: var(--success-fill);
+        color: var(--success-text);
       }
 
       .status-banner[data-tone="warn"] {
-        border-color: rgba(245, 158, 11, 0.45);
-        background: rgba(245, 158, 11, 0.13);
-        color: #fde68a;
+        border-color: var(--warning-border);
+        background: var(--warning-fill);
+        color: var(--warning-text);
       }
     </style>
   </head>
   <body>
-    <div class="shell">
-      <section class="card hero">
-        <div>
-          <p class="eyebrow">Extension Controls</p>
-          <h1>Visual Privacy Toolkit</h1>
-        </div>
-        <p class="subtitle">Capture, trust, and protection controls for the current tab.</p>
-        <div class="hero-grid">
-          <div class="stat">
-            <span class="stat-label">Blocked first-party</span>
-            <span id="first" class="stat-value">0</span>
+    <div class="popup-shell">
+      <div class="console-shell">
+        <section class="console-section is-primary">
+          <div class="console-head">
+            <p class="console-eyebrow">Current Site Console</p>
+            <div class="site-head">
+              <div class="site-title-row">
+                <div id="currentSiteTrustSite" class="site-name">Checking current site...</div>
+                <span id="currentSiteTrustChip" class="state-chip" data-tone="unsupported">Checking</span>
+              </div>
+              <p id="currentSiteTrustStatus" class="site-status-line">Reading trust state for the active tab.</p>
+              <div class="metric-strip">
+                <div class="metric">
+                  <span class="metric-label">Blocked first-party</span>
+                  <span id="first" class="metric-value">0</span>
+                </div>
+                <div class="metric">
+                  <span class="metric-label">Blocked third-party</span>
+                  <span id="third" class="metric-value">0</span>
+                </div>
+              </div>
+            </div>
           </div>
-          <div class="stat">
-            <span class="stat-label">Blocked third-party</span>
-            <span id="third" class="stat-value">0</span>
-          </div>
-        </div>
-      </section>
 
-      <section class="card section">
-        <div class="section-header">
-          <span class="section-kicker">Capture</span>
-          <p class="section-copy">Capture controls affect recording only. Protection and trust rules keep running.</p>
-        </div>
-        <div class="field-row">
-          <div class="field-main">
-            <label class="field-label" for="captureEnabled">Record extension events</label>
-            <span class="field-help">When off, VPT stops sending new extension evidence to the Control Centre.</span>
+          <div id="currentSiteTrustSummary" class="summary-strip" data-tone="muted">
+            <span class="summary-label">Trust State</span>
+            <strong id="currentSiteTrustHeadline" class="summary-headline">Checking trust state</strong>
+            <p id="currentSiteTrustCopy" class="summary-copy">Trust affects navigation prompts and Browser API surfaces set to allow on trusted sites.</p>
           </div>
-          <input id="captureEnabled" class="toggle" type="checkbox" />
-        </div>
-      </section>
 
-      <section class="card section">
-        <div class="section-header">
-          <span class="section-kicker">Current Site</span>
-          <div id="currentSiteTrustSite" class="site-name">Checking current site...</div>
-          <p id="currentSiteTrustStatus" class="section-copy">Reading trust state for the active tab.</p>
-        </div>
-        <div id="currentSiteTrustSummary" class="site-status">
-          <strong id="currentSiteTrustHeadline">Checking trust state</strong>
-          <p id="currentSiteTrustCopy" class="support">Trust affects the navigation shortcut and any Browser API surfaces set to Allow on trusted sites.</p>
-        </div>
-        <div class="actions">
-          <button id="currentSiteTrustBtn" class="btn-primary">Trust current site</button>
-          <div class="split-actions">
-            <button id="openSiteInsightsBtn" class="btn-secondary">Open Site Insights</button>
-            <button id="openTrustedSitesBtn" class="btn-secondary">Trusted Sites</button>
+          <div class="action-stack">
+            <button id="currentSiteTrustBtn" class="btn-primary">Trust site</button>
+            <div class="action-row">
+              <button id="openSiteInsightsBtn" class="btn-secondary">Site Insights</button>
+              <button id="openTrustedSitesBtn" class="btn-secondary">Trusted Sites</button>
+            </div>
           </div>
-        </div>
-      </section>
+        </section>
 
-      <section class="card section">
-        <div class="section-header">
-          <span class="section-kicker">Protection</span>
-          <p class="section-copy">Blocking mode and trusted-site prompt behavior stay separate from capture.</p>
-        </div>
-        <div class="field-row">
-          <div class="field-main">
-            <label class="field-label" for="mode">Tracking protection mode</label>
-            <span class="field-help">Strict blocks the broadest current rules. Low keeps the blocker passive.</span>
+        <section class="console-section">
+          <div class="section-head">
+            <span class="section-kicker">Protection</span>
+            <p class="section-copy">Live capture and protection controls for this browser.</p>
           </div>
-          <div style="width: 124px;">
-            <select id="mode">
-              <option value="strict">Strict</option>
-              <option value="moderate">Moderate</option>
-              <option value="low">Low</option>
-            </select>
+          <div class="control-list">
+            <div class="control-row">
+              <div class="control-main">
+                <label class="control-label" for="mode">Tracking protection mode</label>
+                <span class="control-help">Strict blocks the broadest current rules. Low stays passive.</span>
+              </div>
+              <div class="select-wrap">
+                <select id="mode">
+                  <option value="strict">Strict</option>
+                  <option value="moderate">Moderate</option>
+                  <option value="low">Low</option>
+                </select>
+              </div>
+            </div>
+            <div class="control-row">
+              <div class="control-main">
+                <label class="control-label" for="captureEnabled">Record extension events</label>
+                <span class="control-help">Pauses new evidence only. Protection and trust rules keep running.</span>
+              </div>
+              <input id="captureEnabled" class="toggle" type="checkbox" />
+            </div>
+            <div class="control-row">
+              <div class="control-main">
+                <label class="control-label" for="promptOnNewSites">Show first-visit trust prompt</label>
+                <span class="control-help">Controls whether the interstitial appears on new sites.</span>
+              </div>
+              <input id="promptOnNewSites" class="toggle" type="checkbox" />
+            </div>
+            <div class="control-row">
+              <div class="control-main">
+                <label class="control-label" for="trustedSitesEnabled">Use trusted-site allow rules</label>
+                <span class="control-help">Saved trusted sites stay stored even when their allow rules are paused.</span>
+              </div>
+              <input id="trustedSitesEnabled" class="toggle" type="checkbox" />
+            </div>
           </div>
-        </div>
-        <div class="field-row">
-          <div class="field-main">
-            <span class="field-label">Show first-visit trust prompt</span>
-            <span class="field-help">Controls whether the interstitial appears on new sites.</span>
-          </div>
-          <input id="promptOnNewSites" class="toggle" type="checkbox" />
-        </div>
-        <div class="field-row">
-          <div class="field-main">
-            <span class="field-label">Use trusted-site allow rules</span>
-            <span class="field-help">When off, trusted sites stay saved but do not bypass tracking or Allow on trusted sites policies.</span>
-          </div>
-          <input id="trustedSitesEnabled" class="toggle" type="checkbox" />
-        </div>
-      </section>
+        </section>
 
-      <section class="card section">
-        <div class="section-header">
-          <span class="section-kicker">Browser API Policy</span>
-          <p class="section-copy">Per-surface Browser API controls live in the Control Centre. The popup shows the current live actions only.</p>
-        </div>
-        <div class="field-row">
-          <div class="field-main">
-            <span class="field-label">Show Browser API detection notifications</span>
-            <span class="field-help">Shows a small local notification when Canvas, Clipboard, Geolocation, or WebRTC activity is detected.</span>
+        <section class="console-section">
+          <div class="section-head">
+            <span class="section-kicker">Browser API</span>
+            <p class="section-copy">Compact live policy view for Browser API surfaces on this browser.</p>
           </div>
-          <input id="apiNotificationsEnabled" class="toggle" type="checkbox" />
-        </div>
-        <div id="apiPolicyGrid" class="api-policy-grid">
-          <div class="api-policy-item">
-            <span class="api-policy-label">Canvas</span>
-            <span class="api-policy-value">Observe</span>
+          <div class="control-list">
+            <div class="control-row">
+              <div class="control-main">
+                <label class="control-label" for="apiNotificationsEnabled">Detection notifications</label>
+                <span class="control-help">Local alerts for Canvas, Clipboard, Geolocation, and WebRTC detections.</span>
+              </div>
+              <input id="apiNotificationsEnabled" class="toggle" type="checkbox" />
+            </div>
           </div>
-        </div>
-        <button id="openApiControlsBtn" class="btn-secondary">Open Browser API controls</button>
-      </section>
+          <div id="apiPolicyGrid" class="api-policy-list">
+            <div class="api-policy-row">
+              <div class="api-policy-main">
+                <span class="api-policy-name">Canvas</span>
+                <span class="api-policy-copy">Loading live policy</span>
+              </div>
+              <span class="api-policy-chip">Observe</span>
+            </div>
+          </div>
+          <button id="openApiControlsBtn" class="btn-secondary">Browser API Controls</button>
+        </section>
 
-      <section class="card section">
-        <div class="section-header">
-          <span class="section-kicker">Cookie Tools</span>
-          <p class="section-copy">Use these only for the active site. Cookie contents still stay local-first.</p>
-        </div>
-        <div class="summary-grid">
-          <div class="stat">
-            <span class="stat-label">Cookies on this site</span>
-            <span id="cookieCount" class="stat-value">-</span>
+        <section class="console-section">
+          <div class="section-head">
+            <span class="section-kicker">Cookie Tools</span>
+            <p class="section-copy">Operational tools for the active site only.</p>
           </div>
-          <div class="stat">
-            <span class="stat-label">Capture state</span>
-            <span id="captureStateLabel" class="stat-value">On</span>
+          <div class="cookie-strip">
+            <div class="cookie-metric">
+              <span class="metric-label">Site cookies</span>
+              <span id="cookieCount" class="cookie-value">-</span>
+            </div>
+            <div class="cookie-metric">
+              <span class="metric-label">Capture</span>
+              <span id="captureStateLabel" class="cookie-value">On</span>
+            </div>
           </div>
-        </div>
-        <div class="split-actions">
-          <button id="cookieSnapshotBtn" class="btn-secondary">Send cookie snapshot</button>
-          <button id="clearCookiesBtn" class="btn-secondary">Clear site cookies</button>
-        </div>
-      </section>
-
+          <div class="action-row">
+            <button id="cookieSnapshotBtn" class="btn-secondary">Send snapshot</button>
+            <button id="clearCookiesBtn" class="btn-secondary">Clear cookies</button>
+          </div>
+        </section>
+      </div>
       <div id="status" class="status-banner" data-tone="">Ready.</div>
     </div>
-
     <script src="popup.js"></script>
   </body>
 </html>

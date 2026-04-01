@@ -12,6 +12,9 @@ const { getVendorVaultSummary } = require("./vendor-vault-summary");
 
 const app = express();
 const PORT = process.env.PORT || 4141;
+const UI_THEME_META_KEY = "ui_theme";
+const DEFAULT_UI_THEME = "midnight";
+const UI_THEME_IDS = new Set(["midnight", "amber", "oxblood", "daybreak"]);
 
 // Simple in-memory command queue for live controls
 let nextCommandId = 1;
@@ -32,6 +35,36 @@ app.use(express.static(path.join(__dirname, "public")));
 // ---- Helpers ----
 function makeId(prefix) {
   return `${prefix}-${Date.now()}-${Math.random().toString(16).slice(2, 8)}`;
+}
+
+function normalizeUiThemeId(themeId) {
+  const candidate = String(themeId || "").trim().toLowerCase();
+  return UI_THEME_IDS.has(candidate) ? candidate : DEFAULT_UI_THEME;
+}
+
+async function readUiTheme(dbCtx) {
+  const row = await dbCtx.get(
+    `
+      SELECT value
+      FROM meta
+      WHERE key = ?
+    `,
+    [UI_THEME_META_KEY]
+  );
+  return normalizeUiThemeId(row?.value);
+}
+
+async function writeUiTheme(dbCtx, themeId) {
+  const nextTheme = normalizeUiThemeId(themeId);
+  await dbCtx.run(
+    `
+      INSERT INTO meta (key, value)
+      VALUES (?, ?)
+      ON CONFLICT(key) DO UPDATE SET value = excluded.value
+    `,
+    [UI_THEME_META_KEY, nextTheme]
+  );
+  return nextTheme;
 }
 
 function isLegacyApiSurfaceConstraintError(err) {
@@ -1036,6 +1069,30 @@ app.get("/api/vendor-vault-summary", async (req, res) => {
     }
     console.error("Failed to build /api/vendor-vault-summary:", err);
     res.status(500).json({ ok: false, error: "vendor_vault_summary_query_failed" });
+  }
+});
+
+app.get("/api/ui/theme", async (req, res) => {
+  try {
+    const dbCtx = app.locals.db;
+    if (!dbCtx) return res.status(500).json({ ok: false, error: "db_not_ready" });
+    const themeId = await readUiTheme(dbCtx);
+    res.json({ ok: true, themeId });
+  } catch (err) {
+    console.error("Failed to read /api/ui/theme:", err);
+    res.status(500).json({ ok: false, error: "ui_theme_read_failed" });
+  }
+});
+
+app.post("/api/ui/theme", async (req, res) => {
+  try {
+    const dbCtx = app.locals.db;
+    if (!dbCtx) return res.status(500).json({ ok: false, error: "db_not_ready" });
+    const themeId = await writeUiTheme(dbCtx, req.body?.themeId);
+    res.json({ ok: true, themeId });
+  } catch (err) {
+    console.error("Failed to persist /api/ui/theme:", err);
+    res.status(500).json({ ok: false, error: "ui_theme_write_failed" });
   }
 });
 
