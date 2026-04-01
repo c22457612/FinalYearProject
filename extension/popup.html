@@ -57,6 +57,8 @@
         --border-subtle-color: #252c35;
         --border-strong: #4b586b;
         --divider: rgba(120, 130, 144, 0.2);
+        --divider-strong: rgba(120, 130, 144, 0.28);
+        --divider-row: rgba(120, 130, 144, 0.22);
         --text-primary: #e8edf4;
         --text-secondary: #d0d8e3;
         --text-muted: #9ea9b8;
@@ -100,6 +102,8 @@
         --border-subtle-color: #272c31;
         --border-strong: #59616b;
         --divider: rgba(123, 130, 139, 0.2);
+        --divider-strong: rgba(123, 130, 139, 0.28);
+        --divider-row: rgba(123, 130, 139, 0.22);
         --text-primary: #f4efe8;
         --text-secondary: #e4ddd2;
         --text-muted: #b9b0a3;
@@ -124,6 +128,8 @@
         --border-subtle-color: #262a2f;
         --border-strong: #59616a;
         --divider: rgba(123, 130, 139, 0.2);
+        --divider-strong: rgba(123, 130, 139, 0.28);
+        --divider-row: rgba(123, 130, 139, 0.22);
         --text-primary: #f4edef;
         --text-secondary: #e6dadd;
         --text-muted: #b8a9ad;
@@ -148,6 +154,8 @@
         --border-subtle-color: #a9b9ca;
         --border-strong: #607791;
         --divider: rgba(66, 85, 110, 0.26);
+        --divider-strong: rgba(66, 85, 110, 0.34);
+        --divider-row: rgba(66, 85, 110, 0.28);
         --text-primary: #05080d;
         --text-secondary: #132131;
         --text-muted: #27394d;
@@ -184,15 +192,15 @@
       html,
       body {
         margin: 0;
-        min-width: 332px;
-        max-width: 332px;
+        min-width: 356px;
+        max-width: 356px;
         background: var(--surface-page);
         color: var(--text-primary);
         font: 13px/1.4 var(--font-ui);
       }
 
       body {
-        padding: var(--space-sm);
+        padding: 0.42rem;
       }
 
       button,
@@ -238,21 +246,21 @@
 
       .popup-shell {
         display: grid;
-        gap: var(--space-sm);
+        gap: 0.32rem;
       }
 
       .console-shell {
         border: 1px solid var(--border-subtle-color);
-        border-radius: var(--radius-md);
+        border-radius: 0.52rem;
         background: var(--surface-shell);
         overflow: hidden;
       }
 
       .console-section {
         display: grid;
-        gap: var(--space-sm);
+        gap: 0.56rem;
         padding: var(--space-md);
-        border-top: 1px solid var(--divider);
+        border-top: 1px solid var(--divider-strong);
       }
 
       .console-section:first-child {
@@ -279,7 +287,7 @@
       .console-head,
       .section-head {
         display: grid;
-        gap: var(--space-xs);
+        gap: 0.22rem;
       }
 
       .console-eyebrow,
@@ -465,8 +473,8 @@
         grid-template-columns: minmax(0, 1fr) auto;
         gap: var(--space-sm);
         align-items: center;
-        padding: 0.55rem 0;
-        border-top: 1px solid var(--divider);
+        padding: 0.62rem 0;
+        border-top: 1px solid var(--divider-row);
       }
 
       .control-row:first-child,
@@ -496,29 +504,77 @@
       .api-policy-copy {
         display: block;
         margin-top: 0.12rem;
-        font-size: 12px;
+        font-size: 11px;
       }
 
       .select-wrap {
-        width: 118px;
+        position: relative;
+        width: 132px;
+        min-width: 132px;
+      }
+
+      .select-wrap::after {
+        content: "";
+        position: absolute;
+        top: 50%;
+        right: 0.7rem;
+        width: 0.42rem;
+        height: 0.42rem;
+        border-right: 1.5px solid var(--accent-strong);
+        border-bottom: 1.5px solid var(--accent-strong);
+        transform: translateY(-62%) rotate(45deg);
+        pointer-events: none;
       }
 
       select {
-        padding: 0.38rem 1.7rem 0.38rem 0.58rem;
+        appearance: none;
+        -webkit-appearance: none;
+        padding: 0.42rem 1.9rem 0.42rem 0.68rem;
+        border-color: var(--accent-border);
+        background: var(--accent-soft-fill);
+        color: var(--text-primary);
+        font-weight: 600;
+        letter-spacing: 0.01em;
+      }
+
+      select:hover {
+        background: var(--accent-soft-fill-strong);
+      }
+
+      select:focus-visible {
+        border-color: var(--accent-border);
+        background: var(--accent-soft-fill-strong);
+      }
+
+      select option {
         background: var(--surface-panel);
+        color: var(--text-primary);
+      }
+
+      select option:checked,
+      select option:hover,
+      select option:focus {
+        background: var(--accent-soft-fill-strong);
+        color: var(--text-primary);
       }
 
       .toggle {
         appearance: none;
         -webkit-appearance: none;
-        width: 42px;
+        width: 44px;
         height: 24px;
         margin: 0;
         border-radius: 999px;
         border: 1px solid var(--border-subtle-color);
-        background: var(--surface-raised);
+        background: var(--surface-panel);
         position: relative;
         cursor: pointer;
+        transition: background-color 120ms ease, border-color 120ms ease, box-shadow 120ms ease;
+      }
+
+      .toggle:hover {
+        border-color: var(--accent-border);
+        background: var(--surface-hover);
       }
 
       .toggle::after {
@@ -533,6 +589,11 @@
         transition: transform 120ms ease;
       }
 
+      .toggle:focus-visible {
+        border-color: var(--accent-border);
+        box-shadow: 0 0 0 3px var(--focus-ring);
+      }
+
       .toggle:checked {
         border-color: var(--accent-border);
         background: var(--accent);
@@ -543,11 +604,18 @@
         background: var(--accent-contrast);
       }
 
+      .api-policy-chip {
+        border-color: var(--accent-border);
+        background: var(--accent-soft-fill);
+        color: var(--accent-strong);
+        font-weight: 700;
+      }
+
       .status-banner {
         padding: 0.58rem 0.68rem;
         border: 1px solid var(--border-subtle-color);
-        border-radius: var(--radius-sm);
-        background: var(--surface-shell);
+        border-radius: 0.34rem;
+        background: var(--surface-panel);
         min-height: 40px;
       }
 
@@ -607,13 +675,13 @@
         <section class="console-section">
           <div class="section-head">
             <span class="section-kicker">Protection</span>
-            <p class="section-copy">Live capture and protection controls for this browser.</p>
+            <p class="section-copy">Live browser controls.</p>
           </div>
           <div class="control-list">
             <div class="control-row">
               <div class="control-main">
                 <label class="control-label" for="mode">Tracking protection mode</label>
-                <span class="control-help">Strict blocks the broadest current rules. Low stays passive.</span>
+                <span class="control-help">Strict blocks most current rules. Low stays passive.</span>
               </div>
               <div class="select-wrap">
                 <select id="mode">
@@ -626,21 +694,21 @@
             <div class="control-row">
               <div class="control-main">
                 <label class="control-label" for="captureEnabled">Record extension events</label>
-                <span class="control-help">Pauses new evidence only. Protection and trust rules keep running.</span>
+                <span class="control-help">Records new evidence only.</span>
               </div>
               <input id="captureEnabled" class="toggle" type="checkbox" />
             </div>
             <div class="control-row">
               <div class="control-main">
                 <label class="control-label" for="promptOnNewSites">Show first-visit trust prompt</label>
-                <span class="control-help">Controls whether the interstitial appears on new sites.</span>
+                <span class="control-help">Shows the interstitial on new sites.</span>
               </div>
               <input id="promptOnNewSites" class="toggle" type="checkbox" />
             </div>
             <div class="control-row">
               <div class="control-main">
                 <label class="control-label" for="trustedSitesEnabled">Use trusted-site allow rules</label>
-                <span class="control-help">Saved trusted sites stay stored even when their allow rules are paused.</span>
+                <span class="control-help">Saved sites stay stored when rules are paused.</span>
               </div>
               <input id="trustedSitesEnabled" class="toggle" type="checkbox" />
             </div>
@@ -650,13 +718,13 @@
         <section class="console-section">
           <div class="section-head">
             <span class="section-kicker">Browser API</span>
-            <p class="section-copy">Compact live policy view for Browser API surfaces on this browser.</p>
+            <p class="section-copy">Current browser API policy state.</p>
           </div>
           <div class="control-list">
             <div class="control-row">
               <div class="control-main">
                 <label class="control-label" for="apiNotificationsEnabled">Detection notifications</label>
-                <span class="control-help">Local alerts for Canvas, Clipboard, Geolocation, and WebRTC detections.</span>
+                <span class="control-help">Local alerts for Browser API detections.</span>
               </div>
               <input id="apiNotificationsEnabled" class="toggle" type="checkbox" />
             </div>
@@ -665,9 +733,9 @@
             <div class="api-policy-row">
               <div class="api-policy-main">
                 <span class="api-policy-name">Canvas</span>
-                <span class="api-policy-copy">Loading live policy</span>
+                <span class="api-policy-copy">Current policy</span>
               </div>
-              <span class="api-policy-chip">Observe</span>
+              <span class="api-policy-chip">Mode: Observe</span>
             </div>
           </div>
           <button id="openApiControlsBtn" class="btn-secondary">Browser API Controls</button>
@@ -676,7 +744,7 @@
         <section class="console-section">
           <div class="section-head">
             <span class="section-kicker">Cookie Tools</span>
-            <p class="section-copy">Operational tools for the active site only.</p>
+            <p class="section-copy">Active-site tools only.</p>
           </div>
           <div class="cookie-strip">
             <div class="cookie-metric">

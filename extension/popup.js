@@ -102,6 +102,10 @@ function getPolicyActionLabel(value) {
   return API_POLICY_ACTION_LABELS[String(value || "").trim()] || "Observe";
 }
 
+function getPolicyModeLabel(value) {
+  return `Mode: ${getPolicyActionLabel(value)}`;
+}
+
 function getPolicyTone(value) {
   const action = String(value || "").trim();
   if (action === "block") return "danger";
@@ -118,9 +122,9 @@ function renderApiPolicySummary(policy = {}) {
       <div class="api-policy-row">
         <div class="api-policy-main">
           <span class="api-policy-name">${label}</span>
-          <span class="api-policy-copy">Live Browser API action</span>
+          <span class="api-policy-copy">Current policy</span>
         </div>
-        <span class="api-policy-chip" data-tone="${getPolicyTone(action)}">${getPolicyActionLabel(action)}</span>
+        <span class="api-policy-chip" data-tone="${getPolicyTone(action)}">${getPolicyModeLabel(action)}</span>
       </div>
     `;
   }).join("");
@@ -175,14 +179,14 @@ function setCurrentSiteTrustUi(state = {}) {
   }
 
   if (!supported || !site) {
-    currentSiteTrustSite.textContent = "No supported website";
-    currentSiteTrustStatus.textContent = "Current-site actions are available only on normal http or https pages.";
+    currentSiteTrustSite.textContent = "Unsupported tab context";
+    currentSiteTrustStatus.textContent = "Current-site controls work only on normal http or https pages.";
     setTrustPresentation(
       "Unsupported",
       "unsupported",
-      "Trust unavailable here",
-      "Open a normal website tab to trust it or jump into Site Insights.",
-      "Trust site"
+      "Current-site controls unavailable",
+      "Browser pages, extension pages, and similar tabs do not expose a normal site context. Open a website tab to use current-site controls.",
+      "Unavailable on this tab"
     );
     currentSiteTrustBtn.disabled = true;
     if (openSiteInsightsBtn) openSiteInsightsBtn.disabled = true;
