@@ -89,6 +89,14 @@
         --button-secondary-border: rgba(106, 117, 133, 0.44);
         --button-secondary-text: var(--text-primary);
         --focus-ring: rgba(164, 201, 255, 0.24);
+        --toggle-track-off: var(--surface-panel);
+        --toggle-track-off-hover: var(--surface-hover);
+        --toggle-border-off: var(--border-subtle-color);
+        --toggle-thumb-off: var(--text-secondary);
+        --toggle-track-on: var(--accent);
+        --toggle-track-on-hover: var(--accent);
+        --toggle-border-on: var(--accent-border);
+        --toggle-thumb-on: var(--accent-contrast);
       }
 
       :root[data-theme="amber"] {
@@ -183,6 +191,14 @@
         --button-secondary-fill-hover: rgba(31, 95, 169, 0.07);
         --button-secondary-border: rgba(117, 137, 160, 0.46);
         --focus-ring: rgba(31, 95, 169, 0.18);
+        --toggle-track-off: #f8fbfe;
+        --toggle-track-off-hover: #f1f6fb;
+        --toggle-border-off: rgba(96, 119, 145, 0.52);
+        --toggle-thumb-off: #4f6883;
+        --toggle-track-on: rgba(31, 95, 169, 0.16);
+        --toggle-track-on-hover: rgba(31, 95, 169, 0.22);
+        --toggle-border-on: rgba(31, 95, 169, 0.7);
+        --toggle-thumb-on: #1f5fa9;
       }
 
       * {
@@ -282,6 +298,10 @@
         width: 2px;
         border-radius: 999px;
         background: var(--accent-rail);
+      }
+
+      .console-section.is-primary[data-state="unsupported"]::before {
+        background: var(--divider-row);
       }
 
       .console-head,
@@ -431,6 +451,11 @@
         border-color: var(--warning-border);
       }
 
+      .console-section.is-primary[data-state="unsupported"] .summary-strip {
+        border-color: var(--divider-row);
+        background: var(--surface-shell);
+      }
+
       .summary-headline {
         display: block;
         color: var(--text-primary);
@@ -456,6 +481,13 @@
 
       .btn-primary:hover {
         background: var(--button-primary-fill-hover);
+      }
+
+      .console-section.is-primary[data-state="unsupported"] .btn-primary:disabled {
+        border-color: var(--divider-row);
+        background: transparent;
+        color: var(--text-muted);
+        opacity: 1;
       }
 
       .btn-secondary {
@@ -505,6 +537,21 @@
         display: block;
         margin-top: 0.12rem;
         font-size: 11px;
+      }
+
+      .api-section .control-row,
+      .api-section .api-policy-row {
+        padding: 0.48rem 0;
+      }
+
+      .api-section .api-policy-chip {
+        min-height: 20px;
+        padding: 0.08rem 0.42rem;
+        font-size: 10px;
+      }
+
+      .api-section .api-policy-copy {
+        margin-top: 0.08rem;
       }
 
       .select-wrap {
@@ -565,8 +612,8 @@
         height: 24px;
         margin: 0;
         border-radius: 999px;
-        border: 1px solid var(--border-subtle-color);
-        background: var(--surface-panel);
+        border: 1px solid var(--toggle-border-off);
+        background: var(--toggle-track-off);
         position: relative;
         cursor: pointer;
         transition: background-color 120ms ease, border-color 120ms ease, box-shadow 120ms ease;
@@ -574,7 +621,7 @@
 
       .toggle:hover {
         border-color: var(--accent-border);
-        background: var(--surface-hover);
+        background: var(--toggle-track-off-hover);
       }
 
       .toggle::after {
@@ -585,8 +632,8 @@
         width: 18px;
         height: 18px;
         border-radius: 50%;
-        background: var(--text-secondary);
-        transition: transform 120ms ease;
+        background: var(--toggle-thumb-off);
+        transition: transform 120ms ease, background-color 120ms ease;
       }
 
       .toggle:focus-visible {
@@ -595,13 +642,17 @@
       }
 
       .toggle:checked {
-        border-color: var(--accent-border);
-        background: var(--accent);
+        border-color: var(--toggle-border-on);
+        background: var(--toggle-track-on);
+      }
+
+      .toggle:checked:hover {
+        background: var(--toggle-track-on-hover);
       }
 
       .toggle:checked::after {
         transform: translateX(18px);
-        background: var(--accent-contrast);
+        background: var(--toggle-thumb-on);
       }
 
       .api-policy-chip {
@@ -635,7 +686,7 @@
   <body>
     <div class="popup-shell">
       <div class="console-shell">
-        <section class="console-section is-primary">
+        <section id="currentSiteSection" class="console-section is-primary" data-state="loading">
           <div class="console-head">
             <p class="console-eyebrow">Current Site Console</p>
             <div class="site-head">
@@ -675,13 +726,13 @@
         <section class="console-section">
           <div class="section-head">
             <span class="section-kicker">Protection</span>
-            <p class="section-copy">Live browser controls.</p>
+            <p class="section-copy">Live controls.</p>
           </div>
           <div class="control-list">
             <div class="control-row">
               <div class="control-main">
                 <label class="control-label" for="mode">Tracking protection mode</label>
-                <span class="control-help">Strict blocks most current rules. Low stays passive.</span>
+                <span class="control-help">Strict blocks more. Low stays passive.</span>
               </div>
               <div class="select-wrap">
                 <select id="mode">
@@ -715,16 +766,16 @@
           </div>
         </section>
 
-        <section class="console-section">
+        <section class="console-section api-section">
           <div class="section-head">
             <span class="section-kicker">Browser API</span>
-            <p class="section-copy">Current browser API policy state.</p>
+            <p class="section-copy">Live API modes.</p>
           </div>
           <div class="control-list">
             <div class="control-row">
               <div class="control-main">
                 <label class="control-label" for="apiNotificationsEnabled">Detection notifications</label>
-                <span class="control-help">Local alerts for Browser API detections.</span>
+                <span class="control-help">Local Browser API alerts.</span>
               </div>
               <input id="apiNotificationsEnabled" class="toggle" type="checkbox" />
             </div>
@@ -733,7 +784,7 @@
             <div class="api-policy-row">
               <div class="api-policy-main">
                 <span class="api-policy-name">Canvas</span>
-                <span class="api-policy-copy">Current policy</span>
+                <span class="api-policy-copy">Policy</span>
               </div>
               <span class="api-policy-chip">Mode: Observe</span>
             </div>

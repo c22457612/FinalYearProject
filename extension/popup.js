@@ -11,6 +11,7 @@ const apiNotificationsEnabledChk = document.getElementById("apiNotificationsEnab
 const cookieSnapshotBtn = document.getElementById("cookieSnapshotBtn");
 const clearCookiesBtn = document.getElementById("clearCookiesBtn");
 const currentSiteTrustBtn = document.getElementById("currentSiteTrustBtn");
+const currentSiteSection = document.getElementById("currentSiteSection");
 const currentSiteTrustSite = document.getElementById("currentSiteTrustSite");
 const currentSiteTrustStatus = document.getElementById("currentSiteTrustStatus");
 const currentSiteTrustChip = document.getElementById("currentSiteTrustChip");
@@ -122,7 +123,7 @@ function renderApiPolicySummary(policy = {}) {
       <div class="api-policy-row">
         <div class="api-policy-main">
           <span class="api-policy-name">${label}</span>
-          <span class="api-policy-copy">Current policy</span>
+          <span class="api-policy-copy">Policy</span>
         </div>
         <span class="api-policy-chip" data-tone="${getPolicyTone(action)}">${getPolicyModeLabel(action)}</span>
       </div>
@@ -164,6 +165,7 @@ function setCurrentSiteTrustUi(state = {}) {
   const syncPending = !!state.syncPending;
 
   if (loading) {
+    if (currentSiteSection) currentSiteSection.dataset.state = "loading";
     currentSiteTrustSite.textContent = "Checking current site...";
     currentSiteTrustStatus.textContent = "Reading current-site trust state.";
     setTrustPresentation(
@@ -179,6 +181,7 @@ function setCurrentSiteTrustUi(state = {}) {
   }
 
   if (!supported || !site) {
+    if (currentSiteSection) currentSiteSection.dataset.state = "unsupported";
     currentSiteTrustSite.textContent = "Unsupported tab context";
     currentSiteTrustStatus.textContent = "Current-site controls work only on normal http or https pages.";
     setTrustPresentation(
@@ -194,6 +197,7 @@ function setCurrentSiteTrustUi(state = {}) {
     return;
   }
 
+  if (currentSiteSection) currentSiteSection.dataset.state = "supported";
   currentSiteTrustSite.textContent = site;
   currentSiteTrustStatus.textContent = syncPending
     ? "Saved locally. Control Centre sync is pending."
