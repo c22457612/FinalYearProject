@@ -36,6 +36,57 @@ export function createViewNavigationController(deps) {
     return views[getVizIndex()]?.id || views[0]?.id || "";
   }
 
+  function renderVizPathSelector(options = {}) {
+    const root = qs("vizPathSelector");
+    if (!root) return;
+
+    const allowed = getAllowedViews(getViewMode());
+    const currentId = getCurrentViewId();
+    const requestedFocusId = String(options.focusViewId || "");
+    let preservedFocusId = "";
+
+    if (options.preserveFocus === true && typeof root.contains === "function") {
+      const activeElement = root.ownerDocument?.activeElement;
+      if (activeElement && typeof activeElement.getAttribute === "function" && root.contains(activeElement)) {
+        preservedFocusId = String(activeElement.getAttribute("data-viz-view-id") || "");
+      }
+    }
+
+    root.innerHTML = allowed.map((view) => {
+      const active = view.id === currentId;
+      return `
+        <button
+          class="console-selector-option viz-path-selector-option${active ? " active" : ""}"
+          type="button"
+          data-viz-view-id="${view.id}"
+          data-active="${active ? "true" : "false"}"
+          aria-pressed="${active ? "true" : "false"}"
+          title="${view.title}"
+        >
+          <span class="console-selector-marker" aria-hidden="true">&gt;</span>
+          <span class="console-selector-label">${view.title}</span>
+        </button>
+      `;
+    }).join("");
+
+    if (typeof root.querySelectorAll !== "function") return;
+
+    const buttons = Array.from(root.querySelectorAll("[data-viz-view-id]"));
+    buttons.forEach((button) => {
+      const active = button.getAttribute("data-viz-view-id") === currentId;
+      button.tabIndex = active ? 0 : -1;
+    });
+
+    const focusId = requestedFocusId || preservedFocusId;
+    if (!focusId) return;
+
+    const target = buttons.find((button) => button.getAttribute("data-viz-view-id") === focusId)
+      || buttons.find((button) => button.getAttribute("data-viz-view-id") === currentId);
+    if (target && typeof target.focus === "function") {
+      target.focus({ preventScroll: true });
+    }
+  }
+
   function applyViewFilterPolicy() {
     const viewId = getCurrentViewId();
     const privacyAllOnly = privacyFilterAllOnlyViewIds.has(viewId);
@@ -110,11 +161,12 @@ export function createViewNavigationController(deps) {
         : "Select a chart datapoint to open technical details.";
   }
 
-  function syncVizSelectByMode() {
+  function syncVizSelectByMode(options = {}) {
     const select = qs("vizSelect");
     if (!select) {
       updateVizPositionLabel();
       updateViewAvailabilityHint();
+      renderVizPathSelector(options);
       return;
     }
 
@@ -142,6 +194,7 @@ export function createViewNavigationController(deps) {
 
     updateVizPositionLabel();
     updateViewAvailabilityHint();
+    renderVizPathSelector(options);
   }
 
   function syncAdvancedControlsByMode() {
@@ -150,7 +203,7 @@ export function createViewNavigationController(deps) {
     panel.open = false;
   }
 
-  function setViewMode(mode, { rerender = true } = {}) {
+  function setViewMode(mode, { rerender = true, focusViewId = "" } = {}) {
     setViewModeState(mode === "power" ? "power" : "easy");
     const viewMode = getViewMode();
     const body = typeof getDocumentBody === "function" ? getDocumentBody() : null;
@@ -164,7 +217,7 @@ export function createViewNavigationController(deps) {
     }
 
     syncAdvancedControlsByMode();
-    syncVizSelectByMode();
+    syncVizSelectByMode({ focusViewId, preserveFocus: !!focusViewId });
     updateDrawerButtonState();
     const policyChanged = applyViewFilterPolicy();
     if (policyChanged) {
@@ -180,7 +233,7 @@ export function createViewNavigationController(deps) {
     }
   }
 
-  function switchViz(newIndex) {
+  function switchViz(newIndex, options = {}) {
     const allowed = getAllowedViews(getViewMode());
     if (!allowed.length) return;
     const currentId = views[getVizIndex()]?.id;
@@ -190,7 +243,7 @@ export function createViewNavigationController(deps) {
     const absoluteIdx = views.findIndex((view) => view.id === chosen.id);
     setVizIndex(absoluteIdx >= 0 ? absoluteIdx : 0);
     if (qs("vizSelect")) qs("vizSelect").value = views[getVizIndex()].id;
-    updateVizPositionLabel();
+    syncVizSelectByMode({ focusViewId: options.focusViewId || "", preserveFocus: options.preserveFocus === true });
     const policyChanged = applyViewFilterPolicy();
     if (policyChanged) {
       deriveFilteredEvents();
@@ -201,6 +254,15 @@ export function createViewNavigationController(deps) {
     renderECharts();
     renderRecentEventsFromEvents(getChartEvents(), "No events match current filters.");
     updateFilterSummary();
+  }
+
+  function switchVizById(viewId, options = {}) {
+    const nextViewId = String(viewId || "");
+    if (!nextViewId) return;
+    const allowed = getAllowedViews(getViewMode());
+    const nextAllowedIdx = allowed.findIndex((view) => view.id === nextViewId);
+    if (nextAllowedIdx < 0) return;
+    switchViz(nextAllowedIdx, options);
   }
 
   return {
@@ -214,5 +276,6 @@ export function createViewNavigationController(deps) {
     syncVizSelectByMode,
     setViewMode,
     switchViz,
+    switchVizById,
   };
 }

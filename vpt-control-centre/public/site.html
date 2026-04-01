@@ -80,7 +80,11 @@
             <button id="vizPrevBtn" class="viz-nav" type="button" title="Previous">&larr;</button>
             <button id="vizNextBtn" class="viz-nav" type="button" title="Next">&rarr;</button>
           </div>
-          <div class="viz-mode-group">
+          <div class="viz-path-selector-block">
+            <div class="viz-label">Chart path</div>
+            <div id="vizPathSelector" class="console-selector console-selector-inline viz-path-selector" role="toolbar" aria-label="Chart path selector"></div>
+          </div>
+          <div class="viz-mode-group hidden" aria-hidden="true">
             <label class="viz-label" for="vizSelect">Chart</label>
             <select id="vizSelect" class="viz-select">
               <option value="vendorOverview">Vendor activity overview</option>

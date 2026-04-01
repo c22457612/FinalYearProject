@@ -178,7 +178,7 @@
 
 .viz-bottom-nav {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   gap: 0.5rem;
   padding: 0.14rem 0 0;
   flex-wrap: wrap;
@@ -194,6 +194,30 @@
   display: inline-flex;
   align-items: center;
   gap: 0.4rem;
+}
+
+.viz-path-selector-block {
+  min-width: min(100%, 30rem);
+  flex: 1 1 24rem;
+  display: grid;
+  gap: 0.24rem;
+}
+
+.viz-path-selector {
+  width: 100%;
+  max-width: 100%;
+  scrollbar-width: thin;
+}
+
+.viz-path-selector .console-selector-option {
+  flex: 0 0 auto;
+  min-width: max-content;
+  padding-right: 0.9rem;
+}
+
+.viz-path-selector .console-selector-label {
+  white-space: nowrap;
+  font-size: 0.8rem;
 }
 
 .viz-position-label {
@@ -243,6 +267,11 @@
 @media (max-width: 1024px) {
   .viz-bottom-nav {
     padding-top: 0.5rem;
+  }
+
+  .viz-path-selector-block {
+    flex-basis: 100%;
+    min-width: 0;
   }
 
   .viz-position-label {

@@ -1035,6 +1035,187 @@ test("view navigation keeps advanced controls closed when entering power mode", 
   assert.equal(controls.advancedControlsPanel.open, false);
 });
 
+test("view navigation renders chart selector rail for allowed views only", () => {
+  const { createViewNavigationController } = loadRuntimeModuleExport(
+    "public/app/site/runtime/view-navigation-controller.js",
+    ["createViewNavigationController"]
+  );
+
+  const controls = {
+    viewModeSelect: { value: "easy" },
+    vizSelect: {
+      value: "timeline",
+      options: [
+        { value: "timeline", textContent: "Timeline", dataset: {} },
+        { value: "riskTrend", textContent: "Risk trend", dataset: {} },
+      ],
+    },
+    vizPositionLabel: { textContent: "" },
+    vizModeHelp: { textContent: "" },
+    vizPathSelector: { innerHTML: "" },
+    advancedControlsPanel: { open: false },
+    vizOpenDrawerBtn: { disabled: false, textContent: "", title: "" },
+    privacyStatusFilter: { disabled: false, title: "" },
+  };
+
+  let viewMode = "easy";
+  let vizIndex = 0;
+  const controller = createViewNavigationController({
+    qs: (id) => controls[id] || null,
+    getDocumentBody: () => ({ classList: { toggle: () => {} } }),
+    views: [
+      { id: "timeline", title: "Timeline" },
+      { id: "riskTrend", title: "Risk trend" },
+    ],
+    easyViewIds: new Set(["timeline"]),
+    powerOnlyViewLabelSuffix: " (Power only)",
+    privacyFilterAllOnlyViewIds: new Set(),
+    getViewMode: () => viewMode,
+    setViewModeState: (next) => { viewMode = next; },
+    getVizIndex: () => vizIndex,
+    setVizIndex: (next) => { vizIndex = next; },
+    getVizSelection: () => null,
+    getFilterState: () => ({ privacyStatus: "all" }),
+    closeDrawer: () => {},
+    writeFilterStateToControls: () => {},
+    deriveFilteredEvents: () => {},
+    renderVendorChips: () => {},
+    clearVizSelection: () => {},
+    renderECharts: () => {},
+    renderRecentEventsFromEvents: () => {},
+    getChartEvents: () => [],
+    updateFilterSummary: () => {},
+  });
+
+  controller.syncVizSelectByMode();
+
+  assert.match(controls.vizPathSelector.innerHTML, /data-viz-view-id="timeline"/);
+  assert.doesNotMatch(controls.vizPathSelector.innerHTML, /data-viz-view-id="riskTrend"/);
+});
+
+test("view navigation rail follows easy-mode fallback for disallowed current view", () => {
+  const { createViewNavigationController } = loadRuntimeModuleExport(
+    "public/app/site/runtime/view-navigation-controller.js",
+    ["createViewNavigationController"]
+  );
+
+  const controls = {
+    viewModeSelect: { value: "easy" },
+    vizSelect: {
+      value: "riskTrend",
+      options: [
+        { value: "timeline", textContent: "Timeline", dataset: {} },
+        { value: "riskTrend", textContent: "Risk trend", dataset: {} },
+      ],
+    },
+    vizPositionLabel: { textContent: "" },
+    vizModeHelp: { textContent: "" },
+    vizPathSelector: { innerHTML: "" },
+    advancedControlsPanel: { open: false },
+    vizOpenDrawerBtn: { disabled: false, textContent: "", title: "" },
+    privacyStatusFilter: { disabled: false, title: "" },
+  };
+
+  let viewMode = "easy";
+  let vizIndex = 1;
+  const controller = createViewNavigationController({
+    qs: (id) => controls[id] || null,
+    getDocumentBody: () => ({ classList: { toggle: () => {} } }),
+    views: [
+      { id: "timeline", title: "Timeline" },
+      { id: "riskTrend", title: "Risk trend" },
+    ],
+    easyViewIds: new Set(["timeline"]),
+    powerOnlyViewLabelSuffix: " (Power only)",
+    privacyFilterAllOnlyViewIds: new Set(),
+    getViewMode: () => viewMode,
+    setViewModeState: (next) => { viewMode = next; },
+    getVizIndex: () => vizIndex,
+    setVizIndex: (next) => { vizIndex = next; },
+    getVizSelection: () => null,
+    getFilterState: () => ({ privacyStatus: "all" }),
+    closeDrawer: () => {},
+    writeFilterStateToControls: () => {},
+    deriveFilteredEvents: () => {},
+    renderVendorChips: () => {},
+    clearVizSelection: () => {},
+    renderECharts: () => {},
+    renderRecentEventsFromEvents: () => {},
+    getChartEvents: () => [],
+    updateFilterSummary: () => {},
+  });
+
+  controller.syncVizSelectByMode();
+
+  assert.equal(vizIndex, 0);
+  assert.equal(controls.vizSelect.value, "timeline");
+  assert.match(controls.vizPathSelector.innerHTML, /data-viz-view-id="timeline"/);
+  assert.doesNotMatch(controls.vizPathSelector.innerHTML, /data-viz-view-id="riskTrend"/);
+});
+
+test("view navigation can switch charts by view id through the selector rail path", () => {
+  const { createViewNavigationController } = loadRuntimeModuleExport(
+    "public/app/site/runtime/view-navigation-controller.js",
+    ["createViewNavigationController"]
+  );
+
+  const controls = {
+    viewModeSelect: { value: "power" },
+    vizSelect: {
+      value: "timeline",
+      options: [
+        { value: "timeline", textContent: "Timeline", dataset: {} },
+        { value: "riskTrend", textContent: "Risk trend", dataset: {} },
+      ],
+    },
+    vizPositionLabel: { textContent: "" },
+    vizModeHelp: { textContent: "" },
+    vizPathSelector: { innerHTML: "" },
+    advancedControlsPanel: { open: false },
+    vizOpenDrawerBtn: { disabled: false, textContent: "", title: "" },
+    privacyStatusFilter: { disabled: false, title: "" },
+  };
+
+  let viewMode = "power";
+  let vizIndex = 0;
+  const clearCalls = [];
+  let chartRenders = 0;
+  const controller = createViewNavigationController({
+    qs: (id) => controls[id] || null,
+    getDocumentBody: () => ({ classList: { toggle: () => {} } }),
+    views: [
+      { id: "timeline", title: "Timeline" },
+      { id: "riskTrend", title: "Risk trend" },
+    ],
+    easyViewIds: new Set(["timeline"]),
+    powerOnlyViewLabelSuffix: " (Power only)",
+    privacyFilterAllOnlyViewIds: new Set(),
+    getViewMode: () => viewMode,
+    setViewModeState: (next) => { viewMode = next; },
+    getVizIndex: () => vizIndex,
+    setVizIndex: (next) => { vizIndex = next; },
+    getVizSelection: () => null,
+    getFilterState: () => ({ privacyStatus: "all" }),
+    closeDrawer: () => {},
+    writeFilterStateToControls: () => {},
+    deriveFilteredEvents: () => {},
+    renderVendorChips: () => {},
+    clearVizSelection: (opts) => { clearCalls.push(opts); },
+    renderECharts: () => { chartRenders += 1; },
+    renderRecentEventsFromEvents: () => {},
+    getChartEvents: () => [],
+    updateFilterSummary: () => {},
+  });
+
+  controller.switchVizById("riskTrend", { focusViewId: "riskTrend" });
+
+  assert.equal(vizIndex, 1);
+  assert.equal(controls.vizSelect.value, "riskTrend");
+  assert.match(controls.vizPathSelector.innerHTML, /data-viz-view-id="riskTrend"/);
+  assert.equal(clearCalls.length, 1);
+  assert.equal(chartRenders, 1);
+});
+
 test("chart orchestration applies readable defaults in power mode for time-based views", () => {
   const calls = [];
   const { createChartOrchestrationController } = loadRuntimeModuleExportWithoutImports(

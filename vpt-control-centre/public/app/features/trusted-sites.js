@@ -176,7 +176,9 @@ function syncSubview() {
   buttons.forEach((button) => {
     const active = button.dataset.trustedSitesSubview === viewState.subview;
     button.classList.toggle("active", active);
+    button.dataset.active = active ? "true" : "false";
     button.setAttribute("aria-selected", active ? "true" : "false");
+    button.tabIndex = active ? 0 : -1;
   });
 }
 

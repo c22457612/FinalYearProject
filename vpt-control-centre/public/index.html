@@ -461,28 +461,32 @@
                   Switch between your current trusted set and recently observed candidates without scrolling through a stacked page.
                 </div>
               </div>
-              <div class="trusted-sites-subnav" role="tablist" aria-label="Trusted Sites views">
+              <div class="trusted-sites-subnav console-selector" role="tablist" aria-label="Trusted Sites views">
                 <button
                   id="trustedSitesSubviewTrusted"
-                  class="trusted-sites-subnav-btn active"
+                  class="console-selector-option active"
                   type="button"
                   data-trusted-sites-subview="trusted"
+                  data-active="true"
                   role="tab"
                   aria-selected="true"
                 >
-                  <span>Trusted now</span>
-                  <span id="trustedSitesSubviewTrustedCount" class="trusted-sites-subnav-count">0</span>
+                  <span class="console-selector-marker" aria-hidden="true">&gt;</span>
+                  <span class="console-selector-label">Trusted now</span>
+                  <span id="trustedSitesSubviewTrustedCount" class="console-selector-meta trusted-sites-subnav-count">0</span>
                 </button>
                 <button
                   id="trustedSitesSubviewObserved"
-                  class="trusted-sites-subnav-btn"
+                  class="console-selector-option"
                   type="button"
                   data-trusted-sites-subview="observed"
+                  data-active="false"
                   role="tab"
                   aria-selected="false"
                 >
-                  <span>Observed recently</span>
-                  <span id="trustedSitesSubviewObservedCount" class="trusted-sites-subnav-count">0</span>
+                  <span class="console-selector-marker" aria-hidden="true">&gt;</span>
+                  <span class="console-selector-label">Observed recently</span>
+                  <span id="trustedSitesSubviewObservedCount" class="console-selector-meta trusted-sites-subnav-count">0</span>
                 </button>
               </div>
             </div>
@@ -532,24 +536,28 @@
               Keep Browser API as one feature area: use <strong>Insights</strong> to review metadata-only detections and
               <strong>Controls</strong> to change the current Canvas, Clipboard, Geolocation, and WebRTC policy mode through the existing backend policy flow.
             </p>
-            <div class="api-signals-subnav" role="tablist" aria-label="Browser API subviews">
+            <div class="api-signals-subnav console-selector" role="tablist" aria-label="Browser API subviews">
               <button
                 id="apiSignalsSubviewInsights"
-                class="api-signals-subnav-btn active"
+                class="console-selector-option active"
                 type="button"
                 data-api-subview="insights"
+                data-active="true"
                 aria-selected="true"
               >
-                Insights
+                <span class="console-selector-marker" aria-hidden="true">&gt;</span>
+                <span class="console-selector-label">Insights</span>
               </button>
               <button
                 id="apiSignalsSubviewControls"
-                class="api-signals-subnav-btn"
+                class="console-selector-option"
                 type="button"
                 data-api-subview="controls"
+                data-active="false"
                 aria-selected="false"
               >
-                Controls
+                <span class="console-selector-marker" aria-hidden="true">&gt;</span>
+                <span class="console-selector-label">Controls</span>
               </button>
             </div>
           </div>

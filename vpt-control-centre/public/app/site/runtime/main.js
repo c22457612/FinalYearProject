@@ -452,6 +452,10 @@ function switchViz(newIndex) {
   viewNavigationController.switchViz(newIndex);
 }
 
+function switchVizById(viewId, opts = {}) {
+  viewNavigationController.switchVizById(viewId, opts);
+}
+
 function classifyVendorForEvent(ev) {
   return vendorScope.classifyVendorForEvent(ev);
 }
@@ -1754,6 +1758,54 @@ export function bootSiteInsights() {
     const allowed = getAllowedViews(viewMode);
     const idx = allowed.findIndex((v) => v.id === id);
     switchViz(idx >= 0 ? idx : 0);
+  });
+
+  const vizPathSelector = qs("vizPathSelector");
+  vizPathSelector?.addEventListener("click", (event) => {
+    const target = event.target;
+    if (!target || typeof target.closest !== "function") return;
+    const button = target.closest("[data-viz-view-id]");
+    if (!button) return;
+    switchVizById(button.getAttribute("data-viz-view-id"), { focusViewId: button.getAttribute("data-viz-view-id") || "" });
+  });
+
+  vizPathSelector?.addEventListener("keydown", (event) => {
+    if (event.altKey || event.ctrlKey || event.metaKey) return;
+    if (typeof vizPathSelector.querySelectorAll !== "function") return;
+
+    const buttons = Array.from(vizPathSelector.querySelectorAll("[data-viz-view-id]"));
+    if (!buttons.length) return;
+
+    const activeElement = document.activeElement;
+    const currentIndex = Math.max(0, buttons.findIndex((button) => button === activeElement));
+    let nextIndex = currentIndex;
+
+    if (event.key === "ArrowLeft" || event.key === "ArrowUp") {
+      event.preventDefault();
+      nextIndex = Math.max(0, currentIndex - 1);
+    } else if (event.key === "ArrowRight" || event.key === "ArrowDown") {
+      event.preventDefault();
+      nextIndex = Math.min(buttons.length - 1, currentIndex + 1);
+    } else if (event.key === "Home") {
+      event.preventDefault();
+      nextIndex = 0;
+    } else if (event.key === "End") {
+      event.preventDefault();
+      nextIndex = buttons.length - 1;
+    } else if (event.key === "Enter" || event.key === " ") {
+      event.preventDefault();
+      const currentButton = buttons[currentIndex];
+      if (!currentButton) return;
+      switchVizById(currentButton.getAttribute("data-viz-view-id"), { focusViewId: currentButton.getAttribute("data-viz-view-id") || "" });
+      return;
+    } else {
+      return;
+    }
+
+    const nextButton = buttons[nextIndex];
+    if (!nextButton) return;
+    nextButton.focus({ preventScroll: true });
+    switchVizById(nextButton.getAttribute("data-viz-view-id"), { focusViewId: nextButton.getAttribute("data-viz-view-id") || "" });
   });
 
   qs("rangeSelect")?.addEventListener("change", () => {
