@@ -122,9 +122,9 @@
   gap: 0.45rem;
   flex-wrap: wrap;
   padding: 0.38rem 0.5rem;
-  border: 1px solid rgba(148, 163, 184, 0.18);
+  border: 1px solid var(--border-subtle-color);
   border-radius: 0.64rem;
-  background: rgba(15, 23, 42, 0.24);
+  background: var(--surface-raised);
 }
 
 .viz-toolbar-group,
@@ -168,8 +168,8 @@
   flex: 1;
   min-height: 500px;
   border-radius: var(--radius-md);
-  border: var(--border-subtle);
-  background: rgba(15, 23, 42, 0.62);
+  border: 1px solid var(--border-subtle-color);
+  background: var(--surface-panel);
   padding: 0.68rem;
   display: flex;
   flex-direction: column;
@@ -200,10 +200,10 @@
   margin-left: auto;
   font-size: 0.76rem;
   color: var(--color-text-muted);
-  border: 1px solid rgba(148, 163, 184, 0.24);
+  border: 1px solid var(--chip-border);
   border-radius: 999px;
   padding: 0.2rem 0.55rem;
-  background: rgba(15, 23, 42, 0.35);
+  background: var(--surface-panel);
 }
 
 .viz-mode-help {
@@ -215,7 +215,7 @@
 .scope-context-section {
   margin-top: 0.3rem;
   padding-top: 0.48rem;
-  border-top: 1px solid rgba(148, 163, 184, 0.14);
+  border-top: 1px solid var(--divider);
   display: grid;
   gap: 0.32rem;
 }
@@ -281,8 +281,8 @@
   min-height: 1.4rem;
   padding: 0.1rem 0.4rem;
   border-radius: 999px;
-  border: 1px solid rgba(148, 163, 184, 0.14);
-  background: rgba(15, 23, 42, 0.22);
+  border: 1px solid var(--chip-border);
+  background: var(--chip-fill);
 }
 
 .site-meta-label {
@@ -372,8 +372,8 @@
   gap: 0.24rem;
   padding: 0.16rem 0.4rem;
   border-radius: 999px;
-  border: 1px solid rgba(148, 163, 184, 0.16);
-  background: rgba(15, 23, 42, 0.28);
+  border: 1px solid var(--chip-border);
+  background: var(--chip-fill);
 }
 
 .insight-lead-fact-label {
@@ -434,9 +434,9 @@
 
 .viz-advanced-panel {
   margin-top: 0;
-  border: 1px solid rgba(148, 163, 184, 0.14);
+  border: 1px solid var(--border-subtle-color);
   border-radius: 0.6rem;
-  background: rgba(15, 23, 42, 0.12);
+  background: var(--surface-panel);
   overflow: hidden;
 }
 
@@ -446,7 +446,7 @@
   font-size: 0.72rem;
   color: var(--color-text-muted);
   padding: 0.36rem 0.5rem;
-  background: rgba(15, 23, 42, 0.22);
+  background: var(--surface-raised);
 }
 
 .viz-advanced-panel > summary::-webkit-details-marker {
@@ -508,9 +508,9 @@
   display: grid;
   gap: 0.22rem;
   padding: 0.34rem 0.44rem;
-  border: 1px solid rgba(148, 163, 184, 0.14);
+  border: 1px solid var(--border-subtle-color);
   border-radius: 0.66rem;
-  background: rgba(15, 23, 42, 0.14);
+  background: var(--surface-panel);
 }
 
 .viz-scope-summary-block,
@@ -727,11 +727,13 @@
 
 .insight-confidence-high {
   border-color: var(--accent-border);
+  background: var(--accent-soft-fill);
   color: var(--accent-contrast);
 }
 
 .insight-confidence-moderate {
   border-color: var(--warning-border);
+  background: var(--warning-fill);
   color: var(--warning-text);
 }
 
@@ -744,8 +746,8 @@
   margin: 0;
   padding: 0.48rem 0.64rem;
   border-radius: 0.62rem;
-  border: 1px solid rgba(148, 163, 184, 0.24);
-  background: rgba(15, 23, 42, 0.4);
+  border: 1px solid var(--border-subtle-color);
+  background: var(--surface-panel);
   color: var(--color-text-main);
   font-size: 0.83rem;
   line-height: 1.46;
@@ -921,7 +923,7 @@
 }
 
 .insight-inline-link {
-  color: #93c5fd;
+  color: var(--accent-strong);
   text-decoration: none;
 }
 
@@ -1034,9 +1036,9 @@
 
 .insight-technical {
   margin-top: 0.08rem;
-  border: 1px solid rgba(148, 163, 184, 0.22);
+  border: 1px solid var(--border-subtle-color);
   border-radius: 0.68rem;
-  background: rgba(15, 23, 42, 0.28);
+  background: var(--surface-panel);
   overflow: hidden;
 }
 
@@ -1051,7 +1053,7 @@
   text-transform: uppercase;
   letter-spacing: 0.05em;
   padding: 0.56rem 0.72rem;
-  background: rgba(15, 23, 42, 0.36);
+  background: var(--surface-raised);
 }
 
 .insight-technical > summary::-webkit-details-marker {
@@ -1093,8 +1095,8 @@
 }
 
 .insight-technical-summary {
-  border: 1px solid rgba(148, 163, 184, 0.24);
-  background: rgba(15, 23, 42, 0.34);
+  border: 1px solid var(--border-subtle-color);
+  background: var(--surface-raised);
   color: var(--color-text-main);
   border-radius: 0.5rem;
   padding: 0.56rem 0.62rem;
@@ -1107,9 +1109,9 @@
   border-radius: 0.35rem;
   display: inline-grid;
   place-items: center;
-  border: 1px solid rgba(148, 163, 184, 0.28);
-  background: rgba(15, 23, 42, 0.42);
-  color: #e2e8f0;
+  border: 1px solid var(--border-subtle-color);
+  background: var(--surface-panel);
+  color: var(--accent-strong);
   flex: 0 0 auto;
 }
 
@@ -1152,8 +1154,8 @@
   width: 100%;
   text-align: left;
   padding: 0.5rem 0.55rem;
-  border: 1px solid rgba(148, 163, 184, 0.18);
-  background: rgba(15, 23, 42, 0.3);
+  border: 1px solid var(--border-subtle-color);
+  background: var(--surface-panel);
   color: var(--color-text-main);
   border-radius: 0.48rem;
   margin-bottom: 0.42rem;
@@ -1425,7 +1427,7 @@
 
 .vendor-vault-landing-note {
   margin: 0.05rem 0 0;
-  color: #fde68a;
+  color: var(--warning-text);
   font-size: 0.83rem;
   line-height: 1.45;
   max-width: 72ch;
@@ -1449,7 +1451,7 @@
 
 .vendor-directory {
   margin-top: 0.55rem;
-  border-top: 1px solid rgba(148, 163, 184, 0.2);
+  border-top: 1px solid var(--divider);
   padding-top: 0.65rem;
 }
 
@@ -1469,8 +1471,8 @@
 
 .vendor-directory-input,
 .vendor-directory-select {
-  background: var(--color-bg-card);
-  border: 1px solid rgba(148, 163, 184, 0.25);
+  background: var(--surface-panel);
+  border: 1px solid var(--button-secondary-border);
   color: var(--color-text-main);
   border-radius: 0.5rem;
   font-size: 0.8rem;
@@ -1494,9 +1496,9 @@
 
 .vendor-directory-card {
   text-align: left;
-  border: 1px solid rgba(148, 163, 184, 0.24);
+  border: 1px solid var(--border-subtle-color);
   border-radius: 0.58rem;
-  background: rgba(15, 23, 42, 0.35);
+  background: var(--surface-raised);
   color: var(--color-text-main);
   padding: 0.55rem 0.62rem;
   cursor: pointer;
@@ -1519,7 +1521,7 @@
 }
 
 .vendor-directory-status-error {
-  color: #fca5a5;
+  color: var(--danger-text);
 }
 
 .vendor-vault-header-strip {
@@ -1612,13 +1614,13 @@
 }
 
 .vendor-vault-export-status.is-error {
-  color: #fca5a5;
+  color: var(--danger-text);
 }
 
 .vendor-vault-score-line {
   font-size: 1.08rem;
   font-weight: 600;
-  color: #bfdbfe;
+  color: var(--accent-strong);
 }
 
 .vendor-vault-state {
@@ -1629,9 +1631,9 @@
 }
 
 .vendor-vault-sharing-summary {
-  border: 1px solid rgba(148, 163, 184, 0.2);
+  border: 1px solid var(--border-subtle-color);
   border-radius: 0.68rem;
-  background: rgba(15, 23, 42, 0.35);
+  background: var(--surface-panel);
   padding: 0.95rem 1.05rem;
   margin-bottom: 0.9rem;
   display: grid;
@@ -1737,13 +1739,13 @@
 }
 
 .vendor-vault-sharing-note {
-  color: #fde68a;
+  color: var(--warning-text);
   font-size: 0.8rem;
   line-height: 1.35;
 }
 
 .vendor-vault-sharing-actions {
-  border-top: 1px solid rgba(148, 163, 184, 0.22);
+  border-top: 1px solid var(--divider);
   padding-top: 0.62rem;
 }
 
@@ -1769,7 +1771,7 @@
 }
 
 .vendor-vault-action-link {
-  color: #93c5fd;
+  color: var(--accent-strong);
   text-decoration: none;
 }
 
@@ -1784,21 +1786,21 @@
 }
 
 .vendor-vault-inventory-box {
-  border: 1px solid rgba(148, 163, 184, 0.26);
+  border: 1px solid var(--border-subtle-color);
   border-radius: 0.72rem;
-  background: rgba(15, 23, 42, 0.35);
+  background: var(--surface-panel);
   overflow: hidden;
 }
 
 .vendor-vault-api-box {
-  border: 1px solid rgba(148, 163, 184, 0.26);
+  border: 1px solid var(--border-subtle-color);
   border-radius: 0.72rem;
-  background: rgba(15, 23, 42, 0.35);
+  background: var(--surface-panel);
   overflow: hidden;
 }
 
 .vendor-vault-api-subsection + .vendor-vault-api-subsection {
-  border-top: 1px solid rgba(148, 163, 184, 0.18);
+  border-top: 1px solid var(--divider);
 }
 
 .vendor-vault-api-subsection-head {
@@ -1808,7 +1810,7 @@
 }
 
 .vendor-vault-api-subsection-kicker {
-  color: #93c5fd;
+  color: var(--accent-strong);
   font-size: 0.76rem;
   font-weight: 700;
   letter-spacing: 0.06em;
@@ -1842,9 +1844,9 @@
 
 .vendor-vault-api-narrative {
   margin: 0 0.98rem 0.92rem;
-  border: 1px solid rgba(96, 165, 250, 0.24);
+  border: 1px solid var(--accent-border);
   border-radius: 0.68rem;
-  background: rgba(15, 23, 42, 0.32);
+  background: var(--surface-selected);
   padding: 0.78rem 0.88rem;
   display: grid;
   gap: 0.52rem;
@@ -1856,25 +1858,25 @@
   padding: 0.2rem 0.56rem;
   font-size: 0.74rem;
   font-weight: 600;
-  border: 1px solid rgba(148, 163, 184, 0.28);
+  border: 1px solid var(--chip-border);
 }
 
 .vendor-vault-api-narrative-concern-low {
-  color: #bfdbfe;
-  border-color: rgba(96, 165, 250, 0.36);
-  background: rgba(30, 64, 175, 0.22);
+  color: var(--accent-strong);
+  border-color: var(--accent-border);
+  background: var(--accent-soft-fill);
 }
 
 .vendor-vault-api-narrative-concern-moderate {
-  color: #fde68a;
-  border-color: rgba(245, 158, 11, 0.38);
-  background: rgba(120, 53, 15, 0.24);
+  color: var(--warning-text);
+  border-color: var(--warning-border);
+  background: var(--warning-fill);
 }
 
 .vendor-vault-api-narrative-concern-high {
-  color: #fca5a5;
-  border-color: rgba(248, 113, 113, 0.4);
-  background: rgba(127, 29, 29, 0.28);
+  color: var(--danger-text);
+  border-color: var(--danger-border);
+  background: var(--danger-fill);
 }
 
 .vendor-vault-api-narrative-headline,
@@ -1930,8 +1932,8 @@
 
 .vendor-vault-secondary-panels .summary-card {
   padding: 0.82rem 0.94rem;
-  border: 1px solid rgba(148, 163, 184, 0.18);
-  background: rgba(15, 23, 42, 0.26);
+  border: 1px solid var(--border-subtle-color);
+  background: var(--surface-panel);
   box-shadow: none;
 }
 
@@ -1993,7 +1995,7 @@
 }
 
 .vendor-vault-panel-error {
-  color: #fca5a5;
+  color: var(--danger-text);
   font-size: 0.88rem;
   line-height: 1.55;
 }
@@ -2009,7 +2011,7 @@
 }
 
 .vendor-vault-entry {
-  border-bottom: 1px solid rgba(148, 163, 184, 0.2);
+  border-bottom: 1px solid var(--divider);
 }
 
 .vendor-vault-entry:last-child {
@@ -2066,13 +2068,13 @@
   padding: 0.2rem 0.58rem;
   font-size: 0.8rem;
   font-weight: 600;
-  color: #bfdbfe;
-  background: rgba(30, 64, 175, 0.28);
-  border: 1px solid rgba(96, 165, 250, 0.35);
+  color: var(--accent-strong);
+  background: var(--accent-soft-fill);
+  border: 1px solid var(--accent-border);
 }
 
 .vendor-vault-status-pill {
-  border: 1px solid rgba(148, 163, 184, 0.3);
+  border: 1px solid var(--chip-border);
   border-radius: 999px;
   padding: 0.2rem 0.58rem;
   font-size: 0.78rem;
@@ -2081,15 +2083,15 @@
 }
 
 .vendor-vault-status-observed {
-  color: #86efac;
-  border-color: rgba(34, 197, 94, 0.45);
-  background: rgba(21, 128, 61, 0.2);
+  color: var(--success-text);
+  border-color: var(--success-border);
+  background: var(--success-fill);
 }
 
 .vendor-vault-status-attempted {
-  color: #fcd34d;
-  border-color: rgba(245, 158, 11, 0.45);
-  background: rgba(146, 64, 14, 0.26);
+  color: var(--warning-text);
+  border-color: var(--warning-border);
+  background: var(--warning-fill);
 }
 
 .vendor-vault-score-pill {
@@ -2097,25 +2099,25 @@
   padding: 0.2rem 0.58rem;
   font-size: 0.8rem;
   font-weight: 600;
-  border: 1px solid rgba(148, 163, 184, 0.32);
+  border: 1px solid var(--chip-border);
 }
 
 .vendor-vault-band-low {
-  color: #bfdbfe;
-  background: rgba(30, 64, 175, 0.28);
-  border: 1px solid rgba(96, 165, 250, 0.35);
+  color: var(--accent-strong);
+  background: var(--accent-soft-fill);
+  border: 1px solid var(--accent-border);
 }
 
 .vendor-vault-band-medium {
-  color: #fcd34d;
-  background: rgba(120, 53, 15, 0.28);
-  border: 1px solid rgba(245, 158, 11, 0.35);
+  color: var(--warning-text);
+  background: var(--warning-fill);
+  border: 1px solid var(--warning-border);
 }
 
 .vendor-vault-band-high {
-  color: #fca5a5;
-  background: rgba(127, 29, 29, 0.3);
-  border: 1px solid rgba(248, 113, 113, 0.35);
+  color: var(--danger-text);
+  background: var(--danger-fill);
+  border: 1px solid var(--danger-border);
 }
 
 .vendor-vault-entry-meta {
@@ -2126,7 +2128,7 @@
 }
 
 .vendor-vault-row-chevron {
-  color: #93c5fd;
+  color: var(--accent-strong);
   font-size: 1rem;
   font-weight: 700;
   transition: transform 120ms ease;
@@ -2137,11 +2139,11 @@
 }
 
 .vendor-vault-entry-panel {
-  border-top: 1px solid rgba(148, 163, 184, 0.16);
+  border-top: 1px solid var(--divider);
   padding: 1rem 1.15rem 1.15rem;
   display: grid;
   gap: 0.8rem;
-  background: rgba(15, 23, 42, 0.22);
+  background: var(--surface-raised);
 }
 
 .vendor-vault-expanded-summary {
@@ -2310,7 +2312,7 @@
 .vendor-vault-technical-details > summary {
   list-style: none;
   cursor: pointer;
-  color: #93c5fd;
+  color: var(--accent-strong);
   font-size: 0.86rem;
   font-weight: 600;
 }

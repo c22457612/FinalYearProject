@@ -40,13 +40,13 @@ const THEMES = Object.freeze([
   {
     id: "daybreak",
     label: "Daybreak",
-    description: "Readable light theme with cooler technical separation.",
+    description: "White-card technical light theme with crisp blue-gray structure.",
     preview: {
-      page: "#e6edf4",
-      panel: "#fbfdff",
-      raised: "#edf2f8",
-      accent: "#30669f",
-      warning: "#83551a",
+      page: "#f6f9fc",
+      panel: "#ffffff",
+      raised: "#f9fbfd",
+      accent: "#1f5fa9",
+      warning: "#6b420b",
     },
   },
 ]);

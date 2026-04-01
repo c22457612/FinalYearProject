@@ -225,6 +225,52 @@
   line-height: 1.5;
 }
 
+:root[data-theme="daybreak"] .settings-theme-card {
+  border-color: var(--border-subtle-color);
+  background: var(--surface-panel);
+}
+
+:root[data-theme="daybreak"] .settings-theme-card:hover {
+  border-color: var(--border-strong);
+  background: var(--surface-raised);
+}
+
+:root[data-theme="daybreak"] .settings-theme-card.is-selected {
+  background: var(--surface-panel);
+  box-shadow: inset 4px 0 0 var(--accent-rail), inset 0 0 0 1px var(--accent-soft-fill);
+}
+
+:root[data-theme="daybreak"] .settings-theme-card-chip {
+  border-color: var(--chip-border);
+  background: var(--surface-raised);
+  color: var(--chip-text);
+}
+
+:root[data-theme="daybreak"] .settings-theme-preview {
+  border-color: var(--border-subtle-color);
+  background: var(--surface-raised);
+}
+
+:root[data-theme="daybreak"] .settings-fact {
+  border-color: var(--border-subtle-color);
+  background: var(--surface-panel);
+}
+
+:root[data-theme="daybreak"] .settings-theme-preview-pill.neutral {
+  background: color-mix(in srgb, var(--theme-preview-panel) 74%, #788ba2 26%);
+  border-color: color-mix(in srgb, var(--theme-preview-panel) 56%, #6f8299 44%);
+}
+
+:root[data-theme="daybreak"] .settings-theme-preview-pill.accent {
+  background: color-mix(in srgb, var(--theme-preview-accent) 24%, #ffffff 76%);
+  border-color: color-mix(in srgb, var(--theme-preview-accent) 62%, #71839a 38%);
+}
+
+:root[data-theme="daybreak"] .settings-theme-preview-pill.warning {
+  background: color-mix(in srgb, var(--theme-preview-warning) 22%, #ffffff 78%);
+  border-color: color-mix(in srgb, var(--theme-preview-warning) 54%, #73849a 46%);
+}
+
 @media (max-width: 1180px) {
   .settings-grid {
     grid-template-columns: minmax(0, 1fr);
