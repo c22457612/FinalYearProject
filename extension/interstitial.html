@@ -576,25 +576,51 @@
 
       .actions {
         display: grid;
-        grid-template-columns: repeat(4, minmax(0, 1fr));
-        gap: var(--space-sm);
+        gap: 1px;
+        border: 1px solid var(--border-subtle-color);
+        border-radius: var(--radius-md);
+        background: var(--divider);
+        overflow: hidden;
       }
 
       .command-btn {
-        min-height: 3rem;
-        padding: 0.72rem 0.82rem;
-        border-radius: var(--radius-md);
-        border: 1px solid var(--button-secondary-border);
-        background: var(--button-secondary-fill);
+        position: relative;
+        display: grid;
+        grid-template-columns: auto minmax(0, 1fr);
+        gap: 0.7rem;
+        align-items: start;
+        min-height: 0;
+        padding: 0.7rem 0.82rem;
+        border: 0;
+        border-radius: 0;
+        background: var(--surface-raised);
         color: var(--button-secondary-text);
         text-align: left;
         cursor: pointer;
         transition: background 140ms ease, border-color 140ms ease, color 140ms ease;
       }
 
-      .command-btn:hover {
-        border-color: var(--accent-border);
-        background: var(--button-secondary-fill-hover);
+      .command-btn::before {
+        content: "";
+        position: absolute;
+        inset: 0 auto 0 0;
+        width: 2px;
+        background: transparent;
+      }
+
+      .command-btn:hover:not(:disabled),
+      .command-btn[data-previewed="true"]:not([data-selected="true"]):not(:disabled) {
+        background: var(--surface-selected);
+      }
+
+      .command-btn[data-selected="true"] {
+        background: var(--surface-selected);
+        color: var(--text-primary);
+        box-shadow: inset 0 0 0 1px var(--accent-border);
+      }
+
+      .command-btn[data-selected="true"]::before {
+        background: var(--accent-rail);
       }
 
       .command-btn:disabled {
@@ -602,29 +628,68 @@
         cursor: default;
       }
 
-      .command-btn-primary {
-        border-color: var(--button-primary-border);
-        background: var(--button-primary-fill);
-        color: var(--button-primary-text);
+      .command-btn:focus-visible {
+        box-shadow: inset 0 0 0 1px var(--accent-border), 0 0 0 3px var(--focus-ring);
       }
 
-      .command-btn-primary:hover {
-        background: var(--button-primary-fill-hover);
+      .command-btn-primary {
+        color: var(--text-primary);
       }
 
       .command-btn-quiet {
         background: var(--surface-raised);
       }
 
+      .command-btn-quiet[data-selected="true"] {
+        background: var(--surface-selected);
+      }
+
+      .command-marker {
+        display: inline-flex;
+        align-items: flex-start;
+        justify-content: center;
+        width: 0.8rem;
+        min-height: 1.2rem;
+        color: var(--text-faint);
+        font-family: var(--font-ui);
+        font-size: 0.92rem;
+        font-weight: 700;
+        line-height: 1.1;
+        opacity: 0;
+        transform: translateX(-0.14rem);
+        transition: opacity 120ms ease, transform 120ms ease, color 120ms ease;
+      }
+
+      .command-btn:hover:not(:disabled) .command-marker,
+      .command-btn[data-previewed="true"]:not([data-selected="true"]):not(:disabled) .command-marker,
+      .command-btn[data-selected="true"] .command-marker {
+        opacity: 1;
+        transform: translateX(0);
+      }
+
+      .command-btn[data-selected="true"] .command-marker {
+        color: var(--accent-strong);
+      }
+
+      .command-copy-block {
+        display: grid;
+        gap: 0.04rem;
+        min-width: 0;
+      }
+
       .command-btn-label {
         display: block;
         font-weight: 600;
         line-height: 1.25;
+        color: var(--text-secondary);
+      }
+
+      .command-btn[data-selected="true"] .command-btn-label {
+        color: var(--text-primary);
       }
 
       .command-btn-note {
         display: block;
-        margin-top: 0.18rem;
         color: var(--text-muted);
         font-size: 12px;
         line-height: 1.3;
@@ -634,10 +699,6 @@
         .trust-grid,
         .command-bar {
           grid-template-columns: 1fr;
-        }
-
-        .actions {
-          grid-template-columns: repeat(2, minmax(0, 1fr));
         }
       }
 
@@ -764,21 +825,33 @@
               </div>
 
               <div class="actions">
-                <button id="enter" class="command-btn command-btn-primary">
-                  <span id="enterLabel" class="command-btn-label">Open once with current mode</span>
-                  <span class="command-btn-note">Continue now without saving trust.</span>
+                <button id="enter" class="command-btn command-btn-primary" data-command-option="enter" data-selected="true" data-previewed="false">
+                  <span class="command-marker" aria-hidden="true">&gt;</span>
+                  <span class="command-copy-block">
+                    <span id="enterLabel" class="command-btn-label">Open once with current mode</span>
+                    <span class="command-btn-note">Continue now without saving trust.</span>
+                  </span>
                 </button>
-                <button id="preview" class="command-btn">
-                  <span id="previewLabel" class="command-btn-label">Preview first</span>
-                  <span class="command-btn-note">Open once and refresh the receipt.</span>
+                <button id="preview" class="command-btn" data-command-option="preview" data-selected="false" data-previewed="false">
+                  <span class="command-marker" aria-hidden="true">&gt;</span>
+                  <span class="command-copy-block">
+                    <span id="previewLabel" class="command-btn-label">Preview first</span>
+                    <span class="command-btn-note">Open once and refresh the receipt.</span>
+                  </span>
                 </button>
-                <button id="trust" class="command-btn">
-                  <span id="trustLabel" class="command-btn-label">Trust this site</span>
-                  <span class="command-btn-note">Save trust and skip this prompt later.</span>
+                <button id="trust" class="command-btn" data-command-option="trust" data-selected="false" data-previewed="false">
+                  <span class="command-marker" aria-hidden="true">&gt;</span>
+                  <span class="command-copy-block">
+                    <span id="trustLabel" class="command-btn-label">Trust this site</span>
+                    <span class="command-btn-note">Save trust and skip this prompt later.</span>
+                  </span>
                 </button>
-                <button id="back" class="command-btn command-btn-quiet">
-                  <span class="command-btn-label">Go back</span>
-                  <span class="command-btn-note">Return without opening the site.</span>
+                <button id="back" class="command-btn command-btn-quiet" data-command-option="back" data-selected="false" data-previewed="false">
+                  <span class="command-marker" aria-hidden="true">&gt;</span>
+                  <span class="command-copy-block">
+                    <span class="command-btn-label">Go back</span>
+                    <span class="command-btn-note">Return without opening the site.</span>
+                  </span>
                 </button>
               </div>
             </div>

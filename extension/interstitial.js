@@ -24,12 +24,96 @@
   const receiptEl = document.getElementById("receipt");
   const receiptEmptyEl = document.getElementById("receiptEmpty");
   const receiptStatusChipEl = document.getElementById("receiptStatusChip");
+  const actionsEl = document.querySelector(".actions");
   const enterBtn = document.getElementById("enter");
   const enterLabelEl = document.getElementById("enterLabel");
   const previewBtn = document.getElementById("preview");
   const previewLabelEl = document.getElementById("previewLabel");
   const trustBtn = document.getElementById("trust");
   const trustLabelEl = document.getElementById("trustLabel");
+  const commandOptionEls = Array.from(document.querySelectorAll("[data-command-option]"));
+  let selectedCommandIndex = Math.max(0, commandOptionEls.indexOf(enterBtn));
+
+  function isEnabledCommand(button) {
+    return !!button && button.disabled !== true;
+  }
+
+  function findFirstEnabledCommandIndex(preferredIndex = 0) {
+    if (!commandOptionEls.length) return -1;
+
+    for (let offset = 0; offset < commandOptionEls.length; offset += 1) {
+      const nextIndex = (preferredIndex + offset) % commandOptionEls.length;
+      if (isEnabledCommand(commandOptionEls[nextIndex])) {
+        return nextIndex;
+      }
+    }
+
+    return -1;
+  }
+
+  function applyCommandSelection(nextIndex, options = {}) {
+    const safeIndex = Number.isInteger(nextIndex) ? nextIndex : -1;
+    selectedCommandIndex = safeIndex;
+
+    commandOptionEls.forEach((button, index) => {
+      const isSelected = index === safeIndex;
+      button.dataset.selected = isSelected ? "true" : "false";
+      if (!isSelected) {
+        button.dataset.previewed = "false";
+      }
+    });
+
+    if (options.focus === true && safeIndex >= 0 && commandOptionEls[safeIndex]) {
+      commandOptionEls[safeIndex].focus({ preventScroll: true });
+    }
+  }
+
+  function syncCommandSelection(options = {}) {
+    const currentButton = commandOptionEls[selectedCommandIndex];
+    const nextIndex = isEnabledCommand(currentButton)
+      ? selectedCommandIndex
+      : findFirstEnabledCommandIndex(options.preferredIndex ?? 0);
+    applyCommandSelection(nextIndex, { focus: options.focus === true });
+  }
+
+  function moveCommandSelection(step, options = {}) {
+    if (!commandOptionEls.length) return;
+    if (!commandOptionEls.some(isEnabledCommand)) return;
+
+    let nextIndex = selectedCommandIndex;
+    if (nextIndex < 0 || !isEnabledCommand(commandOptionEls[nextIndex])) {
+      nextIndex = findFirstEnabledCommandIndex(step > 0 ? 0 : commandOptionEls.length - 1);
+      applyCommandSelection(nextIndex, { focus: options.focus === true });
+      return;
+    }
+
+    for (let attempt = 0; attempt < commandOptionEls.length; attempt += 1) {
+      nextIndex = (nextIndex + step + commandOptionEls.length) % commandOptionEls.length;
+      if (isEnabledCommand(commandOptionEls[nextIndex])) {
+        applyCommandSelection(nextIndex, { focus: options.focus === true });
+        return;
+      }
+    }
+  }
+
+  function getSelectedCommandButton() {
+    if (selectedCommandIndex < 0) return null;
+    return commandOptionEls[selectedCommandIndex] || null;
+  }
+
+  function previewCommandButton(button) {
+    commandOptionEls.forEach((option) => {
+      option.dataset.previewed = option === button ? "true" : "false";
+    });
+  }
+
+  function clearCommandPreview() {
+    commandOptionEls.forEach((option) => {
+      if (option.dataset.selected !== "true") {
+        option.dataset.previewed = "false";
+      }
+    });
+  }
 
   function normalizeThemeId(themeId) {
     const candidate = String(themeId || "").trim().toLowerCase();
@@ -145,6 +229,7 @@
         sectionState: "unsupported",
       });
       trustBtn.disabled = true;
+      syncCommandSelection();
       return;
     }
 
@@ -182,6 +267,7 @@
     }
 
     trustBtn.disabled = false;
+    syncCommandSelection();
   }
 
   function parseReceiptEntry(entry) {
@@ -251,6 +337,66 @@
 
   setSiteLabels(siteBase);
   refreshTheme();
+  syncCommandSelection();
+
+  if (actionsEl) {
+    commandOptionEls.forEach((button, index) => {
+      button.dataset.selected = index === selectedCommandIndex ? "true" : "false";
+      button.dataset.previewed = "false";
+
+      button.addEventListener("mouseenter", () => {
+        if (!isEnabledCommand(button)) return;
+        previewCommandButton(button);
+      });
+
+      button.addEventListener("mouseleave", () => {
+        clearCommandPreview();
+      });
+
+      button.addEventListener("click", () => {
+        if (!isEnabledCommand(button)) return;
+        applyCommandSelection(index);
+      });
+    });
+
+    actionsEl.addEventListener("mouseleave", () => {
+      clearCommandPreview();
+    });
+  }
+
+  document.addEventListener("keydown", (event) => {
+    if (event.altKey || event.ctrlKey || event.metaKey) return;
+    if (!commandOptionEls.length) return;
+
+    const activeElement = document.activeElement;
+    const activeIsCommand = commandOptionEls.includes(activeElement);
+
+    if (event.key === "ArrowLeft" || event.key === "ArrowUp") {
+      event.preventDefault();
+      moveCommandSelection(-1, { focus: activeIsCommand });
+      return;
+    }
+
+    if (event.key === "ArrowRight" || event.key === "ArrowDown") {
+      event.preventDefault();
+      moveCommandSelection(1, { focus: activeIsCommand });
+      return;
+    }
+
+    if (event.key !== "Enter" && event.key !== " ") {
+      return;
+    }
+
+    const selectedButton = getSelectedCommandButton();
+    if (!isEnabledCommand(selectedButton)) return;
+
+    if (activeIsCommand && activeElement === selectedButton) {
+      return;
+    }
+
+    event.preventDefault();
+    selectedButton.click();
+  });
 
   chrome.storage.local.get(["privacyMode", "captureEnabled"]).then(({ privacyMode, captureEnabled }) => {
     const isCaptureEnabled = captureEnabled !== false;
@@ -269,6 +415,8 @@
     if (previewLabelEl) {
       previewLabelEl.textContent = isCaptureEnabled ? "Preview first" : "Preview unavailable";
     }
+
+    syncCommandSelection();
   });
 
   chrome.runtime.sendMessage({
@@ -302,6 +450,7 @@
       sectionState: "supported",
     });
     trustBtn.disabled = true;
+    syncCommandSelection();
   });
 
   enterBtn?.addEventListener("click", async () => {
@@ -313,6 +462,7 @@
   trustBtn?.addEventListener("click", async () => {
     if (!siteBase || !dest) return;
     trustBtn.disabled = true;
+    syncCommandSelection();
     if (trustLabelEl) {
       trustLabelEl.textContent = "Saving trust...";
     }
@@ -344,6 +494,7 @@
         sectionState: "supported",
       });
       trustBtn.disabled = false;
+      syncCommandSelection();
     }
   });
 
