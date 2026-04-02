@@ -440,21 +440,41 @@ function renderLandingVendorGrid() {
   for (const row of rows) {
     const card = document.createElement("button");
     card.type = "button";
-    card.className = "vendor-directory-card";
+    card.className = "vendor-directory-tile";
+
+    const head = document.createElement("div");
+    head.className = "vendor-directory-tile-head";
 
     const title = document.createElement("div");
-    title.className = "vendor-directory-card-title";
+    title.className = "vendor-directory-tile-title";
     title.textContent = row.vendor_name;
-    card.appendChild(title);
+    head.appendChild(title);
 
-    const counts = document.createElement("div");
-    counts.className = "vendor-directory-card-meta";
-    counts.textContent = `Observed: ${row.observed_count} | Blocked: ${row.blocked_count}`;
-    card.appendChild(counts);
+    const marker = document.createElement("span");
+    marker.className = "vendor-directory-tile-marker";
+    marker.setAttribute("aria-hidden", "true");
+    marker.textContent = ">";
+    head.appendChild(marker);
+    card.appendChild(head);
+
+    const posture = document.createElement("div");
+    posture.className = "vendor-directory-tile-posture";
+
+    const observed = document.createElement("span");
+    observed.className = "vendor-directory-tile-metric";
+    observed.innerHTML = `<span class="vendor-directory-tile-metric-label">Observed</span><span class="vendor-directory-tile-metric-value">${row.observed_count}</span>`;
+    posture.appendChild(observed);
+
+    const blocked = document.createElement("span");
+    blocked.className = "vendor-directory-tile-metric";
+    blocked.innerHTML = `<span class="vendor-directory-tile-metric-label">Blocked</span><span class="vendor-directory-tile-metric-value">${row.blocked_count}</span>`;
+    posture.appendChild(blocked);
+
+    card.appendChild(posture);
 
     const lastSeen = document.createElement("div");
-    lastSeen.className = "vendor-directory-card-meta";
-    lastSeen.textContent = `Last seen: ${formatDateTime(row.last_seen)}`;
+    lastSeen.className = "vendor-directory-tile-last-seen";
+    lastSeen.innerHTML = `<span class="vendor-directory-tile-last-seen-label">Last seen</span><span class="vendor-directory-tile-last-seen-value">${formatDateTime(row.last_seen)}</span>`;
     card.appendChild(lastSeen);
 
     card.addEventListener("click", () => {
@@ -660,30 +680,36 @@ function showVaultContent(site, vendor) {
   const content = qs("vaultContent");
   const sections = qs("vaultSections");
   const vendorChip = qs("vaultVendorChip");
+  const vendorName = qs("vaultHeaderVendorName");
+  const headerSummary = qs("vaultHeaderSummary");
   const backLink = qs("backToSiteInsightsLink");
-  if (!missing || !content || !sections || !vendorChip || !backLink) return;
+  if (!missing || !content || !sections || !vendorChip || !vendorName || !headerSummary || !backLink) return;
 
   missing.classList.add("hidden");
   content.classList.remove("hidden");
   sections.classList.remove("hidden");
 
   vendorChip.textContent = `Vendor: ${vendor}`;
+  vendorName.textContent = vendor;
+  headerSummary.textContent = "Review potential sharing indicators and related Browser API activity for this vendor.";
   backLink.href = site ? buildSiteInsightsHref(site) : "/";
 }
 
 function renderScopeChipsAndControls() {
   const siteChip = qs("vaultSiteChip");
   const vendorChip = qs("vaultVendorChip");
+  const vendorName = qs("vaultHeaderVendorName");
   const allSitesChip = qs("vaultAllSitesChip");
   const siteButton = qs("vaultScopeSiteButton");
   const allButton = qs("vaultScopeAllButton");
   const backLink = qs("backToSiteInsightsLink");
-  if (!siteChip || !vendorChip || !allSitesChip || !siteButton || !allButton || !backLink) return;
+  if (!siteChip || !vendorChip || !vendorName || !allSitesChip || !siteButton || !allButton || !backLink) return;
 
   const hasSite = Boolean(vaultScopeState.site);
   const isAll = vaultScopeState.scope === SCOPE_ALL;
 
   vendorChip.textContent = `Vendor: ${vaultScopeState.vendor}`;
+  vendorName.textContent = vaultScopeState.vendor;
   siteChip.textContent = `Site: ${vaultScopeState.site || "-"}`;
   siteChip.classList.toggle("hidden", isAll);
   allSitesChip.classList.toggle("hidden", !isAll);
@@ -1416,6 +1442,51 @@ function renderSummary(scoreMeta, itemModels) {
   mayList.textContent = formatCategorySet(observedCategories, "None observed");
   attemptedList.textContent = formatCategorySet(attemptedCategories, "None detected");
   renderActionList(vendorActionsList, deriveVendorActions(itemModels));
+  renderHeaderCaseSummary(scoreMeta, observedCategories, attemptedCategories, itemModels.length > 0);
+}
+
+function formatCategoryCount(count) {
+  const safe = toSafeCount(count);
+  return `${safe} categor${safe === 1 ? "y" : "ies"}`;
+}
+
+function renderHeaderCaseSummary(scoreMeta, observedCategories, attemptedCategories, hasItems) {
+  const observedEl = qs("vaultHeaderObserved");
+  const blockedEl = qs("vaultHeaderBlocked");
+  const concernEl = qs("vaultHeaderConcern");
+  const nextEl = qs("vaultHeaderNext");
+  const summaryEl = qs("vaultHeaderSummary");
+  if (!observedEl || !blockedEl || !concernEl || !nextEl || !summaryEl) return;
+
+  const observedCount = observedCategories.size;
+  const blockedCount = attemptedCategories.size;
+
+  observedEl.textContent = hasItems ? formatCategoryCount(observedCount) : "None observed";
+  blockedEl.textContent = hasItems ? formatCategoryCount(blockedCount) : "None detected";
+  concernEl.textContent = hasItems && scoreMeta ? `${scoreMeta.band} concern` : "No exposure score";
+  nextEl.textContent = hasItems ? "Evidence rows below" : "Browser API evidence";
+
+  if (!hasItems) {
+    summaryEl.textContent = "No potential sharing inventory was observed for this scope. Review Browser API evidence for related vendor activity.";
+    return;
+  }
+
+  summaryEl.textContent = `Observed potential sharing in ${formatCategoryCount(observedCount)}. Blocked attempts appeared in ${formatCategoryCount(blockedCount)}. Inspect the evidence rows below first.`;
+}
+
+function resetHeaderCaseSummary(message) {
+  const observedEl = qs("vaultHeaderObserved");
+  const blockedEl = qs("vaultHeaderBlocked");
+  const concernEl = qs("vaultHeaderConcern");
+  const nextEl = qs("vaultHeaderNext");
+  const summaryEl = qs("vaultHeaderSummary");
+  if (!observedEl || !blockedEl || !concernEl || !nextEl || !summaryEl) return;
+
+  observedEl.textContent = "-";
+  blockedEl.textContent = "-";
+  concernEl.textContent = "-";
+  nextEl.textContent = "Potentially shared data inventory";
+  summaryEl.textContent = message || "Review potential sharing indicators and related Browser API activity for this vendor.";
 }
 
 function appendBulletList(section, bullets, listClassName) {
@@ -1500,6 +1571,23 @@ function appendEvidenceField(list, label, value) {
   list.appendChild(row);
 }
 
+function appendEntryMetaFact(container, label, value) {
+  const item = document.createElement("span");
+  item.className = "vendor-vault-entry-meta-item";
+
+  const key = document.createElement("span");
+  key.className = "vendor-vault-entry-meta-label";
+  key.textContent = `${label}:`;
+  item.appendChild(key);
+
+  const text = document.createElement("span");
+  text.className = "vendor-vault-entry-meta-value";
+  text.textContent = value;
+  item.appendChild(text);
+
+  container.appendChild(item);
+}
+
 function appendTechnicalDetailRow(container, label, value) {
   const row = document.createElement("div");
   row.className = "vendor-vault-technical-row";
@@ -1552,18 +1640,24 @@ function renderInventoryEntries(itemModels) {
     const statusPill = document.createElement("span");
     statusPill.className = `vendor-vault-status-pill vendor-vault-status-${item.statusLabel.toLowerCase()}`;
     statusPill.textContent = item.statusLabel;
-    head.appendChild(statusPill);
 
     const scorePill = document.createElement("span");
     scorePill.className = `vendor-vault-score-pill vendor-vault-band-${String(item.itemScoreMeta.itemBand).toLowerCase()}`;
     scorePill.textContent = `Score ${item.itemScoreMeta.itemScore} (${item.itemScoreMeta.itemBand})`;
-    head.appendChild(scorePill);
+    const badges = document.createElement("div");
+    badges.className = "vendor-vault-entry-badges";
+    badges.appendChild(statusPill);
+    badges.appendChild(scorePill);
+    head.appendChild(badges);
 
     rowMain.appendChild(head);
 
     const meta = document.createElement("div");
     meta.className = "vendor-vault-entry-meta";
-    meta.textContent = `Count: ${item.count} | Last seen: ${item.lastSeen}`;
+    appendEntryMetaFact(meta, "Observed", String(item.counts.observed));
+    appendEntryMetaFact(meta, "Attempted", String(item.counts.attempted));
+    appendEntryMetaFact(meta, "Count", String(item.count));
+    appendEntryMetaFact(meta, "Last seen", item.lastSeen);
     rowMain.appendChild(meta);
 
     summary.appendChild(rowMain);
@@ -1893,13 +1987,19 @@ function renderVendorApiEvidenceGroups(list, groups) {
     const countPill = document.createElement("span");
     countPill.className = "vendor-vault-api-count-pill";
     countPill.textContent = `${group.count} event${group.count === 1 ? "" : "s"}`;
-    head.appendChild(countPill);
+    const badges = document.createElement("div");
+    badges.className = "vendor-vault-entry-badges";
+    badges.appendChild(countPill);
+    head.appendChild(badges);
 
     rowMain.appendChild(head);
 
     const meta = document.createElement("div");
     meta.className = "vendor-vault-entry-meta";
-    meta.textContent = `Last seen: ${group.lastSeen} | Observed/warned: ${group.counts.observed_warned} | Blocked: ${group.counts.blocked} | Allowed on trusted site: ${group.counts.trusted_allowed}`;
+    appendEntryMetaFact(meta, "Observed", String(group.counts.observed_warned));
+    appendEntryMetaFact(meta, "Blocked", String(group.counts.blocked));
+    appendEntryMetaFact(meta, "Trusted allowed", String(group.counts.trusted_allowed));
+    appendEntryMetaFact(meta, "Last seen", group.lastSeen);
     rowMain.appendChild(meta);
 
     summary.appendChild(rowMain);
@@ -2222,12 +2322,25 @@ function setInventoryState(state) {
 }
 
 function clearSuccessContent() {
-  renderSummary(null, []);
+  const scoreTextEl = qs("exposureSummaryScoreText");
+  const scoreValueEl = qs("exposureSummaryScoreValue");
+  const scoreBandEl = qs("exposureSummaryScoreBand");
+  const mayList = qs("exposureMayHaveReceivedList");
+  const attemptedList = qs("exposureAttemptedToReceiveList");
+  const vendorActionsList = qs("exposureVendorActionsList");
+  if (scoreTextEl) scoreTextEl.textContent = "Exposure score: -";
+  if (scoreValueEl) scoreValueEl.textContent = "-";
+  if (scoreBandEl) scoreBandEl.textContent = "-";
+  if (mayList) mayList.textContent = "-";
+  if (attemptedList) attemptedList.textContent = "-";
+  if (vendorActionsList) vendorActionsList.innerHTML = "";
+  renderSummaryRing(0);
   renderInventoryEntries([]);
 }
 
 function setLoadingView() {
   setInventoryState("loading");
+  resetHeaderCaseSummary("Loading potential sharing indicators for this vendor...");
   clearSuccessContent();
 }
 
@@ -2542,6 +2655,7 @@ async function loadExposureInventory() {
   } catch (err) {
     if (requestId !== latestExposureRequestId) return;
     console.error("Vendor Vault inventory fetch failed:", err);
+    resetHeaderCaseSummary("Could not load potential sharing inventory for this scope. Review Browser API evidence or retry.");
     setInventoryState("error");
   }
 }

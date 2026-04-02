@@ -130,25 +130,36 @@
             potential sharing signals, not proof that a vendor stored the underlying data.
           </div>
           <div class="vendor-directory">
-            <div class="vendor-directory-header">Vendor Directory</div>
-            <div class="vendor-directory-toolbar">
-              <input
-                id="vendorDirectorySearch"
-                type="search"
-                class="vendor-directory-input"
-                placeholder="Search vendor name..."
-                aria-label="Search vendors"
-              />
-              <select id="vendorDirectorySort" class="vendor-directory-select" aria-label="Sort vendors">
-                <option value="activity">Most activity</option>
-                <option value="recent">Most recent</option>
-                <option value="blocked">Most blocked</option>
-              </select>
-              <select id="vendorDirectoryScope" class="vendor-directory-select" aria-label="Vendor scope">
-                <option value="all">All sites</option>
-                <option value="site">Specific site</option>
-              </select>
-              <select id="vendorDirectorySite" class="vendor-directory-select hidden" aria-label="Specific site"></select>
+            <div class="vendor-directory-header">
+              <div class="vendor-directory-header-copy">
+                <div class="vendor-directory-header-title">Vendor Directory</div>
+                <div class="vendor-directory-header-note">Scan vendors by observed posture, blocked attempts, and most recent activity.</div>
+              </div>
+            </div>
+            <div class="vendor-directory-toolbar-shell">
+              <div class="vendor-directory-toolbar" role="search">
+                <div class="vendor-directory-toolbar-group vendor-directory-toolbar-group-search">
+                  <input
+                    id="vendorDirectorySearch"
+                    type="search"
+                    class="vendor-directory-input"
+                    placeholder="Search vendor name..."
+                    aria-label="Search vendors"
+                  />
+                </div>
+                <div class="vendor-directory-toolbar-group vendor-directory-toolbar-group-filters">
+                  <select id="vendorDirectorySort" class="vendor-directory-select" aria-label="Sort vendors">
+                    <option value="activity">Most activity</option>
+                    <option value="recent">Most recent</option>
+                    <option value="blocked">Most blocked</option>
+                  </select>
+                  <select id="vendorDirectoryScope" class="vendor-directory-select" aria-label="Vendor scope">
+                    <option value="all">All sites</option>
+                    <option value="site">Specific site</option>
+                  </select>
+                  <select id="vendorDirectorySite" class="vendor-directory-select hidden" aria-label="Specific site"></select>
+                </div>
+              </div>
             </div>
             <div id="vendorDirectoryStatus" class="vendor-vault-landing-note hidden"></div>
             <div id="vendorDirectoryGrid" class="vendor-directory-grid"></div>
@@ -156,22 +167,50 @@
         </section>
 
         <section id="vaultContent" class="vendor-vault-header-strip hidden">
-          <div class="vendor-vault-header-title">Vendor Vault</div>
-          <div class="vendor-vault-header-chips">
-            <span id="vaultSiteChip" class="pill pill-kind">Site: -</span>
-            <span id="vaultVendorChip" class="pill pill-kind">Vendor: -</span>
-            <span id="vaultAllSitesChip" class="pill pill-kind hidden">All sites</span>
+          <div class="vendor-vault-header-main">
+            <div class="vendor-vault-header-kicker">Vendor investigation console</div>
+            <div class="vendor-vault-header-title-row">
+              <h2 id="vaultHeaderVendorName" class="vendor-vault-header-title">Vendor Vault</h2>
+              <div class="vendor-vault-header-chips">
+                <span id="vaultSiteChip" class="pill pill-kind">Site: -</span>
+                <span id="vaultVendorChip" class="pill pill-kind">Vendor: -</span>
+                <span id="vaultAllSitesChip" class="pill pill-kind hidden">All sites</span>
+              </div>
+            </div>
+            <p id="vaultHeaderSummary" class="vendor-vault-header-summary">
+              Review potential sharing indicators and related Browser API activity for this vendor.
+            </p>
+            <div class="vendor-vault-header-facts" aria-label="Vendor investigation summary">
+              <div class="vendor-vault-header-fact">
+                <span class="vendor-vault-header-fact-label">Observed</span>
+                <span id="vaultHeaderObserved" class="vendor-vault-header-fact-value">-</span>
+              </div>
+              <div class="vendor-vault-header-fact">
+                <span class="vendor-vault-header-fact-label">Blocked</span>
+                <span id="vaultHeaderBlocked" class="vendor-vault-header-fact-value">-</span>
+              </div>
+              <div class="vendor-vault-header-fact">
+                <span class="vendor-vault-header-fact-label">Concern</span>
+                <span id="vaultHeaderConcern" class="vendor-vault-header-fact-value">-</span>
+              </div>
+              <div class="vendor-vault-header-fact">
+                <span class="vendor-vault-header-fact-label">Inspect next</span>
+                <span id="vaultHeaderNext" class="vendor-vault-header-fact-value">Potentially shared data inventory</span>
+              </div>
+            </div>
           </div>
-          <div id="vaultScopeToggle" class="vendor-vault-scope-toggle" role="group" aria-label="Vendor Vault scope">
-            <button id="vaultScopeSiteButton" type="button" class="viz-nav vendor-vault-scope-btn">This site</button>
-            <button id="vaultScopeAllButton" type="button" class="viz-nav vendor-vault-scope-btn">All sites</button>
+          <div class="vendor-vault-header-controls">
+            <div id="vaultScopeToggle" class="vendor-vault-scope-toggle" role="group" aria-label="Vendor Vault scope">
+              <button id="vaultScopeSiteButton" type="button" class="viz-nav vendor-vault-scope-btn">This site</button>
+              <button id="vaultScopeAllButton" type="button" class="viz-nav vendor-vault-scope-btn">All sites</button>
+            </div>
+            <a id="backToSiteInsightsLink" class="back-link vendor-vault-header-link" href="/">Back to Site Insights</a>
           </div>
-          <a id="backToSiteInsightsLink" class="back-link vendor-vault-header-link" href="/">Back to Site Insights</a>
         </section>
 
         <section id="vaultSections" class="hidden vendor-vault-sections">
           <section class="panel vendor-vault-inventory-panel">
-            <div class="panel-header">
+            <div class="panel-header vendor-vault-panel-header">
               <div>
                 <div class="panel-title">Potentially shared data inventory</div>
                 <div class="vendor-vault-disclaimer">
@@ -207,9 +246,33 @@
             </div>
 
             <div id="exposureSuccessState" class="hidden">
-              <section id="exposureWhatThisMeans" class="vendor-vault-sharing-summary">
-                <div class="vendor-vault-sharing-heading">What this means for you</div>
+              <section id="exposureWhatThisMeans" class="vendor-vault-sharing-summary vendor-vault-case-summary">
+                <div class="vendor-vault-case-summary-head">
+                  <div>
+                    <div class="vendor-vault-case-summary-kicker">Selected vendor case summary</div>
+                    <div class="vendor-vault-sharing-heading">Investigation summary</div>
+                  </div>
+                  <div class="vendor-vault-case-summary-next">
+                    <span class="vendor-vault-case-summary-next-label">Inspect next</span>
+                    <span class="vendor-vault-case-summary-next-value">Review the evidence rows below.</span>
+                  </div>
+                </div>
                 <div class="vendor-vault-summary-grid">
+                  <div class="vendor-vault-summary-copy">
+                    <div id="exposureSummaryScoreText" class="vendor-vault-score-line">Exposure score: -</div>
+                    <div class="vendor-vault-sharing-row">
+                      <span class="vendor-vault-sharing-label">Potentially received (Observed)</span>
+                      <span id="exposureMayHaveReceivedList" class="vendor-vault-sharing-value">-</span>
+                    </div>
+                    <div class="vendor-vault-sharing-row">
+                      <span class="vendor-vault-sharing-label">Blocked attempts</span>
+                      <span id="exposureAttemptedToReceiveList" class="vendor-vault-sharing-value">-</span>
+                    </div>
+                    <div class="vendor-vault-sharing-actions">
+                      <div class="vendor-vault-sharing-actions-title">Top recommended actions</div>
+                      <ul id="exposureVendorActionsList" class="vendor-vault-action-list"></ul>
+                    </div>
+                  </div>
                   <div class="vendor-vault-score-visual" aria-label="Overall exposure score">
                     <svg class="vendor-vault-score-ring" viewBox="0 0 120 120" role="img" aria-hidden="true">
                       <circle class="vendor-vault-score-ring-track" cx="60" cy="60" r="44"></circle>
@@ -218,21 +281,6 @@
                     <div class="vendor-vault-score-center">
                       <div id="exposureSummaryScoreValue" class="vendor-vault-score-center-value">-</div>
                       <div id="exposureSummaryScoreBand" class="vendor-vault-score-center-band">-</div>
-                    </div>
-                  </div>
-                  <div class="vendor-vault-summary-copy">
-                    <div id="exposureSummaryScoreText" class="vendor-vault-score-line">Exposure score: -</div>
-                    <div class="vendor-vault-sharing-row">
-                      <span class="vendor-vault-sharing-label">Potentially received (Observed):</span>
-                      <span id="exposureMayHaveReceivedList" class="vendor-vault-sharing-value">-</span>
-                    </div>
-                    <div class="vendor-vault-sharing-row">
-                      <span class="vendor-vault-sharing-label">Blocked attempts:</span>
-                      <span id="exposureAttemptedToReceiveList" class="vendor-vault-sharing-value">-</span>
-                    </div>
-                    <div class="vendor-vault-sharing-actions">
-                      <div class="vendor-vault-sharing-actions-title">Top recommended actions</div>
-                      <ul id="exposureVendorActionsList" class="vendor-vault-action-list"></ul>
                     </div>
                   </div>
                 </div>
@@ -304,30 +352,30 @@
           </section>
 
           <div class="summary vendor-vault-secondary-panels">
-            <div class="summary-card">
-              <h2>Activity summary</h2>
+            <section class="vendor-vault-readout" aria-labelledby="vaultActivityHeading">
+              <h2 id="vaultActivityHeading">Activity summary</h2>
               <div id="vaultActivityPanel" class="vendor-vault-panel-body">
                 <div class="hint">Loading...</div>
               </div>
-            </div>
-            <div class="summary-card">
-              <h2>Domains used</h2>
+            </section>
+            <section class="vendor-vault-readout" aria-labelledby="vaultDomainsHeading">
+              <h2 id="vaultDomainsHeading">Domains used</h2>
               <div id="vaultDomainsPanel" class="vendor-vault-panel-body">
                 <div class="hint">Loading...</div>
               </div>
-            </div>
-            <div class="summary-card">
-              <h2>Observed parameter keys</h2>
+            </section>
+            <section class="vendor-vault-readout" aria-labelledby="vaultKeysHeading">
+              <h2 id="vaultKeysHeading">Observed parameter keys</h2>
               <div id="vaultKeysPanel" class="vendor-vault-panel-body">
                 <div class="hint">Loading...</div>
               </div>
-            </div>
-            <div class="summary-card">
-              <h2>Risk summary</h2>
+            </section>
+            <section class="vendor-vault-readout" aria-labelledby="vaultRiskHeading">
+              <h2 id="vaultRiskHeading">Risk summary</h2>
               <div id="vaultRiskPanel" class="vendor-vault-panel-body">
                 <div class="hint">Loading...</div>
               </div>
-            </div>
+            </section>
           </div>
         </section>
       </div>
