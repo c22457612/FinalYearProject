@@ -1168,42 +1168,122 @@
 
 .api-signals-events-list {
   display: grid;
-  gap: var(--space-sm);
+  gap: 1px;
+  border: 1px solid var(--border-subtle-color);
+  border-radius: var(--radius-md);
+  background: var(--divider);
+  overflow: hidden;
 }
 
-.api-signals-event-card {
-  border: 1px solid var(--border-subtle-color);
-  border-radius: var(--radius-sm);
+.api-signals-event-row {
+  position: relative;
   background: var(--surface-panel);
-  padding: 0.9rem;
+}
+
+.api-signals-event-row::before {
+  content: "";
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 2px;
+  background: transparent;
+}
+
+.api-signals-event-row.expanded {
+  background: var(--surface-selected);
+  box-shadow: inset 0 0 0 1px var(--accent-border);
+}
+
+.api-signals-event-row.expanded::before {
+  background: var(--accent-rail);
+}
+
+.api-signals-event-toggle {
+  width: 100%;
+  border: 0;
+  padding: 0.84rem 1rem 0.78rem 1.08rem;
+  background: transparent;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
   display: grid;
-  gap: 0.85rem;
+  gap: 0.5rem;
+}
+
+.api-signals-event-toggle:hover {
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.api-signals-event-toggle:focus-visible {
+  outline: none;
+  box-shadow: inset 0 0 0 1px var(--accent-border), 0 0 0 3px var(--focus-ring);
 }
 
 .api-signals-event-head {
   display: flex;
   justify-content: space-between;
-  gap: var(--space-sm);
+  gap: 0.75rem;
   align-items: flex-start;
   flex-wrap: wrap;
 }
 
 .api-signals-event-title-wrap {
   display: grid;
-  gap: 0.18rem;
+  gap: 0.32rem;
+  min-width: 0;
+  flex: 1 1 24rem;
+}
+
+.api-signals-event-title-line {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.58rem;
+  min-width: 0;
+}
+
+.api-signals-event-marker {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 0.82rem;
+  min-height: 1rem;
+  color: var(--text-faint);
+  font-size: 0.9rem;
+  font-weight: 700;
+  line-height: 1;
+  opacity: 0;
+  transform: translateX(-0.14rem);
+  transition: opacity 120ms ease, transform 120ms ease, color 120ms ease;
+}
+
+.api-signals-event-row.expanded .api-signals-event-marker,
+.api-signals-event-toggle:hover .api-signals-event-marker,
+.api-signals-event-toggle:focus-visible .api-signals-event-marker {
+  opacity: 1;
+  transform: translateX(0);
+}
+
+.api-signals-event-row.expanded .api-signals-event-marker {
+  color: var(--accent-strong);
+}
+
+.api-signals-event-title-block {
+  min-width: 0;
+  display: grid;
+  gap: 0.14rem;
 }
 
 .api-signals-event-kicker {
-  font-size: 0.74rem;
+  font-size: 0.72rem;
   text-transform: uppercase;
   letter-spacing: 0.06em;
-  color: var(--text-secondary);
+  color: var(--color-text-faint);
 }
 
 .api-signals-event-title {
-  font-size: 1.05rem;
+  font-size: 0.98rem;
   font-weight: 600;
   color: var(--color-text-main);
+  line-height: 1.28;
 }
 
 .api-signals-event-badges {
@@ -1211,76 +1291,87 @@
   gap: 0.45rem;
   flex-wrap: wrap;
   justify-content: flex-end;
+  flex: 0 0 auto;
 }
 
 .api-signals-event-meta {
   display: flex;
-  gap: 0.5rem;
+  gap: 0.42rem 0.55rem;
   flex-wrap: wrap;
   align-items: center;
 }
 
 .api-signals-event-site {
   font-family: var(--font-mono);
-  font-size: 0.86rem;
-  color: var(--accent-strong);
-  padding: 0.2rem 0.5rem;
+  font-size: 0.78rem;
+  color: var(--text-secondary);
+  padding: 0.14rem 0.42rem;
   border-radius: 999px;
-  border: 1px solid var(--accent-border);
-  background: var(--accent-soft-fill-strong);
-}
-
-.api-signals-event-time {
-  font-size: 0.8rem;
-  color: var(--color-text-muted);
-}
-
-.api-signals-event-summary-grid {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: var(--space-sm);
-}
-
-.api-signals-event-block {
   border: 1px solid var(--border-subtle-color);
-  border-radius: var(--radius-sm);
-  padding: 0.7rem;
   background: var(--surface-raised);
 }
 
-.api-signals-event-block-label {
+.api-signals-event-time {
+  font-size: 0.76rem;
+  color: var(--color-text-faint);
+}
+
+.api-signals-event-inline-id {
+  max-width: min(26rem, 100%);
   font-size: 0.72rem;
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
-  color: var(--text-secondary);
-  margin-bottom: 0.35rem;
+  color: var(--color-text-faint);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
-.api-signals-event-block-value {
-  margin: 0;
-  color: var(--text-secondary);
-}
-
-.api-signals-secondary-grid {
+.api-signals-event-explanation-row {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 0.75rem;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: baseline;
+  gap: 0.42rem 0.65rem;
 }
 
-.api-signals-secondary-field {
-  display: grid;
-  gap: 0.25rem;
-}
-
+.api-signals-event-inline-label,
 .api-signals-secondary-label {
   font-size: 0.72rem;
   text-transform: uppercase;
   letter-spacing: 0.06em;
-  color: var(--color-text-faint);
+  color: var(--text-secondary);
+}
+
+.api-signals-event-explanation {
+  min-width: 0;
+  color: var(--text-secondary);
+  line-height: 1.38;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.api-signals-event-readout {
+  padding: 0 1rem 0.92rem 2.48rem;
+  border-top: 1px solid var(--divider);
+  background: rgba(255, 255, 255, 0.01);
+}
+
+.api-signals-event-readout-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.78rem 1rem;
+  padding-top: 0.78rem;
+}
+
+.api-signals-secondary-field {
+  display: grid;
+  gap: 0.22rem;
+  align-content: start;
 }
 
 .api-signals-secondary-value {
   min-width: 0;
+  color: var(--text-secondary);
+  line-height: 1.36;
 }
 
 .api-policy-top-grid {
@@ -2566,8 +2657,7 @@
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
-  .api-signals-event-summary-grid,
-  .api-signals-secondary-grid {
+  .api-signals-event-readout-grid {
     grid-template-columns: minmax(0, 1fr);
   }
 
@@ -2701,6 +2791,21 @@
 
   .api-signals-event-meta {
     align-items: flex-start;
+  }
+
+  .api-signals-event-explanation-row {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .api-signals-event-explanation {
+    white-space: normal;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+  }
+
+  .api-signals-event-readout {
+    padding-left: 1.08rem;
   }
 
   .api-policy-card-header {

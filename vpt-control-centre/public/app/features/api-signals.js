@@ -11,6 +11,7 @@ const viewState = {
   subview: "insights",
   latestEvents: [],
   latestPolicies: { latestTs: 0, items: [] },
+  expandedSignalKey: null,
   saves: {
     canvas: { pending: false, tone: "", message: "" },
     clipboard: { pending: false, tone: "", message: "" },
@@ -60,6 +61,7 @@ const POLICY_SURFACES = Object.freeze([
 let filtersBound = false;
 let subviewBound = false;
 let controlsBound = false;
+let eventsListBound = false;
 let getLatestEventsCb = null;
 
 function utils() {
@@ -145,7 +147,7 @@ function renderInsights(events) {
     ? "No API signal detections are available in the current poll window yet."
     : !filtered.length
       ? `No current rows match the filters. ${allEvents.length} API signal${allEvents.length === 1 ? "" : "s"} exist in the wider dashboard window.`
-      : "Latest first. Each card shows the human-readable signal label first and keeps the canonical backend fields visible as secondary detail.";
+      : "Latest first. Expand one row at a time to inspect the technical readout while keeping the main scan path compact.";
 
   document.getElementById("apiSignalsStatTotal").textContent = String(filtered.length);
   document.getElementById("apiSignalsStatHighConfidence").textContent = String(highConfidence);
@@ -175,21 +177,23 @@ function renderInsights(events) {
     empty.classList.remove("hidden");
     empty.innerHTML = emptyStateHtml("No API signals captured in this window", "Browse a site with Canvas, Clipboard, Geolocation, or WebRTC activity while capture is enabled, then revisit this page.", "This view reflects the current /api/events dashboard window only.");
     list.innerHTML = "";
+    viewState.expandedSignalKey = null;
     return;
   }
   if (!filtered.length) {
     empty.classList.remove("hidden");
     empty.innerHTML = emptyStateHtml("No signals match the current filters", `The current filters exclude all ${allEvents.length} captured API signal${allEvents.length === 1 ? "" : "s"} in this dashboard window.`, describeActiveFilters() ? `${describeActiveFilters()} Use Clear filters above to inspect the full set again.` : "");
     list.innerHTML = "";
+    viewState.expandedSignalKey = null;
     return;
   }
 
-  empty.classList.add("hidden");
-  list.innerHTML = filtered
+  const sorted = filtered
     .slice()
-    .sort((a, b) => (b.ts || 0) - (a.ts || 0))
-    .map((event) => eventCardHtml(event))
-    .join("");
+    .sort((a, b) => (b.ts || 0) - (a.ts || 0));
+  syncExpandedSignalKey(sorted);
+  empty.classList.add("hidden");
+  list.innerHTML = sorted.map((event) => eventRowHtml(event)).join("");
 }
 
 function topEntries(events, mapper) {
@@ -225,56 +229,170 @@ function emptyStateHtml(title, body, detail) {
   `;
 }
 
-function eventCardHtml(event) {
+function sortStableTextList(values) {
+  return Array.isArray(values)
+    ? values.filter((value) => normalizeOptional(value)).map((value) => normalizeOptional(value)).sort()
+    : [];
+}
+
+function buildStableMetadataSubset(event, presentation) {
+  const data = event?.data && typeof event.data === "object" ? event.data : {};
+  const base = {
+    surfaceDetail: presentation.surfaceDetail,
+    gateOutcome: presentation.gateOutcome,
+  };
+
+  if (presentation.surfaceDetail === "canvas") {
+    return {
+      ...base,
+      operation: normalizeOptional(data.operation),
+      contextType: normalizeOptional(data.contextType),
+      width: Number.isFinite(data.width) ? data.width : "",
+      height: Number.isFinite(data.height) ? data.height : "",
+      count: Number.isFinite(data.count) ? data.count : "",
+    };
+  }
+
+  if (presentation.surfaceDetail === "clipboard") {
+    return {
+      ...base,
+      method: normalizeOptional(data.method),
+      accessType: normalizeOptional(data.accessType),
+      itemCount: Number.isFinite(data.itemCount) ? data.itemCount : "",
+      mimeTypes: sortStableTextList(data.mimeTypes),
+    };
+  }
+
+  if (presentation.surfaceDetail === "geolocation") {
+    return {
+      ...base,
+      method: normalizeOptional(data.method),
+      requestedHighAccuracy: data.requestedHighAccuracy === true ? "true" : data.requestedHighAccuracy === false ? "false" : "",
+      timeoutMs: Number.isFinite(data.timeoutMs) ? data.timeoutMs : "",
+      maximumAgeMs: Number.isFinite(data.maximumAgeMs) ? data.maximumAgeMs : "",
+    };
+  }
+
+  if (presentation.surfaceDetail === "webrtc") {
+    return {
+      ...base,
+      action: normalizeOptional(data.action),
+      state: normalizeOptional(data.state),
+      stunTurnHostnames: sortStableTextList(data.stunTurnHostnames),
+    };
+  }
+
+  return {
+    ...base,
+    kind: normalizeOptional(event?.kind),
+  };
+}
+
+function getApiSignalEventKey(event) {
+  const eventId = normalizeOptional(event?.id);
+  if (eventId) return `id:${eventId}`;
+
+  const presentation = getApiEventPresentation(event);
+  return `fallback:${JSON.stringify({
+    ts: Number(event?.ts) || 0,
+    site: normalizeValue(event?.site),
+    mode: normalizeOptional(event?.mode),
+    kind: normalizeOptional(event?.kind),
+    canonicalPattern: presentation.canonicalId || normalizeOptional(event?.enrichment?.patternId),
+    signalType: presentation.signalType,
+    confidence: typeof presentation.confidence === "number" && !Number.isNaN(presentation.confidence)
+      ? presentation.confidence.toFixed(4)
+      : "",
+    metadata: buildStableMetadataSubset(event, presentation),
+  })}`;
+}
+
+function hashText(value) {
+  let hash = 0;
+  const text = String(value || "");
+  for (let i = 0; i < text.length; i += 1) {
+    hash = ((hash << 5) - hash) + text.charCodeAt(i);
+    hash |= 0;
+  }
+  return Math.abs(hash).toString(36);
+}
+
+function eventDetailId(key) {
+  return `apiSignalsDetail-${hashText(key)}`;
+}
+
+function syncExpandedSignalKey(events) {
+  if (!viewState.expandedSignalKey) return;
+  const keys = new Set((Array.isArray(events) ? events : []).map((event) => getApiSignalEventKey(event)));
+  if (!keys.has(viewState.expandedSignalKey)) viewState.expandedSignalKey = null;
+}
+
+function eventRowHtml(event) {
   const { friendlyTime } = utils();
   const presentation = getApiEventPresentation(event);
+  const eventKey = getApiSignalEventKey(event);
+  const expanded = viewState.expandedSignalKey === eventKey;
   const timeText = typeof friendlyTime === "function" ? friendlyTime(event.ts) : new Date(event.ts || 0).toLocaleString();
+  const detailId = eventDetailId(eventKey);
+  const canonicalPattern = presentation.canonicalId || "Not classified";
   return `
-    <article class="api-signals-event-card">
-      <div class="api-signals-event-head">
-        <div class="api-signals-event-title-wrap">
-          <div class="api-signals-event-kicker">${escape(presentation.surfaceLabel)} signal</div>
-          <div class="api-signals-event-title">${escape(presentation.label)}</div>
+    <article class="api-signals-event-row${expanded ? " expanded" : ""}">
+      <button
+        class="api-signals-event-toggle"
+        type="button"
+        data-event-key="${escape(eventKey)}"
+        aria-expanded="${expanded ? "true" : "false"}"
+        aria-controls="${escape(detailId)}"
+      >
+        <div class="api-signals-event-head">
+          <div class="api-signals-event-title-wrap">
+            <div class="api-signals-event-title-line">
+              <span class="api-signals-event-marker" aria-hidden="true">&gt;</span>
+              <div class="api-signals-event-title-block">
+                <div class="api-signals-event-kicker">${escape(presentation.surfaceLabel)} signal</div>
+                <div class="api-signals-event-title">${escape(presentation.label)}</div>
+              </div>
+            </div>
+            <div class="api-signals-event-meta">
+              <span class="api-signals-event-site">${escape(normalizeValue(event.site))}</span>
+              <span class="api-signals-event-time">${escape(timeText || "-")}</span>
+              <span class="api-signals-event-inline-id api-signals-code">${escape(canonicalPattern)}</span>
+            </div>
+          </div>
+          <div class="api-signals-event-badges">
+            <span class="api-signals-confidence ${escape(presentation.confidenceBand)}">${escape(presentation.confidenceText)}</span>
+            <span class="api-signals-outcome-badge ${escape(presentation.gateOutcome)}">${escape(presentation.gateOutcomeLabel)}</span>
+          </div>
         </div>
-        <div class="api-signals-event-badges">
-          <span class="api-signals-confidence ${escape(presentation.confidenceBand)}">${escape(presentation.confidenceText)}</span>
-          <span class="api-signals-surface-pill ${escape(presentation.surfaceDetail)}">${escape(presentation.surfaceLabel)}</span>
+        <div class="api-signals-event-explanation-row">
+          <span class="api-signals-event-inline-label">Why this stands out</span>
+          <span class="api-signals-event-explanation">${escape(presentation.explanation)}</span>
         </div>
-      </div>
-      <div class="api-signals-event-meta">
-        <span class="api-signals-event-site">${escape(normalizeValue(event.site))}</span>
-        <span class="api-signals-type-badge">${escape(presentation.signalTypeLabel)}</span>
-        <span class="api-signals-outcome-badge ${escape(presentation.gateOutcome)}">${escape(presentation.gateOutcomeLabel)}</span>
-        <span class="api-signals-event-time">${escape(timeText || "-")}</span>
-      </div>
-      <div class="api-signals-event-summary-grid">
-        <div class="api-signals-event-block">
-          <div class="api-signals-event-block-label">Why it was flagged</div>
-          <p class="api-signals-event-block-value">${escape(presentation.explanation)}</p>
+      </button>
+      <div id="${escape(detailId)}" class="api-signals-event-readout${expanded ? "" : " hidden"}">
+        <div class="api-signals-event-readout-grid">
+          <div class="api-signals-secondary-field">
+            <div class="api-signals-secondary-label">Canonical pattern</div>
+            <div class="api-signals-secondary-value api-signals-code">${escape(canonicalPattern)}</div>
+          </div>
+          <div class="api-signals-secondary-field">
+            <div class="api-signals-secondary-label">Backend signal type</div>
+            <div class="api-signals-secondary-value api-signals-code">${escape(presentation.signalType)}</div>
+          </div>
+          <div class="api-signals-secondary-field">
+            <div class="api-signals-secondary-label">Observed metadata</div>
+            <div class="api-signals-secondary-value">${escape(presentation.summary)}</div>
+          </div>
+          <div class="api-signals-secondary-field">
+            <div class="api-signals-secondary-label">Gate outcome</div>
+            <div class="api-signals-secondary-value api-signals-code">${escape(presentation.gateOutcome)}</div>
+          </div>
+          ${presentation.classified ? "" : `
+          <div class="api-signals-secondary-field">
+            <div class="api-signals-secondary-label">Classification status</div>
+            <div class="api-signals-secondary-value">Legacy or unclassified row</div>
+          </div>`}
         </div>
-        <div class="api-signals-event-block">
-          <div class="api-signals-event-block-label">Observed details</div>
-          <p class="api-signals-event-block-value">${escape(presentation.summary)}</p>
-        </div>
-      </div>
-      <div class="api-signals-secondary-grid">
-        <div class="api-signals-secondary-field">
-          <div class="api-signals-secondary-label">Canonical pattern</div>
-          <div class="api-signals-secondary-value api-signals-code">${escape(presentation.canonicalId || "Not classified")}</div>
-        </div>
-        <div class="api-signals-secondary-field">
-          <div class="api-signals-secondary-label">Backend signal type</div>
-          <div class="api-signals-secondary-value api-signals-code">${escape(presentation.signalType)}</div>
-        </div>
-        <div class="api-signals-secondary-field">
-          <div class="api-signals-secondary-label">Gate outcome</div>
-          <div class="api-signals-secondary-value api-signals-code">${escape(presentation.gateOutcome)}</div>
-        </div>
-        ${presentation.classified ? "" : `
-        <div class="api-signals-secondary-field">
-          <div class="api-signals-secondary-label">Classification status</div>
-          <div class="api-signals-secondary-value">Legacy or unclassified row</div>
-        </div>`}
       </div>
     </article>
   `;
@@ -431,6 +549,21 @@ function bindControlEvents() {
   controlsBound = true;
 }
 
+function bindEventsList() {
+  if (eventsListBound) return;
+  document.getElementById("apiSignalsEventsList")?.addEventListener("click", (event) => {
+    const target = event.target;
+    if (!(target instanceof HTMLElement)) return;
+    const toggle = target.closest("[data-event-key]");
+    if (!(toggle instanceof HTMLButtonElement)) return;
+    const key = normalizeOptional(toggle.dataset.eventKey);
+    if (!key) return;
+    viewState.expandedSignalKey = viewState.expandedSignalKey === key ? null : key;
+    renderInsights(typeof getLatestEventsCb === "function" ? getLatestEventsCb() || [] : viewState.latestEvents);
+  });
+  eventsListBound = true;
+}
+
 export function renderApiSignalsView(events, options = {}) {
   viewState.latestEvents = Array.isArray(events) ? events : [];
   if (Object.prototype.hasOwnProperty.call(options, "policies")) {
@@ -448,6 +581,7 @@ export function initApiSignalsFeature({ getLatestEvents } = {}) {
   bindFilters();
   bindSubviewControls();
   bindControlEvents();
+  bindEventsList();
 }
 
 if (typeof window !== "undefined") {
