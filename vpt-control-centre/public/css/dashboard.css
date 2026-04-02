@@ -1171,13 +1171,14 @@
   gap: 1px;
   border: 1px solid var(--border-subtle-color);
   border-radius: var(--radius-md);
-  background: var(--divider);
+  background: var(--border-subtle-color);
   overflow: hidden;
 }
 
 .api-signals-event-row {
   position: relative;
   background: var(--surface-panel);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.015);
 }
 
 .api-signals-event-row::before {
@@ -1210,7 +1211,7 @@
 }
 
 .api-signals-event-toggle:hover {
-  background: rgba(255, 255, 255, 0.02);
+  background: var(--surface-hover);
 }
 
 .api-signals-event-toggle:focus-visible {
@@ -1340,6 +1341,24 @@
   color: var(--text-secondary);
 }
 
+.api-signals-event-inline-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.38rem;
+  color: var(--accent-strong);
+}
+
+.api-signals-event-inline-label::before {
+  content: "";
+  width: 0.78rem;
+  height: 0.62rem;
+  border-left: 3px solid var(--accent-rail);
+  border-bottom: 3px solid var(--accent-rail);
+  border-bottom-left-radius: 4px;
+  transform: translateY(-0.02rem);
+  flex: 0 0 auto;
+}
+
 .api-signals-event-explanation {
   min-width: 0;
   color: var(--text-secondary);
@@ -1351,7 +1370,7 @@
 
 .api-signals-event-readout {
   padding: 0 1rem 0.92rem 2.48rem;
-  border-top: 1px solid var(--divider);
+  border-top: 1px solid var(--border-subtle-color);
   background: rgba(255, 255, 255, 0.01);
 }
 
