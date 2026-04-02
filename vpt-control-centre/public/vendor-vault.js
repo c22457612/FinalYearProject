@@ -979,7 +979,7 @@ function renderDomainsPanel(domainsUsed, hasData) {
     .slice(0, 5)
     .map((row) => `${String(row && row.domain ? row.domain : "-")} (${toSafeCount(row && row.count)})`);
   if (topFive.length) {
-    appendPanelMeta(panel, "Top domains");
+    appendPanelMeta(panel, "Most common domains");
     appendPanelList(panel, topFive);
   }
 }
@@ -1001,7 +1001,7 @@ function renderKeysPanel(keysSummary, hasData) {
     .slice(0, 5)
     .map((row) => `${String(row && row.key ? row.key : "-")} (${toSafeCount(row && row.count)})`);
   if (topFive.length) {
-    appendPanelMeta(panel, "Top keys");
+    appendPanelMeta(panel, "Most common key names");
     appendPanelList(panel, topFive);
   }
 }
@@ -1453,7 +1453,7 @@ function renderSummary(scoreMeta, itemModels) {
   mayList.textContent = formatCategorySet(observedCategories, "None observed");
   attemptedList.textContent = formatCategorySet(attemptedCategories, "None detected");
   renderActionList(vendorActionsList, deriveVendorActions(itemModels));
-  setExposureCaseSummaryNext(itemModels.length ? "Choose an inventory item below." : "Review Browser API evidence below.");
+  setExposureCaseSummaryNext(itemModels.length ? "Choose an inventory item in the grid." : "Review Browser API activity below.");
   renderHeaderCaseSummary(scoreMeta, observedCategories, attemptedCategories, itemModels.length > 0);
 }
 
@@ -1476,14 +1476,14 @@ function renderHeaderCaseSummary(scoreMeta, observedCategories, attemptedCategor
   observedEl.textContent = hasItems ? formatCategoryCount(observedCount) : "None observed";
   blockedEl.textContent = hasItems ? formatCategoryCount(blockedCount) : "None detected";
   concernEl.textContent = hasItems && scoreMeta ? `${scoreMeta.band} concern` : "No exposure score";
-  nextEl.textContent = hasItems ? "Inventory overview grid" : "Browser API evidence";
+  nextEl.textContent = hasItems ? "Choose in investigation grid" : "Browser API activity";
 
   if (!hasItems) {
-    summaryEl.textContent = "No potential sharing inventory was observed for this scope. Review Browser API evidence for related vendor activity.";
+    summaryEl.textContent = "No potential sharing inventory was observed for this scope. Review the Browser API activity below for related vendor evidence.";
     return;
   }
 
-  summaryEl.textContent = `Observed potential sharing in ${formatCategoryCount(observedCount)}. Blocked attempts appeared in ${formatCategoryCount(blockedCount)}. Choose an inventory item below, then inspect the detailed evidence.`;
+  summaryEl.textContent = `Observed potential sharing in ${formatCategoryCount(observedCount)}. Blocked attempts appeared in ${formatCategoryCount(blockedCount)}. Start with the investigation grid below, then inspect details for the selected item.`;
 }
 
 function resetHeaderCaseSummary(message) {
@@ -1499,7 +1499,7 @@ function resetHeaderCaseSummary(message) {
   concernEl.textContent = "-";
   nextEl.textContent = "Potentially shared data inventory";
   summaryEl.textContent = message || "Review potential sharing indicators and related Browser API activity for this vendor.";
-  setExposureCaseSummaryNext("Choose an inventory item below.");
+  setExposureCaseSummaryNext("Choose an inventory item in the grid.");
 }
 
 function appendBulletList(section, bullets, listClassName) {
@@ -1633,23 +1633,26 @@ function buildExposureInventoryOptionId(item) {
 }
 
 function getInventoryTileSupportLine(item) {
-  if (item && item.exampleKey && item.exampleKey !== "-" && item.exampleKey.length <= 18) {
-    return `Example key: ${item.exampleKey}`;
-  }
   if (item && item.counts && item.counts.observed > 0 && item.counts.attempted > 0) {
-    return "Observed with blocked attempts.";
+    return "Observed leaving the browser; other attempts were blocked.";
   }
   if (item && item.counts && item.counts.observed > 0) {
-    return "Observed leaving the browser.";
+    return "Observed leaving the browser; may have been received.";
   }
   if (item && item.counts && item.counts.attempted > 0) {
-    return "Blocked attempt only.";
+    return "Blocked attempt; not proof of receipt.";
   }
-  return "Signal level uncertain.";
+  return "Signal seen in this scope, but confidence is limited.";
+}
+
+function getInventoryTileDescription(item) {
+  const description = String(item && (item.categoryDescription || item.plainEnglishWhat) ? (item.categoryDescription || item.plainEnglishWhat) : "").trim();
+  if (description) return description;
+  return "Potentially shareable browser metadata.";
 }
 
 function getInventoryTileCountsLine(item) {
-  return `Observed ${item.counts.observed} / Attempted ${item.counts.attempted} / Count ${item.count}`;
+  return `${formatRequestCount(item.count)} | Observed ${item.counts.observed} | Attempted ${item.counts.attempted}`;
 }
 
 function resolveActiveInventoryItem(sortedItems) {
@@ -1673,7 +1676,7 @@ function buildInventoryDrilldownHeader(item) {
 
   const kicker = document.createElement("div");
   kicker.className = "vendor-vault-drilldown-kicker";
-  kicker.textContent = "Detailed evidence";
+  kicker.textContent = "Details for selected item";
   rowMain.appendChild(kicker);
 
   const head = document.createElement("div");
@@ -1706,6 +1709,11 @@ function buildInventoryDrilldownHeader(item) {
   appendEntryMetaFact(meta, "Count", String(item.count));
   appendEntryMetaFact(meta, "Last seen", item.lastSeen);
   rowMain.appendChild(meta);
+
+  const note = document.createElement("div");
+  note.className = "vendor-vault-drilldown-note";
+  note.textContent = "These details explain the inventory item currently selected in the investigation grid.";
+  rowMain.appendChild(note);
 
   header.appendChild(rowMain);
 
@@ -1861,6 +1869,11 @@ function renderInventoryGrid(sortedItems) {
     head.appendChild(marker);
     tile.appendChild(head);
 
+    const description = document.createElement("div");
+    description.className = "vendor-vault-inventory-tile-description";
+    description.textContent = getInventoryTileDescription(item);
+    tile.appendChild(description);
+
     const cues = document.createElement("div");
     cues.className = "vendor-vault-inventory-tile-cues";
 
@@ -1875,15 +1888,15 @@ function renderInventoryGrid(sortedItems) {
     cues.appendChild(scorePill);
     tile.appendChild(cues);
 
-    const counts = document.createElement("div");
-    counts.className = "vendor-vault-inventory-tile-counts";
-    counts.textContent = getInventoryTileCountsLine(item);
-    tile.appendChild(counts);
-
     const support = document.createElement("div");
     support.className = "vendor-vault-inventory-tile-support";
     support.textContent = getInventoryTileSupportLine(item);
     tile.appendChild(support);
+
+    const counts = document.createElement("div");
+    counts.className = "vendor-vault-inventory-tile-counts";
+    counts.textContent = getInventoryTileCountsLine(item);
+    tile.appendChild(counts);
 
     tile.addEventListener("click", () => {
       if (activeExposureInventoryKey === item.itemKey) return;
@@ -1944,14 +1957,14 @@ function buildApiEvidenceNarrative(group) {
   const sectionKey = getApiEvidenceSectionKey(group && group.key);
   if (sectionKey === API_EVIDENCE_SECTION_VENDOR) {
     return {
-      summaryLine: `This vendor used ${group.label}.`,
-      meaningLine: `This vendor used ${group.label}. This activity may be used to infer network, browser, or device characteristics.`,
+      summaryLine: `Activity linked to this vendor included ${group.label}.`,
+      meaningLine: `Activity linked to this vendor included ${group.label}. This may be used to infer network, browser, or device characteristics.`,
     };
   }
 
   return {
-    summaryLine: `This site used ${group.label}. Observed on this page, this is not directly linked to this vendor.`,
-    meaningLine: `This site used ${group.label}. Observed on this page, this may still contribute to fingerprinting, probing, or sensitive-access risk, but it is not directly linked to this vendor.`,
+    summaryLine: `This site also showed ${group.label}, but it is not directly linked to this vendor.`,
+    meaningLine: `This site also showed ${group.label}. It may still contribute to fingerprinting, probing, or sensitive-access risk on this page, but it is not part of the evidence directly linked to this vendor.`,
   };
 }
 
@@ -2365,11 +2378,11 @@ function syncContextualApiEvidenceCopy() {
   if (!intro || !note) return hasSiteScope;
 
   if (hasSiteScope) {
-    intro.textContent = "Other Browser API activity observed on this site (not directly attributable to this vendor)";
-    note.textContent = "These signals are not directly attributable to this vendor, but may still contribute to tracking or profiling on this page.";
+    intro.textContent = "This Browser API activity was observed on this site, but it is not directly linked to this vendor.";
+    note.textContent = "It may still contribute to tracking or profiling on this page, even though it is outside the evidence linked to this vendor.";
   } else {
-    intro.textContent = "Other Browser API activity is shown only in This site view because it is not directly attributable to this vendor.";
-    note.textContent = "These signals are page-level context rather than vendor responsibility.";
+    intro.textContent = "Other site-level Browser API activity is shown only in This site view because it is not directly linked to this vendor.";
+    note.textContent = "These signals provide page context rather than vendor-specific evidence.";
   }
 
   return hasSiteScope;
@@ -2378,12 +2391,12 @@ function syncContextualApiEvidenceCopy() {
 function renderVendorApiEvidenceSections(vendorGroups, contextualGroups) {
   const hasSiteScope = syncContextualApiEvidenceCopy();
   renderVendorApiEvidenceSubsection(API_EVIDENCE_SECTION_VENDOR, vendorGroups, {
-    emptyText: "No vendor-attributed Browser API activity observed for this vendor.",
+    emptyText: "No Browser API activity could be linked to this vendor.",
   });
   renderVendorApiEvidenceSubsection(API_EVIDENCE_SECTION_CONTEXTUAL, contextualGroups, {
     emptyText: hasSiteScope
-      ? "No other Browser API activity observed on this site."
-      : "Switch to This site to review page-level Browser API activity that is not directly attributable to this vendor.",
+      ? "No other Browser API activity was observed on this site."
+      : "Switch to This site to review other Browser API activity seen on the page.",
   });
 }
 

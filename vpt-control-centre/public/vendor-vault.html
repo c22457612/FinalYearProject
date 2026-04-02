@@ -292,7 +292,7 @@
                     <div class="vendor-vault-case-summary-kicker">Inventory overview</div>
                     <h3 id="exposureInventoryOverviewHeading" class="vendor-vault-inventory-overview-title">Choose what to inspect</h3>
                   </div>
-                  <div class="vendor-vault-inventory-overview-note">Select one item to open the detailed evidence view below.</div>
+                  <div class="vendor-vault-inventory-overview-note">Choose one inventory item in the grid, then inspect its details below.</div>
                 </div>
                 <div id="exposureInventoryGrid" class="vendor-vault-inventory-grid" role="listbox" aria-label="Vendor inventory overview"></div>
               </section>
@@ -304,9 +304,9 @@
           <section class="panel vendor-vault-api-panel">
             <div class="panel-header">
               <div>
-                <div class="panel-title">Browser API activity related to this vendor</div>
+                <div class="panel-title">Browser API activity in this investigation</div>
                 <div class="vendor-vault-disclaimer">
-                  This section separates vendor-attributed Browser API activity from other page-level Browser API signals that may still contribute to privacy risk.
+                  This section separates activity linked to this vendor from other privacy activity seen on the same site.
                 </div>
               </div>
             </div>
@@ -330,10 +330,10 @@
               <div class="vendor-vault-api-box">
                 <section id="vendorApiEvidenceVendorSection" class="vendor-vault-api-subsection hidden" aria-labelledby="vendorApiEvidenceVendorHeading">
                   <div class="vendor-vault-api-subsection-head">
-                    <div class="vendor-vault-api-subsection-kicker">This vendor did X</div>
-                    <h3 id="vendorApiEvidenceVendorHeading" class="vendor-vault-api-subsection-title">Vendor-attributed Browser API activity</h3>
+                    <div class="vendor-vault-api-subsection-kicker">Activity linked to this vendor</div>
+                    <h3 id="vendorApiEvidenceVendorHeading" class="vendor-vault-api-subsection-title">Browser API activity linked to this vendor</h3>
                     <p class="vendor-vault-api-subsection-copy">
-                      Only vendor-attributed WebRTC activity is shown here.
+                      This section shows Browser API activity we can link to this vendor.
                     </p>
                   </div>
                   <div id="vendorApiEvidenceVendorNarrative" class="vendor-vault-api-narrative hidden"></div>
@@ -343,13 +343,13 @@
 
                 <section id="vendorApiEvidenceContextualSection" class="vendor-vault-api-subsection hidden" aria-labelledby="vendorApiEvidenceContextualHeading">
                   <div class="vendor-vault-api-subsection-head">
-                    <div class="vendor-vault-api-subsection-kicker">This site also did Y</div>
-                    <h3 id="vendorApiEvidenceContextualHeading" class="vendor-vault-api-subsection-title">Other API activity on this site</h3>
+                    <div class="vendor-vault-api-subsection-kicker">Other privacy activity on this site</div>
+                    <h3 id="vendorApiEvidenceContextualHeading" class="vendor-vault-api-subsection-title">Browser API activity seen elsewhere on this site</h3>
                     <p id="vendorApiEvidenceContextualIntro" class="vendor-vault-api-subsection-copy">
-                      Other Browser API activity observed on this site (not directly attributable to this vendor)
+                      This Browser API activity was observed on this site, but it is not directly linked to this vendor.
                     </p>
                     <p id="vendorApiEvidenceContextualNote" class="vendor-vault-api-subsection-note">
-                      These signals are not directly attributable to this vendor, but may still contribute to tracking or profiling on this page.
+                      It may still contribute to tracking or profiling on this page, even though it is not part of this vendor-specific evidence.
                     </p>
                   </div>
                   <div id="vendorApiEvidenceContextualNarrative" class="vendor-vault-api-narrative hidden"></div>
@@ -361,25 +361,25 @@
           </section>
 
           <div class="summary vendor-vault-secondary-panels">
-            <section class="vendor-vault-readout" aria-labelledby="vaultActivityHeading">
+            <section class="vendor-vault-readout vendor-vault-readout-activity" aria-labelledby="vaultActivityHeading">
               <h2 id="vaultActivityHeading">Activity summary</h2>
               <div id="vaultActivityPanel" class="vendor-vault-panel-body">
                 <div class="hint">Loading...</div>
               </div>
             </section>
-            <section class="vendor-vault-readout" aria-labelledby="vaultDomainsHeading">
+            <section class="vendor-vault-readout vendor-vault-readout-domains" aria-labelledby="vaultDomainsHeading">
               <h2 id="vaultDomainsHeading">Domains used</h2>
               <div id="vaultDomainsPanel" class="vendor-vault-panel-body">
                 <div class="hint">Loading...</div>
               </div>
             </section>
-            <section class="vendor-vault-readout" aria-labelledby="vaultKeysHeading">
-              <h2 id="vaultKeysHeading">Observed parameter keys</h2>
+            <section class="vendor-vault-readout vendor-vault-readout-keys" aria-labelledby="vaultKeysHeading">
+              <h2 id="vaultKeysHeading">Observed key names</h2>
               <div id="vaultKeysPanel" class="vendor-vault-panel-body">
                 <div class="hint">Loading...</div>
               </div>
             </section>
-            <section class="vendor-vault-readout" aria-labelledby="vaultRiskHeading">
+            <section class="vendor-vault-readout vendor-vault-readout-risk" aria-labelledby="vaultRiskHeading">
               <h2 id="vaultRiskHeading">Risk summary</h2>
               <div id="vaultRiskPanel" class="vendor-vault-panel-body">
                 <div class="hint">Loading...</div>
