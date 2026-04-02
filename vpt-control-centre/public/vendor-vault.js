@@ -137,6 +137,7 @@ const KEY_HINT_RULES = [
 let latestExposureRequestId = 0;
 let latestSummaryRequestId = 0;
 let latestApiEvidenceRequestId = 0;
+let activeExposureInventoryKey = "";
 const SCOPE_SITE = "site";
 const SCOPE_ALL = "all";
 const vaultScopeState = {
@@ -1278,6 +1279,7 @@ function getInThisCaseLine(counts) {
 
 function buildItemModel(row, index, site, vendor) {
   const categoryId = String(row && row.data_category ? row.data_category : "");
+  const surface = String(row && row.surface ? row.surface : "unknown").trim() || "unknown";
   const meaning = getCategoryMeaning(categoryId);
   const counts = getEvidenceCounts(row);
   const exampleKey = String((row && row.example_key) || "-");
@@ -1307,6 +1309,9 @@ function buildItemModel(row, index, site, vendor) {
 
   return {
     index,
+    itemKey: `${categoryId || "unknown"}::${surface}`,
+    categoryId,
+    surface,
     categoryLabel: meaning.label,
     categoryDescription: meaning.description,
     plainEnglishWhat: meaning.plainEnglishWhat,
@@ -1388,6 +1393,12 @@ function renderActionList(listEl, actions) {
   }
 }
 
+function setExposureCaseSummaryNext(text) {
+  const nextValue = qs("exposureCaseSummaryNextValue");
+  if (!nextValue) return;
+  nextValue.textContent = String(text || "").trim() || "Choose an inventory item below.";
+}
+
 function deriveVendorActions(itemModels) {
   const topTwo = itemModels
     .slice()
@@ -1442,6 +1453,7 @@ function renderSummary(scoreMeta, itemModels) {
   mayList.textContent = formatCategorySet(observedCategories, "None observed");
   attemptedList.textContent = formatCategorySet(attemptedCategories, "None detected");
   renderActionList(vendorActionsList, deriveVendorActions(itemModels));
+  setExposureCaseSummaryNext(itemModels.length ? "Choose an inventory item below." : "Review Browser API evidence below.");
   renderHeaderCaseSummary(scoreMeta, observedCategories, attemptedCategories, itemModels.length > 0);
 }
 
@@ -1464,14 +1476,14 @@ function renderHeaderCaseSummary(scoreMeta, observedCategories, attemptedCategor
   observedEl.textContent = hasItems ? formatCategoryCount(observedCount) : "None observed";
   blockedEl.textContent = hasItems ? formatCategoryCount(blockedCount) : "None detected";
   concernEl.textContent = hasItems && scoreMeta ? `${scoreMeta.band} concern` : "No exposure score";
-  nextEl.textContent = hasItems ? "Evidence rows below" : "Browser API evidence";
+  nextEl.textContent = hasItems ? "Inventory overview grid" : "Browser API evidence";
 
   if (!hasItems) {
     summaryEl.textContent = "No potential sharing inventory was observed for this scope. Review Browser API evidence for related vendor activity.";
     return;
   }
 
-  summaryEl.textContent = `Observed potential sharing in ${formatCategoryCount(observedCount)}. Blocked attempts appeared in ${formatCategoryCount(blockedCount)}. Inspect the evidence rows below first.`;
+  summaryEl.textContent = `Observed potential sharing in ${formatCategoryCount(observedCount)}. Blocked attempts appeared in ${formatCategoryCount(blockedCount)}. Choose an inventory item below, then inspect the detailed evidence.`;
 }
 
 function resetHeaderCaseSummary(message) {
@@ -1487,6 +1499,7 @@ function resetHeaderCaseSummary(message) {
   concernEl.textContent = "-";
   nextEl.textContent = "Potentially shared data inventory";
   summaryEl.textContent = message || "Review potential sharing indicators and related Browser API activity for this vendor.";
+  setExposureCaseSummaryNext("Choose an inventory item below.");
 }
 
 function appendBulletList(section, bullets, listClassName) {
@@ -1605,176 +1618,306 @@ function appendTechnicalDetailRow(container, label, value) {
   container.appendChild(row);
 }
 
-function renderInventoryEntries(itemModels) {
-  const list = qs("exposureInventoryList");
-  if (!list) return;
-  list.innerHTML = "";
-
-  const sortedItems = itemModels
+function sortInventoryItems(itemModels) {
+  return (Array.isArray(itemModels) ? itemModels : [])
     .slice()
     .sort((a, b) => (
       (b.itemScoreMeta.itemScore - a.itemScoreMeta.itemScore) ||
       (b.count - a.count) ||
       a.categoryLabel.localeCompare(b.categoryLabel)
     ));
+}
+
+function buildExposureInventoryOptionId(item) {
+  return `vault-inventory-option-${String(item && item.itemKey ? item.itemKey : "item").replace(/[^a-z0-9_-]+/gi, "-")}`;
+}
+
+function getInventoryTileSupportLine(item) {
+  if (item && item.exampleKey && item.exampleKey !== "-" && item.exampleKey.length <= 18) {
+    return `Example key: ${item.exampleKey}`;
+  }
+  if (item && item.counts && item.counts.observed > 0 && item.counts.attempted > 0) {
+    return "Observed with blocked attempts.";
+  }
+  if (item && item.counts && item.counts.observed > 0) {
+    return "Observed leaving the browser.";
+  }
+  if (item && item.counts && item.counts.attempted > 0) {
+    return "Blocked attempt only.";
+  }
+  return "Signal level uncertain.";
+}
+
+function getInventoryTileCountsLine(item) {
+  return `Observed ${item.counts.observed} / Attempted ${item.counts.attempted} / Count ${item.count}`;
+}
+
+function resolveActiveInventoryItem(sortedItems) {
+  const safeItems = Array.isArray(sortedItems) ? sortedItems : [];
+  if (!safeItems.length) {
+    activeExposureInventoryKey = "";
+    return null;
+  }
+
+  const activeItem = safeItems.find((item) => item.itemKey === activeExposureInventoryKey) || safeItems[0];
+  activeExposureInventoryKey = activeItem.itemKey;
+  return activeItem;
+}
+
+function buildInventoryDrilldownHeader(item) {
+  const header = document.createElement("div");
+  header.className = "vendor-vault-row-summary vendor-vault-row-summary-static";
+
+  const rowMain = document.createElement("div");
+  rowMain.className = "vendor-vault-row-main";
+
+  const kicker = document.createElement("div");
+  kicker.className = "vendor-vault-drilldown-kicker";
+  kicker.textContent = "Detailed evidence";
+  rowMain.appendChild(kicker);
+
+  const head = document.createElement("div");
+  head.className = "vendor-vault-entry-title-row";
+
+  const title = document.createElement("span");
+  title.className = "vendor-vault-entry-title";
+  title.textContent = item.categoryLabel;
+  head.appendChild(title);
+
+  const statusPill = document.createElement("span");
+  statusPill.className = `vendor-vault-status-pill vendor-vault-status-${item.statusLabel.toLowerCase()}`;
+  statusPill.textContent = item.statusLabel;
+
+  const scorePill = document.createElement("span");
+  scorePill.className = `vendor-vault-score-pill vendor-vault-band-${String(item.itemScoreMeta.itemBand).toLowerCase()}`;
+  scorePill.textContent = `Score ${item.itemScoreMeta.itemScore} (${item.itemScoreMeta.itemBand})`;
+
+  const badges = document.createElement("div");
+  badges.className = "vendor-vault-entry-badges";
+  badges.appendChild(statusPill);
+  badges.appendChild(scorePill);
+  head.appendChild(badges);
+  rowMain.appendChild(head);
+
+  const meta = document.createElement("div");
+  meta.className = "vendor-vault-entry-meta";
+  appendEntryMetaFact(meta, "Observed", String(item.counts.observed));
+  appendEntryMetaFact(meta, "Attempted", String(item.counts.attempted));
+  appendEntryMetaFact(meta, "Count", String(item.count));
+  appendEntryMetaFact(meta, "Last seen", item.lastSeen);
+  rowMain.appendChild(meta);
+
+  header.appendChild(rowMain);
+
+  const chevron = document.createElement("span");
+  chevron.className = "vendor-vault-row-chevron vendor-vault-row-chevron-static";
+  chevron.setAttribute("aria-hidden", "true");
+  chevron.textContent = ">";
+  header.appendChild(chevron);
+
+  return header;
+}
+
+function buildInventoryDrilldownPanel(item) {
+  const panel = document.createElement("div");
+  panel.className = "vendor-vault-entry-panel vendor-vault-entry-panel-static";
+
+  const summaryLine = document.createElement("p");
+  summaryLine.className = "vendor-vault-expanded-summary";
+  summaryLine.textContent = getExpandedSummarySentence(item);
+  panel.appendChild(summaryLine);
+
+  const plainHeading = document.createElement("h4");
+  plainHeading.className = "vendor-vault-expanded-heading";
+  plainHeading.textContent = "In plain English";
+  panel.appendChild(plainHeading);
+
+  const plainBlock = document.createElement("div");
+  plainBlock.className = "vendor-vault-plain-block";
+
+  const whatLine = document.createElement("p");
+  whatLine.className = "vendor-vault-plain-line";
+  whatLine.innerHTML = `<span class="vendor-vault-plain-label">What it is:</span> ${item.plainEnglishWhat}`;
+  plainBlock.appendChild(whatLine);
+
+  const whyLine = document.createElement("p");
+  whyLine.className = "vendor-vault-plain-line";
+  whyLine.innerHTML = `<span class="vendor-vault-plain-label">Why it matters:</span> ${item.plainEnglishWhy}`;
+  plainBlock.appendChild(whyLine);
+
+  const caseLine = document.createElement("p");
+  caseLine.className = "vendor-vault-plain-line";
+  caseLine.innerHTML = `<span class="vendor-vault-plain-label">In this case:</span> ${item.inThisCase}`;
+  plainBlock.appendChild(caseLine);
+
+  if (item.uncertaintyNote) {
+    const noteLine = document.createElement("p");
+    noteLine.className = "vendor-vault-plain-line vendor-vault-plain-note";
+    noteLine.innerHTML = `<span class="vendor-vault-plain-label">Note:</span> ${item.uncertaintyNote}`;
+    plainBlock.appendChild(noteLine);
+  }
+  panel.appendChild(plainBlock);
+
+  const layout = document.createElement("div");
+  layout.className = "vendor-vault-expanded-layout";
+
+  const left = document.createElement("div");
+  left.className = "vendor-vault-expanded-main";
+
+  const whyHeading = document.createElement("h4");
+  whyHeading.className = "vendor-vault-expanded-heading";
+  whyHeading.textContent = "Why it matters";
+  left.appendChild(whyHeading);
+  appendBulletList(left, item.privacyBullets.slice(0, 2), "vendor-vault-why-list");
+
+  const actionsHeading = document.createElement("h4");
+  actionsHeading.className = "vendor-vault-expanded-heading";
+  actionsHeading.textContent = "What you can do";
+  left.appendChild(actionsHeading);
+
+  const actionWrap = document.createElement("div");
+  actionWrap.className = "vendor-vault-guided-actions";
+  renderGuidedActions(actionWrap, item.actions);
+  left.appendChild(actionWrap);
+
+  layout.appendChild(left);
+
+  const right = document.createElement("aside");
+  right.className = "vendor-vault-evidence-compact";
+
+  const evidenceHeading = document.createElement("h4");
+  evidenceHeading.className = "vendor-vault-evidence-heading";
+  evidenceHeading.textContent = "Evidence";
+  right.appendChild(evidenceHeading);
+
+  const evidenceList = document.createElement("dl");
+  evidenceList.className = "vendor-vault-evidence-kv";
+  appendEvidenceField(evidenceList, "Observed", String(item.counts.observed));
+  appendEvidenceField(evidenceList, "Attempted", String(item.counts.attempted));
+  appendEvidenceField(evidenceList, "Confidence", item.confidenceText);
+  appendEvidenceField(evidenceList, "First seen", item.firstSeen);
+  appendEvidenceField(evidenceList, "Last seen", item.lastSeen);
+  right.appendChild(evidenceList);
+
+  layout.appendChild(right);
+  panel.appendChild(layout);
+
+  const technical = document.createElement("details");
+  technical.className = "vendor-vault-technical-details";
+  const technicalSummary = document.createElement("summary");
+  technicalSummary.textContent = "Show technical details";
+  technical.appendChild(technicalSummary);
+
+  const technicalGrid = document.createElement("div");
+  technicalGrid.className = "vendor-vault-technical-grid";
+  appendTechnicalDetailRow(technicalGrid, "Item score", `${item.itemScoreMeta.itemScore} (${item.itemScoreMeta.itemBand})`);
+  appendTechnicalDetailRow(technicalGrid, "Category weight", String(item.itemScoreMeta.weight));
+  appendTechnicalDetailRow(technicalGrid, "Confidence factor", `${item.itemScoreMeta.confidencePct}%`);
+  appendTechnicalDetailRow(
+    technicalGrid,
+    "Evidence factor",
+    `${item.itemScoreMeta.evidenceFactor.toFixed(2)} (observed=1.0, attempted=0.3, unknown=0.6)`
+  );
+  technical.appendChild(technicalGrid);
+  panel.appendChild(technical);
+
+  return panel;
+}
+
+function renderInventoryGrid(sortedItems) {
+  const grid = qs("exposureInventoryGrid");
+  if (!grid) return;
+  grid.innerHTML = "";
+
+  const activeItem = resolveActiveInventoryItem(sortedItems);
+  if (!activeItem) {
+    grid.removeAttribute("aria-activedescendant");
+    return;
+  }
+
+  grid.setAttribute("aria-activedescendant", buildExposureInventoryOptionId(activeItem));
 
   for (const item of sortedItems) {
-    const card = document.createElement("details");
-    card.className = "vendor-vault-entry";
-    card.setAttribute("role", "listitem");
-
-    const summary = document.createElement("summary");
-    summary.className = "vendor-vault-row-summary";
-
-    const rowMain = document.createElement("div");
-    rowMain.className = "vendor-vault-row-main";
+    const isActive = item.itemKey === activeExposureInventoryKey;
+    const tile = document.createElement("button");
+    tile.type = "button";
+    tile.id = buildExposureInventoryOptionId(item);
+    tile.className = `vendor-vault-inventory-tile${isActive ? " is-active" : ""}`;
+    tile.setAttribute("role", "option");
+    tile.setAttribute("aria-selected", String(isActive));
 
     const head = document.createElement("div");
-    head.className = "vendor-vault-entry-title-row";
+    head.className = "vendor-vault-inventory-tile-head";
 
-    const title = document.createElement("span");
-    title.className = "vendor-vault-entry-title";
+    const title = document.createElement("div");
+    title.className = "vendor-vault-inventory-tile-title";
     title.textContent = item.categoryLabel;
     head.appendChild(title);
+
+    const marker = document.createElement("span");
+    marker.className = "vendor-vault-inventory-tile-marker";
+    marker.setAttribute("aria-hidden", "true");
+    marker.textContent = ">";
+    head.appendChild(marker);
+    tile.appendChild(head);
+
+    const cues = document.createElement("div");
+    cues.className = "vendor-vault-inventory-tile-cues";
 
     const statusPill = document.createElement("span");
     statusPill.className = `vendor-vault-status-pill vendor-vault-status-${item.statusLabel.toLowerCase()}`;
     statusPill.textContent = item.statusLabel;
+    cues.appendChild(statusPill);
 
     const scorePill = document.createElement("span");
     scorePill.className = `vendor-vault-score-pill vendor-vault-band-${String(item.itemScoreMeta.itemBand).toLowerCase()}`;
-    scorePill.textContent = `Score ${item.itemScoreMeta.itemScore} (${item.itemScoreMeta.itemBand})`;
-    const badges = document.createElement("div");
-    badges.className = "vendor-vault-entry-badges";
-    badges.appendChild(statusPill);
-    badges.appendChild(scorePill);
-    head.appendChild(badges);
+    scorePill.textContent = `${item.itemScoreMeta.itemBand} concern`;
+    cues.appendChild(scorePill);
+    tile.appendChild(cues);
 
-    rowMain.appendChild(head);
+    const counts = document.createElement("div");
+    counts.className = "vendor-vault-inventory-tile-counts";
+    counts.textContent = getInventoryTileCountsLine(item);
+    tile.appendChild(counts);
 
-    const meta = document.createElement("div");
-    meta.className = "vendor-vault-entry-meta";
-    appendEntryMetaFact(meta, "Observed", String(item.counts.observed));
-    appendEntryMetaFact(meta, "Attempted", String(item.counts.attempted));
-    appendEntryMetaFact(meta, "Count", String(item.count));
-    appendEntryMetaFact(meta, "Last seen", item.lastSeen);
-    rowMain.appendChild(meta);
+    const support = document.createElement("div");
+    support.className = "vendor-vault-inventory-tile-support";
+    support.textContent = getInventoryTileSupportLine(item);
+    tile.appendChild(support);
 
-    summary.appendChild(rowMain);
+    tile.addEventListener("click", () => {
+      if (activeExposureInventoryKey === item.itemKey) return;
+      activeExposureInventoryKey = item.itemKey;
+      renderInventoryInspection(sortedItems, { focusActiveTile: true });
+    });
 
-    const chevron = document.createElement("span");
-    chevron.className = "vendor-vault-row-chevron";
-    chevron.setAttribute("aria-hidden", "true");
-    chevron.textContent = ">";
-    summary.appendChild(chevron);
+    grid.appendChild(tile);
+  }
+}
 
-    const panel = document.createElement("div");
-    panel.className = "vendor-vault-entry-panel";
-    panel.id = `vault-entry-panel-${item.index}`;
-    summary.setAttribute("aria-controls", panel.id);
+function renderInventoryDrilldown(activeItem) {
+  const container = qs("exposureInventoryDrilldown");
+  if (!container) return;
+  container.innerHTML = "";
 
-    const summaryLine = document.createElement("p");
-    summaryLine.className = "vendor-vault-expanded-summary";
-    summaryLine.textContent = getExpandedSummarySentence(item);
-    panel.appendChild(summaryLine);
+  if (!activeItem) return;
 
-    const plainHeading = document.createElement("h4");
-    plainHeading.className = "vendor-vault-expanded-heading";
-    plainHeading.textContent = "In plain English";
-    panel.appendChild(plainHeading);
+  const card = document.createElement("article");
+  card.className = "vendor-vault-entry vendor-vault-drilldown-entry";
+  card.appendChild(buildInventoryDrilldownHeader(activeItem));
+  card.appendChild(buildInventoryDrilldownPanel(activeItem));
+  container.appendChild(card);
+}
 
-    const plainBlock = document.createElement("div");
-    plainBlock.className = "vendor-vault-plain-block";
+function renderInventoryInspection(itemModels, opts = {}) {
+  const sortedItems = sortInventoryItems(itemModels);
+  const activeItem = resolveActiveInventoryItem(sortedItems);
+  renderInventoryGrid(sortedItems);
+  renderInventoryDrilldown(activeItem);
 
-    const whatLine = document.createElement("p");
-    whatLine.className = "vendor-vault-plain-line";
-    whatLine.innerHTML = `<span class="vendor-vault-plain-label">What it is:</span> ${item.plainEnglishWhat}`;
-    plainBlock.appendChild(whatLine);
-
-    const whyLine = document.createElement("p");
-    whyLine.className = "vendor-vault-plain-line";
-    whyLine.innerHTML = `<span class="vendor-vault-plain-label">Why it matters:</span> ${item.plainEnglishWhy}`;
-    plainBlock.appendChild(whyLine);
-
-    const caseLine = document.createElement("p");
-    caseLine.className = "vendor-vault-plain-line";
-    caseLine.innerHTML = `<span class="vendor-vault-plain-label">In this case:</span> ${item.inThisCase}`;
-    plainBlock.appendChild(caseLine);
-
-    if (item.uncertaintyNote) {
-      const noteLine = document.createElement("p");
-      noteLine.className = "vendor-vault-plain-line vendor-vault-plain-note";
-      noteLine.innerHTML = `<span class="vendor-vault-plain-label">Note:</span> ${item.uncertaintyNote}`;
-      plainBlock.appendChild(noteLine);
-    }
-    panel.appendChild(plainBlock);
-
-    const layout = document.createElement("div");
-    layout.className = "vendor-vault-expanded-layout";
-
-    const left = document.createElement("div");
-    left.className = "vendor-vault-expanded-main";
-
-    const whyHeading = document.createElement("h4");
-    whyHeading.className = "vendor-vault-expanded-heading";
-    whyHeading.textContent = "Why it matters";
-    left.appendChild(whyHeading);
-    appendBulletList(left, item.privacyBullets.slice(0, 2), "vendor-vault-why-list");
-
-    const actionsHeading = document.createElement("h4");
-    actionsHeading.className = "vendor-vault-expanded-heading";
-    actionsHeading.textContent = "What you can do";
-    left.appendChild(actionsHeading);
-
-    const actionWrap = document.createElement("div");
-    actionWrap.className = "vendor-vault-guided-actions";
-    renderGuidedActions(actionWrap, item.actions);
-    left.appendChild(actionWrap);
-
-    layout.appendChild(left);
-
-    const right = document.createElement("aside");
-    right.className = "vendor-vault-evidence-compact";
-
-    const evidenceHeading = document.createElement("h4");
-    evidenceHeading.className = "vendor-vault-evidence-heading";
-    evidenceHeading.textContent = "Evidence";
-    right.appendChild(evidenceHeading);
-
-    const evidenceList = document.createElement("dl");
-    evidenceList.className = "vendor-vault-evidence-kv";
-    appendEvidenceField(evidenceList, "Observed", String(item.counts.observed));
-    appendEvidenceField(evidenceList, "Attempted", String(item.counts.attempted));
-    appendEvidenceField(evidenceList, "Confidence", item.confidenceText);
-    appendEvidenceField(evidenceList, "First seen", item.firstSeen);
-    appendEvidenceField(evidenceList, "Last seen", item.lastSeen);
-    right.appendChild(evidenceList);
-
-    layout.appendChild(right);
-    panel.appendChild(layout);
-
-    const technical = document.createElement("details");
-    technical.className = "vendor-vault-technical-details";
-    const technicalSummary = document.createElement("summary");
-    technicalSummary.textContent = "Show technical details";
-    technical.appendChild(technicalSummary);
-
-    const technicalGrid = document.createElement("div");
-    technicalGrid.className = "vendor-vault-technical-grid";
-    appendTechnicalDetailRow(technicalGrid, "Item score", `${item.itemScoreMeta.itemScore} (${item.itemScoreMeta.itemBand})`);
-    appendTechnicalDetailRow(technicalGrid, "Category weight", String(item.itemScoreMeta.weight));
-    appendTechnicalDetailRow(technicalGrid, "Confidence factor", `${item.itemScoreMeta.confidencePct}%`);
-    appendTechnicalDetailRow(
-      technicalGrid,
-      "Evidence factor",
-      `${item.itemScoreMeta.evidenceFactor.toFixed(2)} (observed=1.0, attempted=0.3, unknown=0.6)`
-    );
-    technical.appendChild(technicalGrid);
-    panel.appendChild(technical);
-
-    card.appendChild(summary);
-    card.appendChild(panel);
-    list.appendChild(card);
+  if (opts.focusActiveTile && activeItem) {
+    const activeTile = document.getElementById(buildExposureInventoryOptionId(activeItem));
+    activeTile?.focus();
   }
 }
 
@@ -2335,7 +2478,8 @@ function clearSuccessContent() {
   if (attemptedList) attemptedList.textContent = "-";
   if (vendorActionsList) vendorActionsList.innerHTML = "";
   renderSummaryRing(0);
-  renderInventoryEntries([]);
+  activeExposureInventoryKey = "";
+  renderInventoryInspection([]);
 }
 
 function setLoadingView() {
@@ -2650,7 +2794,7 @@ async function loadExposureInventory() {
       return;
     }
 
-    renderInventoryEntries(itemModels);
+    renderInventoryInspection(itemModels);
     setInventoryState("success");
   } catch (err) {
     if (requestId !== latestExposureRequestId) return;

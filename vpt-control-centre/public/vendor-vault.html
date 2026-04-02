@@ -254,7 +254,7 @@
                   </div>
                   <div class="vendor-vault-case-summary-next">
                     <span class="vendor-vault-case-summary-next-label">Inspect next</span>
-                    <span class="vendor-vault-case-summary-next-value">Review the evidence rows below.</span>
+                    <span id="exposureCaseSummaryNextValue" class="vendor-vault-case-summary-next-value">Choose an inventory item below.</span>
                   </div>
                 </div>
                 <div class="vendor-vault-summary-grid">
@@ -286,9 +286,18 @@
                 </div>
               </section>
 
-              <div class="vendor-vault-inventory-box">
-                <div id="exposureInventoryList" class="vendor-vault-inventory-list" role="list"></div>
-              </div>
+              <section class="vendor-vault-inventory-overview" aria-labelledby="exposureInventoryOverviewHeading">
+                <div class="vendor-vault-inventory-overview-head">
+                  <div>
+                    <div class="vendor-vault-case-summary-kicker">Inventory overview</div>
+                    <h3 id="exposureInventoryOverviewHeading" class="vendor-vault-inventory-overview-title">Choose what to inspect</h3>
+                  </div>
+                  <div class="vendor-vault-inventory-overview-note">Select one item to open the detailed evidence view below.</div>
+                </div>
+                <div id="exposureInventoryGrid" class="vendor-vault-inventory-grid" role="listbox" aria-label="Vendor inventory overview"></div>
+              </section>
+
+              <div id="exposureInventoryDrilldown" class="vendor-vault-inventory-box vendor-vault-inventory-drilldown" aria-live="polite"></div>
             </div>
           </section>
 
