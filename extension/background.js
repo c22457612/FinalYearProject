@@ -1,3 +1,5 @@
+importScripts("floating-status-shared.js");
+
 const FILTERS = [
   "google-analytics.com",
   "doubleclick.net",
@@ -12,6 +14,7 @@ const MAX_STORED_EVENTS = 500;
 const API_EVENT_DEDUPE_WINDOW_MS = 1500;
 const API_EVENT_DEDUPE_LIMIT = 250;
 const API_NOTIFICATION_THROTTLE_MS = 45_000;
+const floatingStatusShared = globalThis.__VPTFloatingStatusShared || null;
 
 let lastPolicyTs = 0;
 let customFilters = []; // extra domains to block via policies
@@ -129,6 +132,69 @@ function hostFromOrigin(o) { try { return new URL(o).hostname; } catch { return 
 function siteBaseFromUrl(url) {
   if (!url || !/^https?:/i.test(url)) return "";
   return base(hostFromUrl(url));
+}
+
+function isLoopbackHost(host) {
+  const normalizedHost = String(host || "").trim().toLowerCase();
+  return normalizedHost === "127.0.0.1" || normalizedHost === "localhost";
+}
+
+function isFloatingStatusStripSupportedUrl(url) {
+  if (!url || !/^https?:/i.test(url)) return false;
+  try {
+    const parsed = new URL(url);
+    if (isLoopbackHost(parsed.hostname)) return false;
+    if (String(parsed.pathname || "").toLowerCase().endsWith(".pdf")) return false;
+    return true;
+  } catch (_error) {
+    return false;
+  }
+}
+
+async function buildFloatingStatusStripState(url) {
+  const { events, floatingStatusStripEnabled } = await chrome.storage.local.get([
+    "events",
+    "floatingStatusStripEnabled",
+  ]);
+  const enabled = floatingStatusStripEnabled === true;
+  const supported = isFloatingStatusStripSupportedUrl(url);
+  const site = siteBaseFromUrl(url);
+
+  if (!supported || !site) {
+    return {
+      ok: true,
+      enabled,
+      supported: false,
+      site: "",
+      observedCount: 0,
+      blockedCount: 0,
+      apiSurfaces: [],
+      apiDisplay: "None",
+    };
+  }
+
+  const summary = floatingStatusShared?.buildFloatingStatusSummary
+    ? floatingStatusShared.buildFloatingStatusSummary({
+      events: Array.isArray(events) ? events : [],
+      siteBase: site,
+    })
+    : {
+      observedCount: 0,
+      blockedCount: 0,
+      apiSurfaces: [],
+      apiDisplay: "None",
+    };
+
+  return {
+    ok: true,
+    enabled,
+    supported: true,
+    site,
+    observedCount: Number(summary.observedCount) || 0,
+    blockedCount: Number(summary.blockedCount) || 0,
+    apiSurfaces: Array.isArray(summary.apiSurfaces) ? summary.apiSurfaces : [],
+    apiDisplay: summary.apiDisplay || "None",
+  };
 }
 
 function buildTrustedSiteState(site) {
@@ -1190,6 +1256,19 @@ chrome.storage.onChanged.addListener(async ch => {
 });
 
 chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
+  if (msg?.type === "floatingStatusStrip:getCurrentSiteSummary") {
+    (async () => {
+      try {
+        const state = await buildFloatingStatusStripState(msg.url);
+        sendResponse(state);
+      } catch (e) {
+        console.error("floatingStatusStrip:getCurrentSiteSummary failed", e);
+        sendResponse({ ok: false, error: e.message || String(e) });
+      }
+    })();
+    return true;
+  }
+
   if (msg?.type === "api:gateStateSnapshot") {
     (async () => {
       try {

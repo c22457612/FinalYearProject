@@ -2,6 +2,7 @@
   const CONTROL_CENTRE_URL = "http://127.0.0.1:4141/";
   const THEME_API_URL = `${CONTROL_CENTRE_URL}api/ui/theme`;
   const THEME_STORAGE_KEY = "vpt.popup.theme";
+  const SHARED_THEME_STORAGE_KEY = "vptActiveThemeId";
   const DEFAULT_THEME_ID = "midnight";
   const THEME_IDS = new Set(["midnight", "amber", "oxblood", "daybreak"]);
   const BLOCKED_SUFFIX = " (blocked)";
@@ -123,6 +124,7 @@
     document.documentElement.dataset.theme = nextTheme;
     document.documentElement.style.colorScheme = nextTheme === "daybreak" ? "light" : "dark";
     persistTheme(nextTheme);
+    chrome.storage.local.set({ [SHARED_THEME_STORAGE_KEY]: nextTheme }).catch(() => {});
     return nextTheme;
   }
 

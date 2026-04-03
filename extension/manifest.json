@@ -20,10 +20,20 @@
   ],
   "background": { "service_worker": "background.js" }
   ,
+  "web_accessible_resources": [
+    {
+      "resources": [
+        "fonts/ibm-plex-sans/IBMPlexSans-Regular.woff2",
+        "fonts/ibm-plex-sans/IBMPlexSans-Medium.woff2",
+        "fonts/ibm-plex-sans/IBMPlexSans-SemiBold.woff2"
+      ],
+      "matches": ["<all_urls>"]
+    }
+  ],
   "content_scripts": [
     {
       "matches": ["<all_urls>"],
-      "js": ["api-gate-shared.js", "api-signal-bridge.js"],
+      "js": ["api-gate-shared.js", "floating-status-shared.js", "api-signal-bridge.js", "floating-status-strip.js"],
       "run_at": "document_start",
       "all_frames": true,
       "match_about_blank": true

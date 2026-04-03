@@ -8,6 +8,7 @@ const captureEnabledChk = document.getElementById("captureEnabled");
 const promptOnNewSitesChk = document.getElementById("promptOnNewSites");
 const trustedSitesEnabledChk = document.getElementById("trustedSitesEnabled");
 const apiNotificationsEnabledChk = document.getElementById("apiNotificationsEnabled");
+const floatingStatusStripEnabledChk = document.getElementById("floatingStatusStripEnabled");
 const cookieSnapshotBtn = document.getElementById("cookieSnapshotBtn");
 const clearCookiesBtn = document.getElementById("clearCookiesBtn");
 const currentSiteTrustBtn = document.getElementById("currentSiteTrustBtn");
@@ -29,6 +30,7 @@ const API_CONTROLS_URL = `${CONTROL_CENTRE_URL}?view=api-signals`;
 const THEME_API_URL = `${CONTROL_CENTRE_URL}api/ui/theme`;
 
 const POPUP_THEME_STORAGE_KEY = "vpt.popup.theme";
+const SHARED_THEME_STORAGE_KEY = "vptActiveThemeId";
 const DEFAULT_THEME_ID = "midnight";
 const THEME_IDS = new Set(["midnight", "amber", "oxblood", "daybreak"]);
 
@@ -73,6 +75,7 @@ function applyPopupTheme(themeId) {
   document.documentElement.dataset.theme = nextTheme;
   document.documentElement.style.colorScheme = nextTheme === "daybreak" ? "light" : "dark";
   persistPopupTheme(nextTheme);
+  chrome.storage.local.set({ [SHARED_THEME_STORAGE_KEY]: nextTheme }).catch(() => {});
   return nextTheme;
 }
 
@@ -336,6 +339,7 @@ async function load() {
     trustedSitesEnabled,
     apiNotificationsEnabled,
     captureEnabled: storedCaptureEnabled,
+    floatingStatusStripEnabled,
   } = await chrome.storage.local.get([
     "privacyMode",
     "stats",
@@ -343,6 +347,7 @@ async function load() {
     "trustedSitesEnabled",
     "apiNotificationsEnabled",
     "captureEnabled",
+    "floatingStatusStripEnabled",
   ]);
 
   captureEnabled = storedCaptureEnabled !== false;
@@ -353,6 +358,9 @@ async function load() {
   trustedSitesEnabledChk.checked = trustedSitesEnabled !== false;
   if (apiNotificationsEnabledChk) {
     apiNotificationsEnabledChk.checked = apiNotificationsEnabled !== false;
+  }
+  if (floatingStatusStripEnabledChk) {
+    floatingStatusStripEnabledChk.checked = floatingStatusStripEnabled === true;
   }
   syncCaptureUi();
   renderApiPolicySummary({});
@@ -418,6 +426,16 @@ apiNotificationsEnabledChk?.addEventListener("change", async () => {
       ? "Browser API detection notifications enabled."
       : "Browser API detection notifications paused.",
     apiNotificationsEnabledChk.checked ? "success" : "warn"
+  );
+});
+
+floatingStatusStripEnabledChk?.addEventListener("change", async () => {
+  await chrome.storage.local.set({ floatingStatusStripEnabled: floatingStatusStripEnabledChk.checked });
+  setStatus(
+    floatingStatusStripEnabledChk.checked
+      ? "Floating current-site strip enabled."
+      : "Floating current-site strip disabled.",
+    floatingStatusStripEnabledChk.checked ? "success" : "warn"
   );
 });
 
