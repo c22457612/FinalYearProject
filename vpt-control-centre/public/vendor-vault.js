@@ -218,6 +218,7 @@ const WORKSPACE_MODE_INVENTORY = "inventory";
 const WORKSPACE_MODE_SELECTED_ITEM = "selected-item";
 const WORKSPACE_MODE_BROWSER_API = "browser-api";
 const WORKSPACE_MODE_SITE_EVIDENCE = "site-evidence";
+const CONNECTION_STATUS_POLL_MS = 5000;
 const WORKSPACE_MODE_CONFIG = Object.freeze([
   { mode: WORKSPACE_MODE_INVENTORY, buttonId: "vendorVaultModeInventory", workspaceId: "vendorVaultInventoryWorkspace" },
   { mode: WORKSPACE_MODE_SELECTED_ITEM, buttonId: "vendorVaultModeSelectedItem", workspaceId: "vendorVaultSelectedItemWorkspace" },
@@ -226,6 +227,7 @@ const WORKSPACE_MODE_CONFIG = Object.freeze([
 ]);
 let workspaceModeBarBound = false;
 let activeWorkspaceMode = WORKSPACE_MODE_INVENTORY;
+let connectionStatusPollHandle = null;
 
 function buildSiteInsightsHref(site) {
   if (!String(site || "").trim()) return "/";
@@ -240,6 +242,35 @@ function setCaseReadoutVisible(visible) {
   const section = qs("vendorVaultCaseReadoutSection");
   if (!section) return;
   section.classList.toggle("hidden", !visible);
+}
+
+function setConnectionStatus(state, text) {
+  const statusEl = qs("connectionStatusShell") || qs("connectionStatus");
+  if (!statusEl) return;
+  statusEl.textContent = text;
+  statusEl.dataset.status = state;
+  statusEl.title = text;
+  statusEl.setAttribute("aria-label", text);
+}
+
+async function refreshConnectionStatus() {
+  try {
+    const response = await fetch("/api/sites", { headers: { Accept: "application/json" } });
+    if (!response.ok) {
+      throw new Error(`HTTP ${response.status}`);
+    }
+    setConnectionStatus("online", "Connected to local backend");
+  } catch (_error) {
+    setConnectionStatus("offline", "Backend unavailable - is server.js running?");
+  }
+}
+
+function startConnectionStatusPolling() {
+  if (connectionStatusPollHandle) return;
+  void refreshConnectionStatus();
+  connectionStatusPollHandle = window.setInterval(() => {
+    void refreshConnectionStatus();
+  }, CONNECTION_STATUS_POLL_MS);
 }
 
 function setSelectedItemWorkspaceContentState(activeItem) {
@@ -350,6 +381,7 @@ function showMissingState(site, scopeParam) {
   missing.classList.remove("hidden");
   content.classList.add("hidden");
   sections.classList.add("hidden");
+  syncShellBackLink({ vendorSelected: false });
 
   const hasSite = Boolean(String(site || "").trim());
   openSiteInsightsLink.href = hasSite ? buildSiteInsightsHref(site) : "/?view=sites";
@@ -787,6 +819,31 @@ function resolveInitialScope(site, scopeParam) {
   return site ? SCOPE_SITE : SCOPE_ALL;
 }
 
+function buildVendorVaultLandingHref(scope, site) {
+  const params = new URLSearchParams();
+  if (normalizeScope(scope) === SCOPE_SITE && String(site || "").trim()) {
+    params.set("scope", SCOPE_SITE);
+    params.set("site", String(site || "").trim());
+  } else {
+    params.set("scope", SCOPE_ALL);
+  }
+  return `/vendor-vault.html?${params.toString()}`;
+}
+
+function syncShellBackLink({ vendorSelected = false, scope = SCOPE_ALL, site = "" } = {}) {
+  const shellBackLink = qs("vendorVaultShellBackLink");
+  if (!shellBackLink) return;
+
+  if (vendorSelected) {
+    shellBackLink.href = buildVendorVaultLandingHref(scope, site);
+    shellBackLink.textContent = "\u2190 Back to Vendor Vault";
+    return;
+  }
+
+  shellBackLink.href = "/";
+  shellBackLink.textContent = "\u2190 Back to Control Centre";
+}
+
 function updateScopeInUrl(scope) {
   const url = new URL(window.location.href);
   url.searchParams.set("scope", scope === SCOPE_ALL ? SCOPE_ALL : SCOPE_SITE);
@@ -806,6 +863,7 @@ function showVaultContent(site, vendor) {
   missing.classList.add("hidden");
   content.classList.remove("hidden");
   sections.classList.remove("hidden");
+  syncShellBackLink({ vendorSelected: true, scope: vaultScopeState.scope, site });
 
   vendorChip.textContent = `Vendor: ${vendor}`;
   vendorName.textContent = vendor;
@@ -840,6 +898,7 @@ function renderScopeChipsAndControls() {
   allButton.setAttribute("aria-pressed", String(isAll));
 
   backLink.href = hasSite ? buildSiteInsightsHref(vaultScopeState.site) : "/";
+  syncShellBackLink({ vendorSelected: true, scope: vaultScopeState.scope, site: vaultScopeState.site });
 }
 
 function renderScopeCopy() {
@@ -2933,6 +2992,7 @@ function bootVendorVault() {
     currentSection: "vendor-vault",
     persistKey: "vpt.control-centre.shell.collapsed",
   });
+  startConnectionStatusPolling();
 
   const params = new URLSearchParams(window.location.search);
   const site = String(params.get("site") || "").trim();

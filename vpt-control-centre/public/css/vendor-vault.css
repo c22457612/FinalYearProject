@@ -1,5 +1,10 @@
+.site-content {
+  padding-top: 0.64rem;
+}
+
 .vendor-vault-header-strip {
   gap: 0.9rem;
+  margin-top: 0.18rem;
   margin-bottom: 0.75rem;
   border-color: var(--divider);
   border-radius: 0.56rem;
@@ -561,8 +566,53 @@
   padding-left: 0.8rem;
 }
 
+.vendor-vault-api-entry .vendor-vault-evidence-compact {
+  gap: 0.22rem;
+  padding-left: 0.9rem;
+}
+
 .vendor-vault-evidence-row {
   gap: 0.5rem;
+}
+
+.vendor-vault-api-entry .vendor-vault-evidence-heading {
+  margin-bottom: 0.08rem;
+}
+
+.vendor-vault-api-entry .vendor-vault-evidence-kv {
+  display: grid;
+  gap: 0;
+  margin: 0;
+}
+
+.vendor-vault-api-entry .vendor-vault-evidence-row {
+  display: grid;
+  grid-template-columns: minmax(8rem, 9.4rem) minmax(0, 1fr);
+  align-items: center;
+  gap: 0.85rem;
+  min-height: 2.25rem;
+  padding: 0.28rem 0;
+  border-top: 1px solid rgba(148, 163, 184, 0.16);
+}
+
+.vendor-vault-api-entry .vendor-vault-evidence-row:first-child {
+  border-top: 0;
+  padding-top: 0;
+}
+
+.vendor-vault-api-entry .vendor-vault-evidence-key {
+  color: var(--color-text-faint);
+  font-size: 0.8rem;
+  font-weight: 600;
+}
+
+.vendor-vault-api-entry .vendor-vault-evidence-value {
+  margin: 0;
+  justify-self: end;
+  text-align: right;
+  color: var(--color-text-main);
+  font-size: 0.9rem;
+  font-variant-numeric: tabular-nums;
 }
 
 .vendor-vault-evidence-key,
@@ -734,7 +784,12 @@
 }
 
 @media (max-width: 1024px) {
+  .site-content {
+    padding-top: 0.54rem;
+  }
+
   .vendor-vault-header-strip {
+    margin-top: 0.08rem;
     padding: 0.72rem 0.82rem;
   }
 
@@ -816,9 +871,17 @@
     padding-left: 0;
     padding-top: 0.66rem;
   }
+
+  .vendor-vault-api-entry .vendor-vault-evidence-compact {
+    padding-left: 0;
+  }
 }
 
 @media (max-width: 760px) {
+  .site-content {
+    padding-top: 0.46rem;
+  }
+
   .vendor-vault-mode-btn {
     flex-basis: 100%;
     font-size: 0.86rem;
@@ -838,5 +901,18 @@
 
   .vendor-vault-secondary-panels {
     grid-template-columns: 1fr;
+  }
+
+  .vendor-vault-api-entry .vendor-vault-evidence-row {
+    grid-template-columns: minmax(0, 1fr);
+    align-items: start;
+    gap: 0.16rem;
+    min-height: 0;
+    padding: 0.34rem 0;
+  }
+
+  .vendor-vault-api-entry .vendor-vault-evidence-value {
+    justify-self: start;
+    text-align: left;
   }
 }

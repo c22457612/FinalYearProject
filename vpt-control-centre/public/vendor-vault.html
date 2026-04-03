@@ -21,8 +21,8 @@
   <link rel="stylesheet" href="css/vendor-vault.css" />
 </head>
 <body class="site-page">
-  <header class="site-header shell-header">
-    <div class="site-header-left shell-header-main">
+  <header class="app-header shell-header">
+    <div class="header-left shell-header-main">
       <button
         id="shellToggle"
         class="shell-toggle"
@@ -37,10 +37,12 @@
         <span class="shell-toggle-line"></span>
       </button>
       <div class="shell-header-copy">
-        <a class="back-link" href="/">&larr; Back to Control Centre</a>
         <div class="shell-header-context">Control Centre</div>
-        <h1>Vendor Vault</h1>
+        <h1 id="vendorVaultTitle">Vendor Vault</h1>
       </div>
+    </div>
+    <div class="shell-header-meta">
+      <a id="vendorVaultShellBackLink" class="back-link" href="/">&larr; Back to Control Centre</a>
     </div>
   </header>
 
@@ -98,18 +100,22 @@
         </nav>
       </div>
 
-      <div class="sidebar-utilities">
-        <a class="nav-item sidebar-utility-link" data-page="settings" href="/settings.html" title="Settings" aria-label="Settings">
-          <span class="nav-item-icon nav-item-icon-utility" aria-hidden="true">&#9881;</span>
-          <span class="nav-item-copy">
-            <span class="nav-item-label">Settings</span>
-          </span>
-        </a>
-        <div class="sidebar-utility-card sidebar-utility-card-note">
-          <div class="sidebar-utility-label">Scope</div>
-          <div class="sidebar-utility-value">Vendor review</div>
+        <div class="sidebar-utilities">
+          <a class="nav-item sidebar-utility-link" data-page="settings" href="/settings.html" title="Settings" aria-label="Settings">
+            <span class="nav-item-icon nav-item-icon-utility" aria-hidden="true">&#9881;</span>
+            <span class="nav-item-copy">
+              <span class="nav-item-label">Settings</span>
+            </span>
+          </a>
+          <div class="sidebar-utility-card sidebar-utility-card-status">
+            <div class="sidebar-utility-label">Backend</div>
+            <div id="connectionStatusShell" class="sidebar-utility-status" data-status="pending">Connecting...</div>
+          </div>
+          <div class="sidebar-utility-card sidebar-utility-card-note">
+            <div class="sidebar-utility-label">Scope</div>
+            <div class="sidebar-utility-value">Vendor review</div>
+          </div>
         </div>
-      </div>
 
     </aside>
 
