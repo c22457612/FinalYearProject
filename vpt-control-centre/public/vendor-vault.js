@@ -214,10 +214,128 @@ const API_EVIDENCE_GROUP_META = Object.freeze({
     actionSurfaceLabel: "Clipboard",
   },
 });
+const WORKSPACE_MODE_INVENTORY = "inventory";
+const WORKSPACE_MODE_SELECTED_ITEM = "selected-item";
+const WORKSPACE_MODE_BROWSER_API = "browser-api";
+const WORKSPACE_MODE_SITE_EVIDENCE = "site-evidence";
+const WORKSPACE_MODE_CONFIG = Object.freeze([
+  { mode: WORKSPACE_MODE_INVENTORY, buttonId: "vendorVaultModeInventory", workspaceId: "vendorVaultInventoryWorkspace" },
+  { mode: WORKSPACE_MODE_SELECTED_ITEM, buttonId: "vendorVaultModeSelectedItem", workspaceId: "vendorVaultSelectedItemWorkspace" },
+  { mode: WORKSPACE_MODE_BROWSER_API, buttonId: "vendorVaultModeBrowserApi", workspaceId: "vendorVaultApiWorkspace" },
+  { mode: WORKSPACE_MODE_SITE_EVIDENCE, buttonId: "vendorVaultModeSiteEvidence", workspaceId: "vendorVaultSiteEvidenceWorkspace" },
+]);
+let workspaceModeBarBound = false;
+let activeWorkspaceMode = WORKSPACE_MODE_INVENTORY;
 
 function buildSiteInsightsHref(site) {
   if (!String(site || "").trim()) return "/";
   return `/site.html?site=${encodeURIComponent(site)}`;
+}
+
+function hasSelectedInventoryItem() {
+  return Boolean(String(activeExposureInventoryKey || "").trim());
+}
+
+function setCaseReadoutVisible(visible) {
+  const section = qs("vendorVaultCaseReadoutSection");
+  if (!section) return;
+  section.classList.toggle("hidden", !visible);
+}
+
+function setSelectedItemWorkspaceContentState(activeItem) {
+  const empty = qs("vendorVaultSelectedItemEmpty");
+  const content = qs("vendorVaultSelectedItemContent");
+  const heading = qs("vendorVaultSelectedItemHeading");
+  const copy = document.querySelector("#vendorVaultSelectedItemWorkspace .vendor-vault-workspace-copy");
+  if (!empty || !content) return;
+
+  const hasItem = Boolean(activeItem);
+  empty.classList.toggle("hidden", hasItem);
+  content.classList.toggle("hidden", !hasItem);
+
+  if (heading) {
+    heading.textContent = hasItem
+      ? `Inspect: ${activeItem.categoryLabel}`
+      : "Inspect the current item in detail";
+  }
+
+  if (copy) {
+    copy.textContent = hasItem
+      ? `This workspace follows the active ledger selection for ${activeItem.categoryLabel} using the same evidence and guidance model as before.`
+      : "This workspace shows the currently selected inventory item with the same evidence and guidance model as before.";
+  }
+}
+
+function setWorkspaceModeControlState() {
+  const hasSelection = hasSelectedInventoryItem();
+
+  for (const config of WORKSPACE_MODE_CONFIG) {
+    const button = qs(config.buttonId);
+    if (!button) continue;
+
+    const isActive = activeWorkspaceMode === config.mode;
+    button.classList.toggle("is-active", isActive);
+    button.setAttribute("aria-pressed", String(isActive));
+
+    if (config.mode === WORKSPACE_MODE_SELECTED_ITEM) {
+      button.classList.toggle("is-empty", !hasSelection);
+      button.dataset.selectionState = hasSelection ? "selected" : "empty";
+      button.title = hasSelection
+        ? "Inspect the currently selected inventory item in detail."
+        : "Open the selected-item workspace. Choose an inventory row in Inventory to inspect it here.";
+    }
+  }
+}
+
+function setWorkspaceVisibility() {
+  for (const config of WORKSPACE_MODE_CONFIG) {
+    const workspace = qs(config.workspaceId);
+    if (!workspace) continue;
+    const isActive = activeWorkspaceMode === config.mode;
+    workspace.classList.toggle("hidden", !isActive);
+    workspace.setAttribute("aria-hidden", String(!isActive));
+  }
+}
+
+function switchWorkspaceMode(nextMode, opts = {}) {
+  const resolved = WORKSPACE_MODE_CONFIG.find((config) => config.mode === nextMode);
+  if (!resolved) return;
+
+  activeWorkspaceMode = resolved.mode;
+  setWorkspaceModeControlState();
+  setWorkspaceVisibility();
+
+  if (opts.focusWorkspace) {
+    const workspace = qs(resolved.workspaceId);
+    if (workspace && !workspace.classList.contains("hidden")) workspace.focus?.();
+  }
+}
+
+function bindWorkspaceModeBar() {
+  if (workspaceModeBarBound) return;
+
+  const modeBar = qs("vendorVaultModeBar");
+  if (!modeBar) return;
+
+  modeBar.addEventListener("click", (event) => {
+    const button = event.target instanceof Element ? event.target.closest(".vendor-vault-mode-btn") : null;
+    if (!button) return;
+    switchWorkspaceMode(String(button.dataset.workspaceMode || WORKSPACE_MODE_INVENTORY));
+  });
+
+  workspaceModeBarBound = true;
+}
+
+function renderHeaderContextSummary() {
+  const headerSummary = qs("vaultHeaderSummary");
+  if (!headerSummary) return;
+
+  if (vaultScopeState.scope === SCOPE_ALL) {
+    headerSummary.textContent = "Review potential sharing indicators for this vendor across captured sites.";
+    return;
+  }
+
+  headerSummary.textContent = "Review potential sharing indicators for this vendor on this site.";
 }
 
 function showMissingState(site, scopeParam) {
@@ -682,9 +800,8 @@ function showVaultContent(site, vendor) {
   const sections = qs("vaultSections");
   const vendorChip = qs("vaultVendorChip");
   const vendorName = qs("vaultHeaderVendorName");
-  const headerSummary = qs("vaultHeaderSummary");
   const backLink = qs("backToSiteInsightsLink");
-  if (!missing || !content || !sections || !vendorChip || !vendorName || !headerSummary || !backLink) return;
+  if (!missing || !content || !sections || !vendorChip || !vendorName || !backLink) return;
 
   missing.classList.add("hidden");
   content.classList.remove("hidden");
@@ -692,7 +809,7 @@ function showVaultContent(site, vendor) {
 
   vendorChip.textContent = `Vendor: ${vendor}`;
   vendorName.textContent = vendor;
-  headerSummary.textContent = "Review potential sharing indicators and related Browser API activity for this vendor.";
+  renderHeaderContextSummary();
   backLink.href = site ? buildSiteInsightsHref(site) : "/";
 }
 
@@ -727,6 +844,7 @@ function renderScopeChipsAndControls() {
 
 function renderScopeCopy() {
   const empty = qs("exposureEmptyState");
+  renderHeaderContextSummary();
   if (!empty) return;
   if (vaultScopeState.scope === SCOPE_ALL) {
     empty.textContent = "No exposure signals observed for this vendor across captured sites in request metadata.";
@@ -1348,16 +1466,8 @@ function toBandShortLabel(band) {
 
 function renderSummaryRing(score) {
   const ring = qs("exposureSummaryScoreRing");
-  const visual = document.querySelector(".vendor-vault-score-visual");
-  if (!ring) return;
-
-  const radius = Number(ring.getAttribute("r")) || 44;
-  const circumference = 2 * Math.PI * radius;
+  const visual = qs("exposureSummaryScoreReadout") || document.querySelector(".vendor-vault-score-visual");
   const clamped = Math.max(0, Math.min(100, Number(score) || 0));
-  const normalized = clamped / 100;
-
-  ring.style.strokeDasharray = `${circumference} ${circumference}`;
-  ring.style.strokeDashoffset = `${circumference * (1 - normalized)}`;
 
   if (visual) {
     visual.classList.remove("is-low", "is-medium", "is-high");
@@ -1365,6 +1475,15 @@ function renderSummaryRing(score) {
     else if (clamped >= 34) visual.classList.add("is-medium");
     else visual.classList.add("is-low");
   }
+
+  if (!ring) return;
+
+  const radius = Number(ring.getAttribute("r")) || 44;
+  const circumference = 2 * Math.PI * radius;
+  const normalized = clamped / 100;
+
+  ring.style.strokeDasharray = `${circumference} ${circumference}`;
+  ring.style.strokeDashoffset = `${circumference * (1 - normalized)}`;
 }
 
 function renderActionList(listEl, actions) {
@@ -1428,18 +1547,20 @@ function renderSummary(scoreMeta, itemModels) {
   const scoreBandEl = qs("exposureSummaryScoreBand");
   const mayList = qs("exposureMayHaveReceivedList");
   const attemptedList = qs("exposureAttemptedToReceiveList");
-  const vendorActionsList = qs("exposureVendorActionsList");
-  if (!scoreTextEl || !scoreValueEl || !scoreBandEl || !mayList || !attemptedList || !vendorActionsList) return;
+  const concernEl = qs("exposureCaseConcern");
+  if (!scoreTextEl || !scoreValueEl || !scoreBandEl || !mayList || !attemptedList || !concernEl) return;
 
   if (!scoreMeta) {
-    scoreTextEl.textContent = "Exposure score: -";
+    scoreTextEl.textContent = "Concern score";
     scoreValueEl.textContent = "-";
     scoreBandEl.textContent = "-";
+    concernEl.textContent = "-";
     renderSummaryRing(0);
   } else {
-    scoreTextEl.textContent = `Exposure score: ${scoreMeta.score} (${scoreMeta.band})`;
+    scoreTextEl.textContent = "Concern score";
     scoreValueEl.textContent = String(scoreMeta.score);
-    scoreBandEl.textContent = toBandShortLabel(scoreMeta.band);
+    scoreBandEl.textContent = `${scoreMeta.band} concern`;
+    concernEl.textContent = `${scoreMeta.band} concern`;
     renderSummaryRing(scoreMeta.score);
   }
 
@@ -1452,53 +1573,26 @@ function renderSummary(scoreMeta, itemModels) {
 
   mayList.textContent = formatCategorySet(observedCategories, "None observed");
   attemptedList.textContent = formatCategorySet(attemptedCategories, "None detected");
-  renderActionList(vendorActionsList, deriveVendorActions(itemModels));
   setExposureCaseSummaryNext(itemModels.length ? "Choose an inventory item in the grid." : "Review Browser API activity below.");
-  renderHeaderCaseSummary(scoreMeta, observedCategories, attemptedCategories, itemModels.length > 0);
+  renderCaseReadoutSummary(scoreMeta, itemModels.length > 0);
 }
 
-function formatCategoryCount(count) {
-  const safe = toSafeCount(count);
-  return `${safe} categor${safe === 1 ? "y" : "ies"}`;
-}
-
-function renderHeaderCaseSummary(scoreMeta, observedCategories, attemptedCategories, hasItems) {
-  const observedEl = qs("vaultHeaderObserved");
-  const blockedEl = qs("vaultHeaderBlocked");
-  const concernEl = qs("vaultHeaderConcern");
-  const nextEl = qs("vaultHeaderNext");
-  const summaryEl = qs("vaultHeaderSummary");
-  if (!observedEl || !blockedEl || !concernEl || !nextEl || !summaryEl) return;
-
-  const observedCount = observedCategories.size;
-  const blockedCount = attemptedCategories.size;
-
-  observedEl.textContent = hasItems ? formatCategoryCount(observedCount) : "None observed";
-  blockedEl.textContent = hasItems ? formatCategoryCount(blockedCount) : "None detected";
-  concernEl.textContent = hasItems && scoreMeta ? `${scoreMeta.band} concern` : "No exposure score";
-  nextEl.textContent = hasItems ? "Choose in investigation grid" : "Browser API activity";
+function renderCaseReadoutSummary(scoreMeta, hasItems) {
+  const concernEl = qs("exposureCaseConcern");
+  if (!concernEl) return;
 
   if (!hasItems) {
-    summaryEl.textContent = "No potential sharing inventory was observed for this scope. Review the Browser API activity below for related vendor evidence.";
+    concernEl.textContent = "No scored inventory";
+    setExposureCaseSummaryNext("Review Browser API activity below.");
     return;
   }
 
-  summaryEl.textContent = `Observed potential sharing in ${formatCategoryCount(observedCount)}. Blocked attempts appeared in ${formatCategoryCount(blockedCount)}. Start with the investigation grid below, then inspect details for the selected item.`;
+  concernEl.textContent = scoreMeta ? `${scoreMeta.band} concern` : "Scored inventory";
 }
 
-function resetHeaderCaseSummary(message) {
-  const observedEl = qs("vaultHeaderObserved");
-  const blockedEl = qs("vaultHeaderBlocked");
-  const concernEl = qs("vaultHeaderConcern");
-  const nextEl = qs("vaultHeaderNext");
-  const summaryEl = qs("vaultHeaderSummary");
-  if (!observedEl || !blockedEl || !concernEl || !nextEl || !summaryEl) return;
-
-  observedEl.textContent = "-";
-  blockedEl.textContent = "-";
-  concernEl.textContent = "-";
-  nextEl.textContent = "Potentially shared data inventory";
-  summaryEl.textContent = message || "Review potential sharing indicators and related Browser API activity for this vendor.";
+function resetCaseReadout() {
+  const concernEl = qs("exposureCaseConcern");
+  if (concernEl) concernEl.textContent = "-";
   setExposureCaseSummaryNext("Choose an inventory item in the grid.");
 }
 
@@ -1655,6 +1749,31 @@ function getInventoryTileCountsLine(item) {
   return `${formatRequestCount(item.count)} | Observed ${item.counts.observed} | Attempted ${item.counts.attempted}`;
 }
 
+function getInventoryLedgerConcernLine(item) {
+  return `${item.itemScoreMeta.itemBand} concern | ${item.confidenceText} confidence`;
+}
+
+function getInventoryLedgerSignalLine(item) {
+  return `${formatRequestCount(item.count)} | Last seen ${item.lastSeen}`;
+}
+
+function appendLedgerMetric(container, label, value) {
+  const item = document.createElement("div");
+  item.className = "vendor-vault-ledger-metric";
+
+  const metricLabel = document.createElement("span");
+  metricLabel.className = "vendor-vault-ledger-metric-label";
+  metricLabel.textContent = label;
+  item.appendChild(metricLabel);
+
+  const metricValue = document.createElement("span");
+  metricValue.className = "vendor-vault-ledger-metric-value";
+  metricValue.textContent = value;
+  item.appendChild(metricValue);
+
+  container.appendChild(item);
+}
+
 function resolveActiveInventoryItem(sortedItems) {
   const safeItems = Array.isArray(sortedItems) ? sortedItems : [];
   if (!safeItems.length) {
@@ -1676,7 +1795,7 @@ function buildInventoryDrilldownHeader(item) {
 
   const kicker = document.createElement("div");
   kicker.className = "vendor-vault-drilldown-kicker";
-  kicker.textContent = "Details for selected item";
+  kicker.textContent = "Selected item";
   rowMain.appendChild(kicker);
 
   const head = document.createElement("div");
@@ -1712,7 +1831,7 @@ function buildInventoryDrilldownHeader(item) {
 
   const note = document.createElement("div");
   note.className = "vendor-vault-drilldown-note";
-  note.textContent = "These details explain the inventory item currently selected in the investigation grid.";
+  note.textContent = "This detail follows the item selected in the investigation grid.";
   rowMain.appendChild(note);
 
   header.appendChild(rowMain);
@@ -1845,66 +1964,92 @@ function renderInventoryGrid(sortedItems) {
 
   grid.setAttribute("aria-activedescendant", buildExposureInventoryOptionId(activeItem));
 
-  for (const item of sortedItems) {
+  for (let itemIndex = 0; itemIndex < sortedItems.length; itemIndex++) {
+    const item = sortedItems[itemIndex];
     const isActive = item.itemKey === activeExposureInventoryKey;
-    const tile = document.createElement("button");
-    tile.type = "button";
-    tile.id = buildExposureInventoryOptionId(item);
-    tile.className = `vendor-vault-inventory-tile${isActive ? " is-active" : ""}`;
-    tile.setAttribute("role", "option");
-    tile.setAttribute("aria-selected", String(isActive));
+    const row = document.createElement("button");
+    row.type = "button";
+    row.id = buildExposureInventoryOptionId(item);
+    row.className = `vendor-vault-ledger-row${isActive ? " is-active" : ""}`;
+    row.setAttribute("role", "option");
+    row.setAttribute("aria-selected", String(isActive));
 
-    const head = document.createElement("div");
-    head.className = "vendor-vault-inventory-tile-head";
+    const rank = document.createElement("div");
+    rank.className = "vendor-vault-ledger-rank";
+    rank.textContent = String(itemIndex + 1).padStart(2, "0");
+    row.appendChild(rank);
+
+    const main = document.createElement("div");
+    main.className = "vendor-vault-ledger-main";
+
+    const titleRow = document.createElement("div");
+    titleRow.className = "vendor-vault-ledger-title-row";
 
     const title = document.createElement("div");
-    title.className = "vendor-vault-inventory-tile-title";
+    title.className = "vendor-vault-ledger-title";
     title.textContent = item.categoryLabel;
-    head.appendChild(title);
+    titleRow.appendChild(title);
 
     const marker = document.createElement("span");
-    marker.className = "vendor-vault-inventory-tile-marker";
+    marker.className = "vendor-vault-ledger-marker";
     marker.setAttribute("aria-hidden", "true");
     marker.textContent = ">";
-    head.appendChild(marker);
-    tile.appendChild(head);
+    titleRow.appendChild(marker);
+    main.appendChild(titleRow);
 
-    const description = document.createElement("div");
-    description.className = "vendor-vault-inventory-tile-description";
-    description.textContent = getInventoryTileDescription(item);
-    tile.appendChild(description);
+    const implication = document.createElement("div");
+    implication.className = "vendor-vault-ledger-implication";
+    implication.textContent = getInventoryTileSupportLine(item);
+    main.appendChild(implication);
 
-    const cues = document.createElement("div");
-    cues.className = "vendor-vault-inventory-tile-cues";
-
-    const statusPill = document.createElement("span");
-    statusPill.className = `vendor-vault-status-pill vendor-vault-status-${item.statusLabel.toLowerCase()}`;
-    statusPill.textContent = item.statusLabel;
-    cues.appendChild(statusPill);
-
-    const scorePill = document.createElement("span");
-    scorePill.className = `vendor-vault-score-pill vendor-vault-band-${String(item.itemScoreMeta.itemBand).toLowerCase()}`;
-    scorePill.textContent = `${item.itemScoreMeta.itemBand} concern`;
-    cues.appendChild(scorePill);
-    tile.appendChild(cues);
-
-    const support = document.createElement("div");
-    support.className = "vendor-vault-inventory-tile-support";
-    support.textContent = getInventoryTileSupportLine(item);
-    tile.appendChild(support);
+    const meta = document.createElement("div");
+    meta.className = "vendor-vault-ledger-meta";
 
     const counts = document.createElement("div");
-    counts.className = "vendor-vault-inventory-tile-counts";
-    counts.textContent = getInventoryTileCountsLine(item);
-    tile.appendChild(counts);
+    counts.className = "vendor-vault-ledger-metrics";
+    appendLedgerMetric(counts, "Observed", String(item.counts.observed));
+    appendLedgerMetric(counts, "Attempted", String(item.counts.attempted));
+    meta.appendChild(counts);
 
-    tile.addEventListener("click", () => {
-      if (activeExposureInventoryKey === item.itemKey) return;
-      activeExposureInventoryKey = item.itemKey;
-      renderInventoryInspection(sortedItems, { focusActiveTile: true });
+    const concern = document.createElement("div");
+    concern.className = "vendor-vault-ledger-concern";
+
+    const concernPill = document.createElement("span");
+    concernPill.className = `vendor-vault-score-pill vendor-vault-band-${String(item.itemScoreMeta.itemBand).toLowerCase()}`;
+    concernPill.textContent = `${item.itemScoreMeta.itemBand} concern`;
+    concern.appendChild(concernPill);
+
+    const confidence = document.createElement("div");
+    confidence.className = "vendor-vault-ledger-subcopy";
+    confidence.textContent = getInventoryLedgerConcernLine(item);
+    concern.appendChild(confidence);
+    meta.appendChild(concern);
+    main.appendChild(meta);
+    row.appendChild(main);
+
+    const signal = document.createElement("div");
+    signal.className = "vendor-vault-ledger-signal";
+
+    const signalValue = document.createElement("div");
+    signalValue.className = "vendor-vault-ledger-signal-value";
+    signalValue.textContent = getInventoryLedgerSignalLine(item);
+    signal.appendChild(signalValue);
+
+    const signalSupport = document.createElement("div");
+    signalSupport.className = "vendor-vault-ledger-subcopy";
+    signalSupport.textContent = getInventoryTileDescription(item);
+    signal.appendChild(signalSupport);
+    row.appendChild(signal);
+
+    row.addEventListener("click", () => {
+      const wasAlreadyActive = activeExposureInventoryKey === item.itemKey;
+      if (!wasAlreadyActive) activeExposureInventoryKey = item.itemKey;
+      renderInventoryInspection(sortedItems);
+      switchWorkspaceMode(WORKSPACE_MODE_SELECTED_ITEM, { focusWorkspace: true });
+      if (wasAlreadyActive) return;
     });
 
-    grid.appendChild(tile);
+    grid.appendChild(row);
   }
 }
 
@@ -1912,6 +2057,7 @@ function renderInventoryDrilldown(activeItem) {
   const container = qs("exposureInventoryDrilldown");
   if (!container) return;
   container.innerHTML = "";
+  setSelectedItemWorkspaceContentState(activeItem);
 
   if (!activeItem) return;
 
@@ -1927,6 +2073,7 @@ function renderInventoryInspection(itemModels, opts = {}) {
   const activeItem = resolveActiveInventoryItem(sortedItems);
   renderInventoryGrid(sortedItems);
   renderInventoryDrilldown(activeItem);
+  setWorkspaceModeControlState();
 
   if (opts.focusActiveTile && activeItem) {
     const activeTile = document.getElementById(buildExposureInventoryOptionId(activeItem));
@@ -2475,6 +2622,7 @@ function setInventoryState(state) {
   error.classList.toggle("hidden", state !== "error");
   empty.classList.toggle("hidden", state !== "empty");
   success.classList.toggle("hidden", state !== "success");
+  setCaseReadoutVisible(state === "success");
 }
 
 function clearSuccessContent() {
@@ -2483,13 +2631,13 @@ function clearSuccessContent() {
   const scoreBandEl = qs("exposureSummaryScoreBand");
   const mayList = qs("exposureMayHaveReceivedList");
   const attemptedList = qs("exposureAttemptedToReceiveList");
-  const vendorActionsList = qs("exposureVendorActionsList");
-  if (scoreTextEl) scoreTextEl.textContent = "Exposure score: -";
+  const concernEl = qs("exposureCaseConcern");
+  if (scoreTextEl) scoreTextEl.textContent = "Concern score";
   if (scoreValueEl) scoreValueEl.textContent = "-";
   if (scoreBandEl) scoreBandEl.textContent = "-";
   if (mayList) mayList.textContent = "-";
   if (attemptedList) attemptedList.textContent = "-";
-  if (vendorActionsList) vendorActionsList.innerHTML = "";
+  if (concernEl) concernEl.textContent = "-";
   renderSummaryRing(0);
   activeExposureInventoryKey = "";
   renderInventoryInspection([]);
@@ -2497,7 +2645,7 @@ function clearSuccessContent() {
 
 function setLoadingView() {
   setInventoryState("loading");
-  resetHeaderCaseSummary("Loading potential sharing indicators for this vendor...");
+  resetCaseReadout();
   clearSuccessContent();
 }
 
@@ -2812,7 +2960,7 @@ async function loadExposureInventory() {
   } catch (err) {
     if (requestId !== latestExposureRequestId) return;
     console.error("Vendor Vault inventory fetch failed:", err);
-    resetHeaderCaseSummary("Could not load potential sharing inventory for this scope. Review Browser API evidence or retry.");
+    resetCaseReadout();
     setInventoryState("error");
   }
 }
@@ -2841,6 +2989,8 @@ function bootVendorVault() {
   showVaultContent(site, vendor);
   renderScopeChipsAndControls();
   renderScopeCopy();
+  bindWorkspaceModeBar();
+  switchWorkspaceMode(WORKSPACE_MODE_INVENTORY);
 
   const retryButton = qs("exposureRetryButton");
   if (retryButton) {
@@ -2855,6 +3005,13 @@ function bootVendorVault() {
   if (apiEvidenceRetryButton) {
     apiEvidenceRetryButton.addEventListener("click", () => {
       loadVendorApiEvidence();
+    });
+  }
+
+  const selectedItemBackButton = qs("vendorVaultSelectedItemBackButton");
+  if (selectedItemBackButton) {
+    selectedItemBackButton.addEventListener("click", () => {
+      switchWorkspaceMode(WORKSPACE_MODE_INVENTORY);
     });
   }
 

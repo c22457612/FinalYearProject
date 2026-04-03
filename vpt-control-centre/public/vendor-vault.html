@@ -18,6 +18,7 @@
   </script>
   <link rel="stylesheet" href="css/base.css" />
   <link rel="stylesheet" href="css/site-insights.css" />
+  <link rel="stylesheet" href="css/vendor-vault.css" />
 </head>
 <body class="site-page">
   <header class="site-header shell-header">
@@ -180,24 +181,6 @@
             <p id="vaultHeaderSummary" class="vendor-vault-header-summary">
               Review potential sharing indicators and related Browser API activity for this vendor.
             </p>
-            <div class="vendor-vault-header-facts" aria-label="Vendor investigation summary">
-              <div class="vendor-vault-header-fact">
-                <span class="vendor-vault-header-fact-label">Observed</span>
-                <span id="vaultHeaderObserved" class="vendor-vault-header-fact-value">-</span>
-              </div>
-              <div class="vendor-vault-header-fact">
-                <span class="vendor-vault-header-fact-label">Blocked</span>
-                <span id="vaultHeaderBlocked" class="vendor-vault-header-fact-value">-</span>
-              </div>
-              <div class="vendor-vault-header-fact">
-                <span class="vendor-vault-header-fact-label">Concern</span>
-                <span id="vaultHeaderConcern" class="vendor-vault-header-fact-value">-</span>
-              </div>
-              <div class="vendor-vault-header-fact">
-                <span class="vendor-vault-header-fact-label">Inspect next</span>
-                <span id="vaultHeaderNext" class="vendor-vault-header-fact-value">Potentially shared data inventory</span>
-              </div>
-            </div>
           </div>
           <div class="vendor-vault-header-controls">
             <div id="vaultScopeToggle" class="vendor-vault-scope-toggle" role="group" aria-label="Vendor Vault scope">
@@ -209,182 +192,202 @@
         </section>
 
         <section id="vaultSections" class="hidden vendor-vault-sections">
-          <section class="panel vendor-vault-inventory-panel">
-            <div class="panel-header vendor-vault-panel-header">
-              <div>
-                <div class="panel-title">Potentially shared data inventory</div>
-                <div class="vendor-vault-disclaimer">
-                  Derived from captured browser signals (request metadata). This is not proof of vendor storage.
-                </div>
+          <section id="vendorVaultCaseReadoutSection" class="vendor-vault-case-readout hidden" aria-label="Selected vendor case readout">
+            <div class="vendor-vault-case-readout-head">
+              <div class="vendor-vault-case-readout-heading">
+                <div class="vendor-vault-case-readout-kicker">Case readout</div>
+                <div id="exposureSummaryScoreText" class="vendor-vault-case-readout-copy">Concern score</div>
               </div>
-              <div class="vendor-vault-export-controls">
-                <div class="vendor-vault-export-buttons">
-                  <button id="vaultExportButton" type="button" class="viz-nav vendor-vault-export-btn">
-                    Export JSON
-                  </button>
-                  <button id="vaultExportCsvButton" type="button" class="viz-nav vendor-vault-export-btn">
-                    Export CSV
-                  </button>
-                </div>
-                <div id="vaultExportStatus" class="vendor-vault-export-status" aria-live="polite"></div>
+              <div class="vendor-vault-case-readout-next">
+                <span class="vendor-vault-case-readout-label">Inspect next</span>
+                <span id="exposureCaseSummaryNextValue" class="vendor-vault-case-readout-next-value">Choose an inventory item below.</span>
               </div>
             </div>
-
-            <div id="exposureLoadingState" class="vendor-vault-state">
-              Loading potentially shared inventory...
-            </div>
-
-            <div id="exposureErrorState" class="vendor-vault-state hidden" role="alert">
-              <div>Could not load potential sharing inventory for this scope.</div>
-              <div>
-                <button id="exposureRetryButton" type="button" class="viz-nav">Retry</button>
-              </div>
-            </div>
-
-            <div id="exposureEmptyState" class="vendor-vault-state hidden">
-              No exposure signals observed for this scope in captured request metadata.
-            </div>
-
-            <div id="exposureSuccessState" class="hidden">
-              <section id="exposureWhatThisMeans" class="vendor-vault-sharing-summary vendor-vault-case-summary">
-                <div class="vendor-vault-case-summary-head">
-                  <div>
-                    <div class="vendor-vault-case-summary-kicker">Selected vendor case summary</div>
-                    <div class="vendor-vault-sharing-heading">Investigation summary</div>
-                  </div>
-                  <div class="vendor-vault-case-summary-next">
-                    <span class="vendor-vault-case-summary-next-label">Inspect next</span>
-                    <span id="exposureCaseSummaryNextValue" class="vendor-vault-case-summary-next-value">Choose an inventory item below.</span>
-                  </div>
-                </div>
-                <div class="vendor-vault-summary-grid">
-                  <div class="vendor-vault-summary-copy">
-                    <div id="exposureSummaryScoreText" class="vendor-vault-score-line">Exposure score: -</div>
-                    <div class="vendor-vault-sharing-row">
-                      <span class="vendor-vault-sharing-label">Potentially received (Observed)</span>
-                      <span id="exposureMayHaveReceivedList" class="vendor-vault-sharing-value">-</span>
-                    </div>
-                    <div class="vendor-vault-sharing-row">
-                      <span class="vendor-vault-sharing-label">Blocked attempts</span>
-                      <span id="exposureAttemptedToReceiveList" class="vendor-vault-sharing-value">-</span>
-                    </div>
-                    <div class="vendor-vault-sharing-actions">
-                      <div class="vendor-vault-sharing-actions-title">Top recommended actions</div>
-                      <ul id="exposureVendorActionsList" class="vendor-vault-action-list"></ul>
-                    </div>
-                  </div>
-                  <div class="vendor-vault-score-visual" aria-label="Overall exposure score">
-                    <svg class="vendor-vault-score-ring" viewBox="0 0 120 120" role="img" aria-hidden="true">
-                      <circle class="vendor-vault-score-ring-track" cx="60" cy="60" r="44"></circle>
-                      <circle id="exposureSummaryScoreRing" class="vendor-vault-score-ring-progress" cx="60" cy="60" r="44"></circle>
-                    </svg>
-                    <div class="vendor-vault-score-center">
-                      <div id="exposureSummaryScoreValue" class="vendor-vault-score-center-value">-</div>
-                      <div id="exposureSummaryScoreBand" class="vendor-vault-score-center-band">-</div>
-                    </div>
-                  </div>
-                </div>
-              </section>
-
-              <section class="vendor-vault-inventory-overview" aria-labelledby="exposureInventoryOverviewHeading">
-                <div class="vendor-vault-inventory-overview-head">
-                  <div>
-                    <div class="vendor-vault-case-summary-kicker">Inventory overview</div>
-                    <h3 id="exposureInventoryOverviewHeading" class="vendor-vault-inventory-overview-title">Choose what to inspect</h3>
-                  </div>
-                  <div class="vendor-vault-inventory-overview-note">Choose one inventory item in the grid, then inspect its details below.</div>
-                </div>
-                <div id="exposureInventoryGrid" class="vendor-vault-inventory-grid" role="listbox" aria-label="Vendor inventory overview"></div>
-              </section>
-
-              <div id="exposureInventoryDrilldown" class="vendor-vault-inventory-box vendor-vault-inventory-drilldown" aria-live="polite"></div>
-            </div>
-          </section>
-
-          <section class="panel vendor-vault-api-panel">
-            <div class="panel-header">
-              <div>
-                <div class="panel-title">Browser API activity in this investigation</div>
-                <div class="vendor-vault-disclaimer">
-                  This section separates activity linked to this vendor from other privacy activity seen on the same site.
+            <div class="vendor-vault-case-readout-grid">
+              <div id="exposureSummaryScoreReadout" class="vendor-vault-case-score" aria-label="Overall concern score">
+                <span class="vendor-vault-case-readout-label">Score</span>
+                <div class="vendor-vault-case-score-main">
+                  <span id="exposureSummaryScoreValue" class="vendor-vault-case-score-value">-</span>
+                  <span id="exposureSummaryScoreBand" class="vendor-vault-case-score-band">-</span>
                 </div>
               </div>
-            </div>
-
-            <div id="vendorApiEvidenceLoadingState" class="vendor-vault-state">
-              Loading relevant Browser API activity...
-            </div>
-
-            <div id="vendorApiEvidenceErrorState" class="vendor-vault-state hidden" role="alert">
-              <div>Could not load relevant Browser API activity for this vendor.</div>
-              <div>
-                <button id="vendorApiEvidenceRetryButton" type="button" class="viz-nav">Retry</button>
+              <div class="vendor-vault-case-readout-fact">
+                <span class="vendor-vault-case-readout-label">Observed categories</span>
+                <span id="exposureMayHaveReceivedList" class="vendor-vault-case-readout-value">-</span>
               </div>
-            </div>
-
-            <div id="vendorApiEvidenceEmptyState" class="vendor-vault-state hidden">
-              No relevant Browser API activity observed for this vendor.
-            </div>
-
-            <div id="vendorApiEvidenceSuccessState" class="hidden">
-              <div class="vendor-vault-api-box">
-                <section id="vendorApiEvidenceVendorSection" class="vendor-vault-api-subsection hidden" aria-labelledby="vendorApiEvidenceVendorHeading">
-                  <div class="vendor-vault-api-subsection-head">
-                    <div class="vendor-vault-api-subsection-kicker">Activity linked to this vendor</div>
-                    <h3 id="vendorApiEvidenceVendorHeading" class="vendor-vault-api-subsection-title">Browser API activity linked to this vendor</h3>
-                    <p class="vendor-vault-api-subsection-copy">
-                      This section shows Browser API activity we can link to this vendor.
-                    </p>
-                  </div>
-                  <div id="vendorApiEvidenceVendorNarrative" class="vendor-vault-api-narrative hidden"></div>
-                  <div id="vendorApiEvidenceVendorEmpty" class="vendor-vault-panel-empty hidden"></div>
-                  <div id="vendorApiEvidenceVendorList" class="vendor-vault-inventory-list hidden" role="list"></div>
-                </section>
-
-                <section id="vendorApiEvidenceContextualSection" class="vendor-vault-api-subsection hidden" aria-labelledby="vendorApiEvidenceContextualHeading">
-                  <div class="vendor-vault-api-subsection-head">
-                    <div class="vendor-vault-api-subsection-kicker">Other privacy activity on this site</div>
-                    <h3 id="vendorApiEvidenceContextualHeading" class="vendor-vault-api-subsection-title">Browser API activity seen elsewhere on this site</h3>
-                    <p id="vendorApiEvidenceContextualIntro" class="vendor-vault-api-subsection-copy">
-                      This Browser API activity was observed on this site, but it is not directly linked to this vendor.
-                    </p>
-                    <p id="vendorApiEvidenceContextualNote" class="vendor-vault-api-subsection-note">
-                      It may still contribute to tracking or profiling on this page, even though it is not part of this vendor-specific evidence.
-                    </p>
-                  </div>
-                  <div id="vendorApiEvidenceContextualNarrative" class="vendor-vault-api-narrative hidden"></div>
-                  <div id="vendorApiEvidenceContextualEmpty" class="vendor-vault-panel-empty hidden"></div>
-                  <div id="vendorApiEvidenceContextualList" class="vendor-vault-inventory-list hidden" role="list"></div>
-                </section>
+              <div class="vendor-vault-case-readout-fact">
+                <span class="vendor-vault-case-readout-label">Blocked categories</span>
+                <span id="exposureAttemptedToReceiveList" class="vendor-vault-case-readout-value">-</span>
+              </div>
+              <div class="vendor-vault-case-readout-fact">
+                <span class="vendor-vault-case-readout-label">Concern</span>
+                <span id="exposureCaseConcern" class="vendor-vault-case-readout-value">-</span>
               </div>
             </div>
           </section>
 
-          <div class="summary vendor-vault-secondary-panels">
-            <section class="vendor-vault-readout vendor-vault-readout-activity" aria-labelledby="vaultActivityHeading">
-              <h2 id="vaultActivityHeading">Activity summary</h2>
-              <div id="vaultActivityPanel" class="vendor-vault-panel-body">
-                <div class="hint">Loading...</div>
-              </div>
-            </section>
-            <section class="vendor-vault-readout vendor-vault-readout-domains" aria-labelledby="vaultDomainsHeading">
-              <h2 id="vaultDomainsHeading">Domains used</h2>
-              <div id="vaultDomainsPanel" class="vendor-vault-panel-body">
-                <div class="hint">Loading...</div>
-              </div>
-            </section>
-            <section class="vendor-vault-readout vendor-vault-readout-keys" aria-labelledby="vaultKeysHeading">
-              <h2 id="vaultKeysHeading">Observed key names</h2>
-              <div id="vaultKeysPanel" class="vendor-vault-panel-body">
-                <div class="hint">Loading...</div>
-              </div>
-            </section>
-            <section class="vendor-vault-readout vendor-vault-readout-risk" aria-labelledby="vaultRiskHeading">
-              <h2 id="vaultRiskHeading">Risk summary</h2>
-              <div id="vaultRiskPanel" class="vendor-vault-panel-body">
-                <div class="hint">Loading...</div>
-              </div>
-            </section>
+          <div class="vendor-vault-workspace-shell">
+            <div id="vendorVaultModeBar" class="vendor-vault-mode-bar" role="group" aria-label="Investigation workspace">
+              <button id="vendorVaultModeInventory" class="vendor-vault-mode-btn is-active" type="button" data-workspace-mode="inventory" aria-controls="vendorVaultInventoryWorkspace" aria-pressed="true" title="Review the ranked inventory ledger for this vendor.">Inventory</button>
+              <button id="vendorVaultModeSelectedItem" class="vendor-vault-mode-btn" type="button" data-workspace-mode="selected-item" aria-controls="vendorVaultSelectedItemWorkspace" aria-pressed="false" title="Inspect the currently selected inventory item in detail.">Selected item</button>
+              <button id="vendorVaultModeBrowserApi" class="vendor-vault-mode-btn" type="button" data-workspace-mode="browser-api" aria-controls="vendorVaultApiWorkspace" aria-pressed="false" title="Review Browser API evidence linked to this vendor and the surrounding site context.">Browser API evidence</button>
+              <button id="vendorVaultModeSiteEvidence" class="vendor-vault-mode-btn" type="button" data-workspace-mode="site-evidence" aria-controls="vendorVaultSiteEvidenceWorkspace" aria-pressed="false" title="Review supporting site-level domains, keys, activity totals, and risk shape.">Site evidence</button>
+            </div>
+
+            <div class="vendor-vault-workspaces">
+              <section id="vendorVaultInventoryWorkspace" class="panel vendor-vault-inventory-panel vendor-vault-workspace" data-workspace="inventory">
+                <div id="exposureLoadingState" class="vendor-vault-state">
+                  Loading potentially shared inventory...
+                </div>
+
+                <div id="exposureErrorState" class="vendor-vault-state hidden" role="alert">
+                  <div>Could not load potential sharing inventory for this scope.</div>
+                  <div>
+                    <button id="exposureRetryButton" type="button" class="viz-nav">Retry</button>
+                  </div>
+                </div>
+
+                <div id="exposureEmptyState" class="vendor-vault-state hidden">
+                  No exposure signals observed for this scope in captured request metadata.
+                </div>
+
+                <div id="exposureSuccessState" class="hidden">
+                  <section class="vendor-vault-inventory-overview" aria-labelledby="exposureInventoryOverviewHeading">
+                    <div class="vendor-vault-inventory-overview-head">
+                      <div>
+                        <div class="vendor-vault-case-summary-kicker">Investigation grid</div>
+                        <h3 id="exposureInventoryOverviewHeading" class="vendor-vault-inventory-overview-title">Potentially shared data inventory</h3>
+                        <div class="vendor-vault-disclaimer">
+                          Derived from captured browser signals (request metadata). This is not proof of vendor storage.
+                        </div>
+                      </div>
+                      <div class="vendor-vault-export-controls">
+                        <div class="vendor-vault-export-buttons">
+                          <button id="vaultExportButton" type="button" class="viz-nav vendor-vault-export-btn">
+                            Export JSON
+                          </button>
+                          <button id="vaultExportCsvButton" type="button" class="viz-nav vendor-vault-export-btn">
+                            Export CSV
+                          </button>
+                        </div>
+                        <div id="vaultExportStatus" class="vendor-vault-export-status" aria-live="polite"></div>
+                      </div>
+                    </div>
+                    <div class="vendor-vault-inventory-overview-note">Select one item in the ledger to inspect its detail in the selected-item workspace.</div>
+                    <div id="exposureInventoryGrid" class="vendor-vault-inventory-grid" role="listbox" aria-label="Vendor inventory overview"></div>
+                  </section>
+                </div>
+              </section>
+
+              <section id="vendorVaultSelectedItemWorkspace" class="vendor-vault-workspace vendor-vault-selected-workspace hidden" data-workspace="selected-item" tabindex="-1" aria-labelledby="vendorVaultSelectedItemHeading">
+                <div class="vendor-vault-workspace-head">
+                  <div class="vendor-vault-case-summary-kicker">Selected item</div>
+                  <h3 id="vendorVaultSelectedItemHeading" class="vendor-vault-workspace-title">Inspect the current item in detail</h3>
+                  <p class="vendor-vault-workspace-copy">This workspace shows the currently selected inventory item with the same evidence and guidance model as before.</p>
+                </div>
+                <div id="vendorVaultSelectedItemEmpty" class="vendor-vault-workspace-empty hidden" aria-live="polite">
+                  <div class="vendor-vault-workspace-empty-title">No inventory item selected yet</div>
+                  <p class="vendor-vault-workspace-empty-copy">Open Inventory, choose a ledger row, and Vendor Vault will bring the selected item here automatically.</p>
+                  <button id="vendorVaultSelectedItemBackButton" type="button" class="viz-nav vendor-vault-workspace-empty-action">Go to Inventory</button>
+                </div>
+                <div id="vendorVaultSelectedItemContent" class="vendor-vault-detail-section hidden">
+                  <div id="exposureInventoryDrilldown" class="vendor-vault-inventory-box vendor-vault-inventory-drilldown" aria-live="polite"></div>
+                </div>
+              </section>
+
+              <section id="vendorVaultApiWorkspace" class="panel vendor-vault-api-panel vendor-vault-workspace hidden" data-workspace="browser-api" tabindex="-1">
+                <div class="panel-header">
+                  <div>
+                    <div class="panel-title">Browser API activity in this investigation</div>
+                    <div class="vendor-vault-disclaimer">
+                      This section separates activity linked to this vendor from other privacy activity seen on the same site.
+                    </div>
+                  </div>
+                </div>
+
+                <div id="vendorApiEvidenceLoadingState" class="vendor-vault-state">
+                  Loading relevant Browser API activity...
+                </div>
+
+                <div id="vendorApiEvidenceErrorState" class="vendor-vault-state hidden" role="alert">
+                  <div>Could not load relevant Browser API activity for this vendor.</div>
+                  <div>
+                    <button id="vendorApiEvidenceRetryButton" type="button" class="viz-nav">Retry</button>
+                  </div>
+                </div>
+
+                <div id="vendorApiEvidenceEmptyState" class="vendor-vault-state hidden">
+                  No relevant Browser API activity observed for this vendor.
+                </div>
+
+                <div id="vendorApiEvidenceSuccessState" class="hidden">
+                  <div class="vendor-vault-api-box">
+                    <section id="vendorApiEvidenceVendorSection" class="vendor-vault-api-subsection hidden" aria-labelledby="vendorApiEvidenceVendorHeading">
+                      <div class="vendor-vault-api-subsection-head">
+                        <div class="vendor-vault-api-subsection-kicker">Activity linked to this vendor</div>
+                        <h3 id="vendorApiEvidenceVendorHeading" class="vendor-vault-api-subsection-title">Browser API activity linked to this vendor</h3>
+                        <p class="vendor-vault-api-subsection-copy">
+                          This section shows Browser API activity we can link to this vendor.
+                        </p>
+                      </div>
+                      <div id="vendorApiEvidenceVendorNarrative" class="vendor-vault-api-narrative hidden"></div>
+                      <div id="vendorApiEvidenceVendorEmpty" class="vendor-vault-panel-empty hidden"></div>
+                      <div id="vendorApiEvidenceVendorList" class="vendor-vault-inventory-list hidden" role="list"></div>
+                    </section>
+
+                    <section id="vendorApiEvidenceContextualSection" class="vendor-vault-api-subsection hidden" aria-labelledby="vendorApiEvidenceContextualHeading">
+                      <div class="vendor-vault-api-subsection-head">
+                        <div class="vendor-vault-api-subsection-kicker">Other privacy activity on this site</div>
+                        <h3 id="vendorApiEvidenceContextualHeading" class="vendor-vault-api-subsection-title">Browser API activity seen elsewhere on this site</h3>
+                        <p id="vendorApiEvidenceContextualIntro" class="vendor-vault-api-subsection-copy">
+                          This Browser API activity was observed on this site, but it is not directly linked to this vendor.
+                        </p>
+                        <p id="vendorApiEvidenceContextualNote" class="vendor-vault-api-subsection-note">
+                          It may still contribute to tracking or profiling on this page, even though it is not part of this vendor-specific evidence.
+                        </p>
+                      </div>
+                      <div id="vendorApiEvidenceContextualNarrative" class="vendor-vault-api-narrative hidden"></div>
+                      <div id="vendorApiEvidenceContextualEmpty" class="vendor-vault-panel-empty hidden"></div>
+                      <div id="vendorApiEvidenceContextualList" class="vendor-vault-inventory-list hidden" role="list"></div>
+                    </section>
+                  </div>
+                </div>
+              </section>
+
+              <section id="vendorVaultSiteEvidenceWorkspace" class="vendor-vault-readouts-shell vendor-vault-workspace hidden" data-workspace="site-evidence" tabindex="-1" aria-labelledby="vendorVaultSiteEvidenceHeading">
+                <div class="vendor-vault-workspace-head vendor-vault-workspace-head-support">
+                  <div class="vendor-vault-case-summary-kicker">Site evidence</div>
+                  <h3 id="vendorVaultSiteEvidenceHeading" class="vendor-vault-workspace-title">Supporting site-level evidence for this vendor context</h3>
+                  <p class="vendor-vault-workspace-copy">Use these supporting summaries to review activity volume, domains, observed key names, and risk shape around this vendor.</p>
+                </div>
+                <div class="vendor-vault-secondary-panels">
+                  <section class="vendor-vault-readout vendor-vault-readout-activity" aria-labelledby="vaultActivityHeading">
+                    <h2 id="vaultActivityHeading">Activity summary</h2>
+                    <div id="vaultActivityPanel" class="vendor-vault-panel-body">
+                      <div class="hint">Loading...</div>
+                    </div>
+                  </section>
+                  <section class="vendor-vault-readout vendor-vault-readout-domains" aria-labelledby="vaultDomainsHeading">
+                    <h2 id="vaultDomainsHeading">Domains used</h2>
+                    <div id="vaultDomainsPanel" class="vendor-vault-panel-body">
+                      <div class="hint">Loading...</div>
+                    </div>
+                  </section>
+                  <section class="vendor-vault-readout vendor-vault-readout-keys" aria-labelledby="vaultKeysHeading">
+                    <h2 id="vaultKeysHeading">Observed key names</h2>
+                    <div id="vaultKeysPanel" class="vendor-vault-panel-body">
+                      <div class="hint">Loading...</div>
+                    </div>
+                  </section>
+                  <section class="vendor-vault-readout vendor-vault-readout-risk" aria-labelledby="vaultRiskHeading">
+                    <h2 id="vaultRiskHeading">Risk summary</h2>
+                    <div id="vaultRiskPanel" class="vendor-vault-panel-body">
+                      <div class="hint">Loading...</div>
+                    </div>
+                  </section>
+                </div>
+              </section>
+            </div>
           </div>
         </section>
       </div>
