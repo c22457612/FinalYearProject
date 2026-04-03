@@ -228,7 +228,7 @@
 
           <div class="vendor-vault-workspace-shell">
             <div id="vendorVaultModeBar" class="vendor-vault-mode-bar" role="group" aria-label="Investigation workspace">
-              <button id="vendorVaultModeInventory" class="vendor-vault-mode-btn is-active" type="button" data-workspace-mode="inventory" aria-controls="vendorVaultInventoryWorkspace" aria-pressed="true" title="Review the ranked inventory ledger for this vendor.">Inventory</button>
+              <button id="vendorVaultModeInventory" class="vendor-vault-mode-btn is-active" type="button" data-workspace-mode="inventory" aria-controls="vendorVaultInventoryWorkspace" aria-pressed="true" title="Review the ranked inventory investigation targets for this vendor.">Inventory</button>
               <button id="vendorVaultModeSelectedItem" class="vendor-vault-mode-btn" type="button" data-workspace-mode="selected-item" aria-controls="vendorVaultSelectedItemWorkspace" aria-pressed="false" title="Inspect the currently selected inventory item in detail.">Selected item</button>
               <button id="vendorVaultModeBrowserApi" class="vendor-vault-mode-btn" type="button" data-workspace-mode="browser-api" aria-controls="vendorVaultApiWorkspace" aria-pressed="false" title="Review Browser API evidence linked to this vendor and the surrounding site context.">Browser API evidence</button>
               <button id="vendorVaultModeSiteEvidence" class="vendor-vault-mode-btn" type="button" data-workspace-mode="site-evidence" aria-controls="vendorVaultSiteEvidenceWorkspace" aria-pressed="false" title="Review supporting site-level domains, keys, activity totals, and risk shape.">Site evidence</button>
@@ -273,7 +273,7 @@
                         <div id="vaultExportStatus" class="vendor-vault-export-status" aria-live="polite"></div>
                       </div>
                     </div>
-                    <div class="vendor-vault-inventory-overview-note">Select one item in the ledger to inspect its detail in the selected-item workspace.</div>
+                    <div class="vendor-vault-inventory-overview-note">Select one item in the grid to inspect its detail in the selected-item workspace.</div>
                     <div id="exposureInventoryGrid" class="vendor-vault-inventory-grid" role="listbox" aria-label="Vendor inventory overview"></div>
                   </section>
                 </div>
@@ -287,7 +287,7 @@
                 </div>
                 <div id="vendorVaultSelectedItemEmpty" class="vendor-vault-workspace-empty hidden" aria-live="polite">
                   <div class="vendor-vault-workspace-empty-title">No inventory item selected yet</div>
-                  <p class="vendor-vault-workspace-empty-copy">Open Inventory, choose a ledger row, and Vendor Vault will bring the selected item here automatically.</p>
+                  <p class="vendor-vault-workspace-empty-copy">Open Inventory, choose an inventory item, and Vendor Vault will bring the selected item here automatically.</p>
                   <button id="vendorVaultSelectedItemBackButton" type="button" class="viz-nav vendor-vault-workspace-empty-action">Go to Inventory</button>
                 </div>
                 <div id="vendorVaultSelectedItemContent" class="vendor-vault-detail-section hidden">

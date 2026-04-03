@@ -261,7 +261,7 @@ function setSelectedItemWorkspaceContentState(activeItem) {
 
   if (copy) {
     copy.textContent = hasItem
-      ? `This workspace follows the active ledger selection for ${activeItem.categoryLabel} using the same evidence and guidance model as before.`
+      ? `This workspace follows the active inventory selection for ${activeItem.categoryLabel} using the same evidence and guidance model as before.`
       : "This workspace shows the currently selected inventory item with the same evidence and guidance model as before.";
   }
 }
@@ -1745,33 +1745,22 @@ function getInventoryTileDescription(item) {
   return "Potentially shareable browser metadata.";
 }
 
-function getInventoryTileCountsLine(item) {
-  return `${formatRequestCount(item.count)} | Observed ${item.counts.observed} | Attempted ${item.counts.attempted}`;
+function getInventoryCellSupportLine(item) {
+  const description = getInventoryTileDescription(item)
+    .replace(/^(a|an)\s+/i, "")
+    .replace(/\.$/, "");
+  return description || "Potentially shareable browser metadata";
 }
 
-function getInventoryLedgerConcernLine(item) {
+function getInventoryCellConcernLine(item) {
   return `${item.itemScoreMeta.itemBand} concern | ${item.confidenceText} confidence`;
 }
 
-function getInventoryLedgerSignalLine(item) {
-  return `${formatRequestCount(item.count)} | Last seen ${item.lastSeen}`;
-}
-
-function appendLedgerMetric(container, label, value) {
-  const item = document.createElement("div");
-  item.className = "vendor-vault-ledger-metric";
-
-  const metricLabel = document.createElement("span");
-  metricLabel.className = "vendor-vault-ledger-metric-label";
-  metricLabel.textContent = label;
-  item.appendChild(metricLabel);
-
-  const metricValue = document.createElement("span");
-  metricValue.className = "vendor-vault-ledger-metric-value";
-  metricValue.textContent = value;
-  item.appendChild(metricValue);
-
-  container.appendChild(item);
+function appendInventoryCellCount(container, label, value) {
+  const metric = document.createElement("span");
+  metric.className = "vendor-vault-inventory-cell-count";
+  metric.textContent = `${label} ${value}`;
+  container.appendChild(metric);
 }
 
 function resolveActiveInventoryItem(sortedItems) {
@@ -1967,81 +1956,54 @@ function renderInventoryGrid(sortedItems) {
   for (let itemIndex = 0; itemIndex < sortedItems.length; itemIndex++) {
     const item = sortedItems[itemIndex];
     const isActive = item.itemKey === activeExposureInventoryKey;
-    const row = document.createElement("button");
-    row.type = "button";
-    row.id = buildExposureInventoryOptionId(item);
-    row.className = `vendor-vault-ledger-row${isActive ? " is-active" : ""}`;
-    row.setAttribute("role", "option");
-    row.setAttribute("aria-selected", String(isActive));
-
-    const rank = document.createElement("div");
-    rank.className = "vendor-vault-ledger-rank";
-    rank.textContent = String(itemIndex + 1).padStart(2, "0");
-    row.appendChild(rank);
-
-    const main = document.createElement("div");
-    main.className = "vendor-vault-ledger-main";
+    const cell = document.createElement("button");
+    cell.type = "button";
+    cell.id = buildExposureInventoryOptionId(item);
+    cell.className = `vendor-vault-inventory-cell${isActive ? " is-active" : ""}`;
+    cell.setAttribute("role", "option");
+    cell.setAttribute("aria-selected", String(isActive));
 
     const titleRow = document.createElement("div");
-    titleRow.className = "vendor-vault-ledger-title-row";
+    titleRow.className = "vendor-vault-inventory-cell-head";
 
     const title = document.createElement("div");
-    title.className = "vendor-vault-ledger-title";
+    title.className = "vendor-vault-inventory-cell-title";
     title.textContent = item.categoryLabel;
     titleRow.appendChild(title);
 
     const marker = document.createElement("span");
-    marker.className = "vendor-vault-ledger-marker";
+    marker.className = "vendor-vault-inventory-cell-marker";
     marker.setAttribute("aria-hidden", "true");
     marker.textContent = ">";
     titleRow.appendChild(marker);
-    main.appendChild(titleRow);
+    cell.appendChild(titleRow);
 
-    const implication = document.createElement("div");
-    implication.className = "vendor-vault-ledger-implication";
-    implication.textContent = getInventoryTileSupportLine(item);
-    main.appendChild(implication);
+    const support = document.createElement("div");
+    support.className = "vendor-vault-inventory-cell-support";
+    support.textContent = getInventoryCellSupportLine(item);
+    cell.appendChild(support);
 
     const meta = document.createElement("div");
-    meta.className = "vendor-vault-ledger-meta";
+    meta.className = "vendor-vault-inventory-cell-meta";
 
     const counts = document.createElement("div");
-    counts.className = "vendor-vault-ledger-metrics";
-    appendLedgerMetric(counts, "Observed", String(item.counts.observed));
-    appendLedgerMetric(counts, "Attempted", String(item.counts.attempted));
+    counts.className = "vendor-vault-inventory-cell-counts";
+    appendInventoryCellCount(counts, "Obs", String(item.counts.observed));
+    appendInventoryCellCount(counts, "Att", String(item.counts.attempted));
     meta.appendChild(counts);
 
     const concern = document.createElement("div");
-    concern.className = "vendor-vault-ledger-concern";
-
-    const concernPill = document.createElement("span");
-    concernPill.className = `vendor-vault-score-pill vendor-vault-band-${String(item.itemScoreMeta.itemBand).toLowerCase()}`;
-    concernPill.textContent = `${item.itemScoreMeta.itemBand} concern`;
-    concern.appendChild(concernPill);
-
-    const confidence = document.createElement("div");
-    confidence.className = "vendor-vault-ledger-subcopy";
-    confidence.textContent = getInventoryLedgerConcernLine(item);
-    concern.appendChild(confidence);
+    concern.className = `vendor-vault-inventory-cell-cue vendor-vault-band-${String(item.itemScoreMeta.itemBand).toLowerCase()}`;
+    concern.textContent = getInventoryCellConcernLine(item);
     meta.appendChild(concern);
-    main.appendChild(meta);
-    row.appendChild(main);
+    cell.appendChild(meta);
 
-    const signal = document.createElement("div");
-    signal.className = "vendor-vault-ledger-signal";
+    const implication = document.createElement("div");
+    implication.className = "vendor-vault-inventory-cell-implication";
+    implication.textContent = getInventoryTileSupportLine(item);
+    cell.appendChild(implication);
 
-    const signalValue = document.createElement("div");
-    signalValue.className = "vendor-vault-ledger-signal-value";
-    signalValue.textContent = getInventoryLedgerSignalLine(item);
-    signal.appendChild(signalValue);
-
-    const signalSupport = document.createElement("div");
-    signalSupport.className = "vendor-vault-ledger-subcopy";
-    signalSupport.textContent = getInventoryTileDescription(item);
-    signal.appendChild(signalSupport);
-    row.appendChild(signal);
-
-    row.addEventListener("click", () => {
+    cell.addEventListener("click", () => {
       const wasAlreadyActive = activeExposureInventoryKey === item.itemKey;
       if (!wasAlreadyActive) activeExposureInventoryKey = item.itemKey;
       renderInventoryInspection(sortedItems);
@@ -2049,7 +2011,7 @@ function renderInventoryGrid(sortedItems) {
       if (wasAlreadyActive) return;
     });
 
-    grid.appendChild(row);
+    grid.appendChild(cell);
   }
 }
 
