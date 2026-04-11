@@ -106,4 +106,3 @@ Host permissions:
    - `/?view=trusted-sites`
    - `/?view=api-signals`
    - `site.html?site=<domain>`
-6. Before packaging, bump the manifest version in [`extension/manifest.json`](/c:/Users/C22457612/FinalYearProject/extension/manifest.json) if you are shipping a new deliverable snapshot.
