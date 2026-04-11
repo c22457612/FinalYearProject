@@ -89,7 +89,7 @@ const HOVER_POINT_STYLE = {
   borderWidth: 1,
 };
 
-function getThemeChartTokens() {
+function getChartThemeTokens() {
   return window.VPT?.theme?.getChartTokens?.() || {
     selectedAccent: "#a9bfe8",
     hoverAccent: "#86a8d8",
@@ -99,7 +99,7 @@ function getThemeChartTokens() {
 }
 
 function syncChartThemeState() {
-  const tokens = getThemeChartTokens();
+  const tokens = getChartThemeTokens();
   chartThemeState.selectedAccent = tokens.selectedAccent;
   chartThemeState.hoverAccent = tokens.hoverAccent;
   chartThemeState.selectedBandFill = tokens.selectedBandFill;
@@ -1695,6 +1695,15 @@ async function fetchWindowEvents(force = false) {
 
 export function bootSiteInsights() {
   siteName = getQueryParam("site");
+
+  try {
+    if ("scrollRestoration" in window.history) {
+      window.history.scrollRestoration = "manual";
+    }
+  } catch {
+    // ignore history API availability issues
+  }
+  window.scrollTo({ top: 0, left: 0, behavior: "auto" });
 
   if (!siteName) {
     qs("siteTitle").textContent = "Site insights";

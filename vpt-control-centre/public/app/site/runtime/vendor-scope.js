@@ -186,7 +186,6 @@ export function createVendorScope(deps) {
     clearVizSelection({ close: true, clearBrush: true, renderTable: false, updateSummary: false });
     renderVendorChips();
     renderECharts();
-    focusVendorDetailsUx(row.vendorName, row.seen || 0);
     renderRecentEventsFromEvents(getChartEvents(), "No events match current filters.");
     updateFilterSummary();
   }

@@ -8,7 +8,9 @@
     "backfill:enrichment": "node scripts/backfill-enrichment.js",
     "seed:cookies-polish-2": "node scripts/seed-cookies-polish-2.js",
     "seed:cookies-demo": "node scripts/seed-cookies-demo.js",
-    "clean:dummy-seed": "node scripts/clean-dummy-seed.js"
+    "clean:dummy-seed": "node scripts/clean-dummy-seed.js",
+    "seed:site-visualizer-dummy-data": "node scripts/seed-site-visualizer-dummy-data.js",
+    "clear:site-visualizer-dummy-data": "node scripts/clear-site-visualizer-dummy-data.js"
   },
   "keywords": [],
   "author": "",

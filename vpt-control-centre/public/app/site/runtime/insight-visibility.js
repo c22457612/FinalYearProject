@@ -2,6 +2,19 @@ export function createInsightVisibility(deps) {
   const { qs } = deps;
 
   let insightScrollRaf = null;
+  let userInteracted = typeof window?.addEventListener !== "function";
+
+  function markUserInteracted() {
+    userInteracted = true;
+  }
+
+  if (!userInteracted) {
+    const opts = { passive: true, once: true };
+    window.addEventListener("pointerdown", markUserInteracted, opts);
+    window.addEventListener("keydown", markUserInteracted, opts);
+    window.addEventListener("wheel", markUserInteracted, opts);
+    window.addEventListener("touchstart", markUserInteracted, opts);
+  }
 
   function isOffScreen(el) {
     if (!el) return false;
@@ -62,6 +75,7 @@ export function createInsightVisibility(deps) {
   function ensureInsightVisible({ force = false, source = "selection" } = {}) {
     const section = qs("insightSheet");
     if (!section) return;
+    if (!userInteracted) return;
     if (!(force || isOffScreen(section))) return;
 
     const rect = section.getBoundingClientRect();
@@ -93,6 +107,7 @@ export function createInsightVisibility(deps) {
     getScrollTop,
     smoothScrollViewportTo,
     pulseElement,
+    markUserInteracted,
     ensureInsightVisible,
     hideVendorSelectionCue,
     showVendorSelectionCue,

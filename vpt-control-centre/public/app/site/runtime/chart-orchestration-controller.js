@@ -202,7 +202,6 @@ export function createChartOrchestrationController(deps) {
         setSelectedVendor(vendor);
         renderVendorChips();
         renderECharts();
-        focusVendorDetailsUx(vendor.vendorName || label || "Vendor", evs.length);
       } else {
         renderVendorChips();
         hideVendorSelectionCue();
@@ -231,7 +230,6 @@ export function createChartOrchestrationController(deps) {
         setSelectedVendor(vendor);
         renderVendorChips();
         renderECharts();
-        focusVendorDetailsUx(vendor.vendorName || label || "Vendor", evs.length);
       } else {
         renderVendorChips();
         hideVendorSelectionCue();

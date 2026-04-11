@@ -1277,6 +1277,83 @@ test("chart orchestration applies readable defaults in power mode for time-based
   }
 });
 
+test("vendor chart clicks keep focus in the visualizer instead of forcing case-sheet scroll", () => {
+  let selectedVendor = null;
+  let focusCalls = 0;
+  let renderVendorChipCalls = 0;
+  let renderChartCalls = 0;
+  let lastSelection = null;
+
+  const { createChartOrchestrationController } = loadRuntimeModuleExportWithoutImports(
+    "public/app/site/runtime/chart-orchestration-controller.js",
+    ["createChartOrchestrationController"],
+    {
+      summarizeVisualCategoryCounts: () => ({ total: 3, blocked: 1, observed: 2, blockedApi: 0, observedApi: 0, api: 0, other: 0 }),
+    }
+  );
+
+  const controller = createChartOrchestrationController({
+    getSiteLens: () => null,
+    getSelectedVendor: () => selectedVendor,
+    setSelectedVendor: (next) => { selectedVendor = next; },
+    getVizMetric: () => "seen",
+    buildVendorRollup: () => [],
+    buildTimelineOption: () => ({ option: {}, meta: {} }),
+    buildVendorAllowedBlockedTimelineOption: () => ({ option: {}, meta: {} }),
+    buildVendorTopDomainsEndpointsOption: () => ({ option: {}, meta: {} }),
+    buildTopDomainsOption: () => ({ option: {}, meta: {} }),
+    buildKindsOption: () => ({ option: {}, meta: {} }),
+    buildApiGatingOption: () => ({ option: {}, meta: {} }),
+    buildResourceTypesOption: () => ({ option: {}, meta: {} }),
+    buildModeBreakdownOption: () => ({ option: {}, meta: {} }),
+    buildPartySplitOption: () => ({ option: {}, meta: {} }),
+    buildHourHeatmapOption: () => ({ option: {}, meta: {} }),
+    buildVendorOverviewOption: () => ({ option: {}, meta: {} }),
+    buildVendorBlockRateComparisonOption: () => ({ option: {}, meta: {} }),
+    buildVendorShareOverTimeOption: () => ({ option: {}, meta: {} }),
+    buildRiskTrendOption: () => ({ option: {}, meta: {} }),
+    buildBaselineDetectedBlockedTrendOption: () => ({ option: {}, meta: {} }),
+    buildVendorKindMatrixOption: () => ({ option: {}, meta: {} }),
+    buildRuleIdFrequencyOption: () => ({ option: {}, meta: {} }),
+    setVizSelection: (selection) => { lastSelection = selection; },
+    renderVendorChips: () => { renderVendorChipCalls += 1; },
+    renderECharts: () => { renderChartCalls += 1; },
+    focusVendorDetailsUx: () => { focusCalls += 1; },
+    hideVendorSelectionCue: () => {},
+  });
+
+  const vendor = {
+    vendorId: "google",
+    vendorName: "Google",
+    category: "adtech-analytics",
+    domains: ["googletagmanager.com"],
+    riskHints: [],
+  };
+  const evidence = [
+    { id: "ev-1", kind: "network.observed" },
+    { id: "ev-2", kind: "network.blocked" },
+    { id: "ev-3", kind: "network.observed" },
+  ];
+  const meta = {
+    evidenceByLabel: new Map([["Google", evidence]]),
+    vendorByLabel: new Map([["Google", vendor]]),
+  };
+
+  controller.handleChartClick({
+    viewId: "vendorOverview",
+    params: { name: "Google", seriesIndex: 0, dataIndex: 0 },
+    meta,
+    effectiveViewId: "vendorOverview",
+  });
+
+  assert.equal(selectedVendor?.vendorId, "google");
+  assert.equal(renderVendorChipCalls, 1);
+  assert.equal(renderChartCalls, 1);
+  assert.equal(focusCalls, 0);
+  assert.equal(lastSelection?.type, "vendor");
+  assert.equal(lastSelection?.scrollMode, "never");
+});
+
 test("site filter logic keeps API events compatible with surface and mitigation filters", () => {
   const {
     matchesFilters,
@@ -1424,6 +1501,7 @@ test("insight visibility routes vendor-detail focus to the lower insight sheet",
   let scrollTarget = null;
   const sandboxWindow = {
     scrollY: 0,
+    addEventListener: () => {},
     matchMedia: () => ({ matches: true }),
     scrollTo: ({ top }) => {
       scrollTarget = top;
@@ -1468,10 +1546,65 @@ test("insight visibility routes vendor-detail focus to the lower insight sheet",
     qs: (id) => (id === "insightSheet" ? insightSheet : null),
   });
 
+  api.markUserInteracted();
   api.focusVendorDetailsUx("Google", 12);
 
   assert.equal(removedClass, "attention-pulse");
   assert.equal(addedClass, "attention-pulse");
+  assert.equal(scrollTarget, 128);
+});
+
+test("insight visibility does not auto-scroll before first user interaction", () => {
+  let scrollTarget = null;
+  const listeners = new Map();
+  const sandboxWindow = {
+    scrollY: 0,
+    addEventListener: (name, handler) => {
+      listeners.set(name, handler);
+    },
+    matchMedia: () => ({ matches: true }),
+    scrollTo: ({ top }) => {
+      scrollTarget = top;
+    },
+  };
+  const { createInsightVisibility } = loadRuntimeModuleExport(
+    "public/app/site/runtime/insight-visibility.js",
+    ["createInsightVisibility"],
+    {
+      window: sandboxWindow,
+      document: {
+        documentElement: { clientHeight: 900, scrollTop: 0 },
+        body: { scrollTop: 0 },
+      },
+      performance: { now: () => 0 },
+      requestAnimationFrame: (cb) => {
+        cb(1000);
+        return 1;
+      },
+      cancelAnimationFrame: () => {},
+    }
+  );
+
+  const insightSheet = {
+    getBoundingClientRect: () => ({ top: 200, bottom: 420 }),
+    classList: {
+      remove: () => {},
+      add: () => {},
+    },
+    get offsetWidth() {
+      return 320;
+    },
+  };
+
+  const api = createInsightVisibility({
+    qs: (id) => (id === "insightSheet" ? insightSheet : null),
+  });
+
+  api.ensureInsightVisible({ force: true, source: "vendor" });
+  assert.equal(scrollTarget, null);
+
+  listeners.get("pointerdown")?.();
+  api.ensureInsightVisible({ force: true, source: "vendor" });
   assert.equal(scrollTarget, 128);
 });
 
