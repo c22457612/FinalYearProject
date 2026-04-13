@@ -21,7 +21,6 @@ export function createChartOrchestrationController(deps) {
     buildVendorBlockRateComparisonOption,
     buildVendorShareOverTimeOption,
     buildRiskTrendOption,
-    buildBaselineDetectedBlockedTrendOption,
     buildVendorKindMatrixOption,
     buildRuleIdFrequencyOption,
     setVizSelection,
@@ -43,7 +42,6 @@ export function createChartOrchestrationController(deps) {
       viewId === "timeline"
       || viewId === "vendorAllowedBlockedTimeline"
       || viewId === "vendorShareOverTime"
-      || viewId === "baselineDetectedBlockedTrend"
     ) {
       semanticKey = `bin:${typeof dataIndex === "number" ? dataIndex : ""}`;
     } else if (viewId === "hourHeatmap" || viewId === "vendorKindMatrix") {
@@ -144,7 +142,6 @@ export function createChartOrchestrationController(deps) {
       built = buildVendorTopDomainsEndpointsOption(events, getSelectedVendor(), getVizMetric(), { densityAware, viewMode });
     }
     else if (requestedViewId === "riskTrend") built = buildRiskTrendOption(events, { densityAware, viewMode });
-    else if (requestedViewId === "baselineDetectedBlockedTrend") built = buildBaselineDetectedBlockedTrendOption(events, { densityAware, viewMode });
     else if (requestedViewId === "timeline") built = buildTimelineOption(events, { densityAware, viewMode });
     else if (requestedViewId === "topSeen") built = buildTopDomainsOption(events, getVizMetric());
     else if (requestedViewId === "kinds") built = buildKindsOption(events);
@@ -169,7 +166,6 @@ export function createChartOrchestrationController(deps) {
       || viewId === "vendorAllowedBlockedTimeline"
       || viewId === "vendorShareOverTime"
       || viewId === "riskTrend"
-      || viewId === "baselineDetectedBlockedTrend"
     ) {
       const idx = params?.dataIndex;
       if (typeof idx !== "number") return;

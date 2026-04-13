@@ -117,14 +117,13 @@ const VIEWS = [
   { id: "vendorOverview", title: "Vendor activity overview" },
   { id: "vendorBlockRateComparison", title: "Block-rate by vendor comparison (%)" },
   { id: "vendorShareOverTime", title: "Vendor share over time (stacked area)" },
-  { id: "vendorAllowedBlockedTimeline", title: "Vendor allowed vs blocked timeline" },
+  { id: "vendorAllowedBlockedTimeline", title: "Blocked vs observed network timeline" },
   { id: "vendorTopDomainsEndpoints", title: "Where this vendor connects (top domains/endpoints)" },
   { id: "riskTrend", title: "Risk trend timeline" },
-  { id: "baselineDetectedBlockedTrend", title: "Baseline vs detected vs blocked trend" },
   { id: "timeline", title: "Activity timeline (last 24h)" },
-  { id: "topSeen", title: "Top third-party domains (seen)" },
+  { id: "topSeen", title: "Top third-party domains" },
   { id: "kinds", title: "Event type breakdown" },
-  { id: "apiGating", title: "Third-party API-like requests" },
+  { id: "apiGating", title: "API-like third-party requests by domain" },
   { id: "vendorKindMatrix", title: "Vendor-kind matrix" },
   { id: "ruleIdFrequency", title: "Rule ID frequency" },
   { id: "resourceTypes", title: "Resource type breakdown" },
@@ -133,6 +132,11 @@ const VIEWS = [
   { id: "hourHeatmap", title: "Activity heatmap (hour x day)" },
 ];
 const VIEW_TITLE_BY_ID = new Map(VIEWS.map((view) => [view.id, view.title]));
+
+function getViewTitle(viewId, context = {}) {
+  void context;
+  return VIEW_TITLE_BY_ID.get(String(viewId || "")) || "Current view";
+}
 const POWER_SCOPE_MODE_ORDER = ["strict", "moderate", "low", "unknown"];
 const POWER_DOCK_ALWAYS_VISIBLE_CONTROLS = new Set([
   "blocked",
@@ -146,7 +150,6 @@ const POWER_DOCK_CONTROLS_BY_VIEW_ID = Object.freeze({
   vendorShareOverTime: ["binSize", "party", "resource", "surface", "mitigation", "domain"],
   vendorAllowedBlockedTimeline: ["binSize", "resource", "domain"],
   vendorTopDomainsEndpoints: ["metric", "topN", "normalize", "stackBars", "resource", "mitigation", "domain"],
-  baselineDetectedBlockedTrend: ["binSize", "series", "stackBars", "party", "resource", "surface", "domain"],
   timeline: ["binSize", "series", "stackBars", "party", "resource", "surface", "mitigation", "domain"],
   topSeen: ["metric", "topN", "sort", "normalize", "resource", "domain"],
   kinds: ["topN", "sort", "normalize", "party", "resource", "surface", "mitigation", "domain"],
@@ -158,14 +161,9 @@ const POWER_DOCK_CONTROLS_BY_VIEW_ID = Object.freeze({
 
 const EASY_SITE_WIDE_VIEW_IDS = new Set([
   "vendorOverview",
-  "vendorShareOverTime",
-  "vendorAllowedBlockedTimeline",
-  "baselineDetectedBlockedTrend",
 ]);
 const EASY_VENDOR_FOCUS_VIEW_IDS = new Set([
   "vendorOverview",
-  "vendorAllowedBlockedTimeline",
-  "baselineDetectedBlockedTrend",
 ]);
 const LOW_INFORMATION_EVENT_THRESHOLD = 8;
 const PRIVACY_FILTER_ALL_ONLY_VIEW_IDS = new Set();
@@ -260,7 +258,6 @@ const chartOrchestrationController = createChartOrchestrationController({
   buildVendorBlockRateComparisonOption: chartBuilders.buildVendorBlockRateComparisonOption,
   buildVendorShareOverTimeOption: chartBuilders.buildVendorShareOverTimeOption,
   buildRiskTrendOption: chartBuilders.buildRiskTrendOption,
-  buildBaselineDetectedBlockedTrendOption: chartBuilders.buildBaselineDetectedBlockedTrendOption,
   buildVendorKindMatrixOption: chartBuilders.buildVendorKindMatrixOption,
   buildRuleIdFrequencyOption: chartBuilders.buildRuleIdFrequencyOption,
   setVizSelection,
@@ -322,6 +319,78 @@ function getRangeWindow() {
   return { key, from, to };
 }
 
+function getCurrentBinMs() {
+  return BIN_SIZE_MS[vizOptions.binSize] || BIN_SIZE_MS["5m"];
+}
+
+function getEffectiveTimeBounds(events) {
+  const list = Array.isArray(events) ? events.filter((ev) => Number.isFinite(Number(ev?.ts))) : [];
+  const { from, to } = getRangeWindow();
+  const start = from ?? (list[0]?.ts ?? Date.now());
+  const end = to ?? (list[list.length - 1]?.ts ?? Date.now());
+  return { start, end };
+}
+
+function countNonEmptyTimelineBins(events, binMs) {
+  const list = Array.isArray(events) ? events.filter((ev) => Number.isFinite(Number(ev?.ts))) : [];
+  if (!list.length) return 0;
+
+  const { start, end } = getEffectiveTimeBounds(list);
+  const safeBinMs = Math.max(60 * 1000, Number(binMs || 0) || getCurrentBinMs());
+  const span = Math.max(1, end - start);
+  const bins = Math.max(1, Math.ceil(span / safeBinMs));
+  const active = new Set();
+
+  for (const ev of list) {
+    const idx = Math.min(bins - 1, Math.max(0, Math.floor((Number(ev.ts) - start) / safeBinMs)));
+    active.add(idx);
+  }
+
+  return active.size;
+}
+
+function getHeatmapDensityStats(events) {
+  const dayRows = new Set();
+  const nonZeroCells = new Set();
+
+  for (const ev of Array.isArray(events) ? events : []) {
+    if (!Number.isFinite(Number(ev?.ts))) continue;
+    const date = new Date(Number(ev.ts));
+    const day = date.getDay();
+    const hour = date.getHours();
+    dayRows.add(day);
+    nonZeroCells.add(`${day}:${hour}`);
+  }
+
+  return {
+    distinctDayRows: dayRows.size,
+    nonZeroCells: nonZeroCells.size,
+  };
+}
+
+function isViewRuntimeAvailable(viewId) {
+  const id = String(viewId || "");
+  const events = getChartEvents();
+  const rangeKey = getRangeKey();
+
+  if (id === "vendorShareOverTime") {
+    if (selectedVendor?.vendorId) return false;
+    if (rangeKey === "1h") return false;
+    if (!Array.isArray(events) || events.length < 24) return false;
+    if (buildVendorRollup(events).length < 2) return false;
+    return countNonEmptyTimelineBins(events, getCurrentBinMs()) >= 6;
+  }
+
+  if (id === "hourHeatmap") {
+    if (rangeKey !== "7d" && rangeKey !== "all") return false;
+    if (!Array.isArray(events) || events.length < 24) return false;
+    const stats = getHeatmapDensityStats(events);
+    return stats.distinctDayRows >= 2 && stats.nonZeroCells >= 12;
+  }
+
+  return true;
+}
+
 function getVendorTaxonomy() {
   return window.VPT?.vendorTaxonomy || null;
 }
@@ -338,9 +407,11 @@ const viewNavigationController = createViewNavigationController({
   qs,
   getDocumentBody: () => document.body,
   views: VIEWS,
+  getViewTitle,
   easySiteWideViewIds: EASY_SITE_WIDE_VIEW_IDS,
   easyVendorFocusViewIds: EASY_VENDOR_FOCUS_VIEW_IDS,
   privacyFilterAllOnlyViewIds: PRIVACY_FILTER_ALL_ONLY_VIEW_IDS,
+  isViewRuntimeAvailable,
   getViewMode: () => viewMode,
   getSelectedVendor: () => selectedVendor,
   setViewModeState: (next) => {
@@ -869,7 +940,7 @@ function renderCurrentInsightLead() {
     : {
       type: "scope",
       value: getCurrentViewId() || VIEWS[vizIndex]?.id || "scope",
-      title: `${VIEW_TITLE_BY_ID.get(getCurrentViewId() || VIEWS[vizIndex]?.id || "") || "Current view"} scope`,
+      title: `${getViewTitle(getCurrentViewId() || VIEWS[vizIndex]?.id || "")} scope`,
       summaryHtml: "",
       events: evidence,
     };
@@ -1551,7 +1622,6 @@ function ensureChart() {
         viewId !== "timeline"
         && viewId !== "vendorAllowedBlockedTimeline"
         && viewId !== "vendorShareOverTime"
-        && viewId !== "baselineDetectedBlockedTrend"
       ) return;
 
       const meta = chart?.__vptMeta?.built?.meta;
@@ -1609,6 +1679,7 @@ function ensureChart() {
 function renderECharts() {
   const c = ensureChart();
   if (!c) return;
+  c.resize();
   rememberCurrentDataZoomState();
 
   const requestedViewId = VIEWS[vizIndex].id;
@@ -1659,7 +1730,7 @@ function renderECharts() {
     renderStateGuidance({ events, emptyMessage: "No events match current filters", viewId: requestedViewId });
     if (titleEl) {
       const vendorPart = selectedVendor?.vendorName ? ` | ${selectedVendor.vendorName}` : "";
-      titleEl.textContent = `Visualisation - ${VIEW_TITLE_BY_ID.get(requestedViewId) || VIEWS[vizIndex].title}${vendorPart}`;
+      titleEl.textContent = `Visualisation - ${getViewTitle(requestedViewId)}${vendorPart}`;
     }
     c.__vptMeta = {
       viewId: requestedViewId,
@@ -1683,7 +1754,7 @@ function renderECharts() {
   focusedLensPivotActive = lensPivotActive;
   applyPersistedDataZoom(built?.option, effectiveViewId, built?.meta);
   const disablePointer = isVendorEndpointBucketView(requestedViewId);
-  const pointerAxis = "x";
+  const pointerAxis = new Set(["topSeen", "ruleIdFrequency", "apiGating"]).has(requestedViewId) ? "y" : "x";
   if (disablePointer) {
     sanitizeVendorEndpointBucketOption(built?.option);
   }
@@ -1699,7 +1770,7 @@ function renderECharts() {
 
   if (titleEl) {
     const vendorPart = selectedVendor?.vendorName ? ` | ${selectedVendor.vendorName}` : "";
-    titleEl.textContent = `Visualisation - ${VIEW_TITLE_BY_ID.get(requestedViewId) || VIEWS[vizIndex].title}${vendorPart}`;
+    titleEl.textContent = `Visualisation - ${getViewTitle(requestedViewId)}${vendorPart}`;
   }
 
   if (!hasSeriesData(built?.option)) {

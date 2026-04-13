@@ -210,6 +210,10 @@
   flex-wrap: wrap;
 }
 
+.mode-easy .viz-bottom-nav {
+  display: none;
+}
+
 .viz-arrow-nav-block {
   display: grid;
   gap: 0.32rem;

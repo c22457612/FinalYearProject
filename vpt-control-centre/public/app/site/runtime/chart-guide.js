@@ -24,21 +24,21 @@ const CHART_GUIDE_BY_VIEW_ID = Object.freeze({
       "Seeing who dominates activity over time.",
       "Spotting vendor-share shifts during bursts.",
     ],
-    gotcha: "Vendor focus hides comparison views; clear vendor focus to compare vendors.",
+    gotcha: "Hidden in thin site-wide scopes and in vendor focus; widen range or gather more activity to compare vendors.",
     powerDetail: "Adjust range/bin size to stabilize noisy short-window share swings.",
   }),
   vendorAllowedBlockedTimeline: Object.freeze({
-    what: "How one vendor changed over time, split by blocked and observed outcomes.",
+    what: "How blocked and observed network activity changed over time in this scope.",
     how: [
       "X-axis is time bins; Y-axis is event count.",
       "Series compare blocked and observed activity per bin.",
       "Brush a window to inspect one period.",
     ],
     bestFor: [
-      "Finding bursts for a selected vendor.",
+      "Finding blocked-vs-observed bursts quickly.",
       "Checking blocked-vs-observed trend shifts.",
     ],
-    gotcha: "Most useful when a vendor is selected.",
+    gotcha: "Observed here reflects captured observed network activity, not a narrower allowed-only state.",
     powerDetail: "Bin size controls spike sensitivity versus smoothing.",
   }),
   vendorTopDomainsEndpoints: Object.freeze({
@@ -54,20 +54,6 @@ const CHART_GUIDE_BY_VIEW_ID = Object.freeze({
     ],
     gotcha: "Requires vendor focus; sparse scopes may show compact fallback.",
     powerDetail: "Top N and sort help surface long-tail endpoint patterns.",
-  }),
-  baselineDetectedBlockedTrend: Object.freeze({
-    what: "How baseline, detected, and blocked outcomes change over time.",
-    how: [
-      "Baseline means no signal detected in that event.",
-      "Detected and blocked lines show signal and mitigation flow by time bin.",
-      "Compare movement between all three series.",
-    ],
-    bestFor: [
-      "Tracking protection balance over time.",
-      "Explaining whether detections are being mitigated.",
-    ],
-    gotcha: "Baseline is not a guarantee of safety.",
-    powerDetail: "Combine with mitigation filter for policy-specific trends.",
   }),
   timeline: Object.freeze({
     what: "When total activity happened across the selected range.",
@@ -86,8 +72,8 @@ const CHART_GUIDE_BY_VIEW_ID = Object.freeze({
   topSeen: Object.freeze({
     what: "Which third-party domains appeared most often.",
     how: [
-      "Each bar is one domain ranked by count.",
-      "Longer bars mean more observed appearances.",
+      "Each horizontal bar is one domain ranked by count.",
+      "Longer bars mean more activity for the chosen metric.",
       "Filters narrow the domain set.",
     ],
     bestFor: [
@@ -114,13 +100,13 @@ const CHART_GUIDE_BY_VIEW_ID = Object.freeze({
   apiGating: Object.freeze({
     what: "How often third-party API-like requests appear and how they resolve.",
     how: [
-      "Bars group third-party API-like request buckets.",
-      "Height reflects frequency in current scope.",
-      "Outcome split shows blocked versus observed balance.",
+      "Each row is one third-party domain with API-like requests.",
+      "When blocked and observed activity are both meaningful, the row is split into blocked and observed segments.",
+      "Otherwise the chart falls back to a simpler ranked count comparison.",
     ],
     bestFor: [
       "Checking API-style tracker pressure.",
-      "Spotting repeated suspicious call classes.",
+      "Spotting domains that repeatedly make API-like requests.",
     ],
     gotcha: "Heuristic grouping can under/over-group rare calls.",
     powerDetail: "Pair with domain filter for targeted investigation.",
@@ -128,8 +114,8 @@ const CHART_GUIDE_BY_VIEW_ID = Object.freeze({
   ruleIdFrequency: Object.freeze({
     what: "Which rule IDs trigger most often in the current scope.",
     how: [
-      "Each bar is one rule ID.",
-      "Height is trigger count.",
+      "Each horizontal bar is one rule ID.",
+      "Bar length is trigger count.",
       "Clicking a bar scopes evidence to that rule.",
     ],
     bestFor: [
@@ -164,7 +150,7 @@ const CHART_GUIDE_BY_VIEW_ID = Object.freeze({
       "Finding recurring daily patterns.",
       "Detecting off-hour spikes.",
     ],
-    gotcha: "Small datasets can produce patchy heatmaps.",
+    gotcha: "Hidden for 24h and sparse scopes so patchy low-value heatmaps do not appear.",
     powerDetail: "Longer ranges usually reveal more stable time patterns.",
   }),
 });

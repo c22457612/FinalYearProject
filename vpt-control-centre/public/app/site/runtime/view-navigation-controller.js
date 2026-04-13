@@ -3,9 +3,11 @@ export function createViewNavigationController(deps) {
     qs,
     getDocumentBody,
     views,
+    getViewTitle = (viewId) => views.find((view) => view.id === viewId)?.title || String(viewId || ""),
     easySiteWideViewIds,
     easyVendorFocusViewIds,
     privacyFilterAllOnlyViewIds,
+    isViewRuntimeAvailable = () => true,
     getViewMode,
     getSelectedVendor,
     setViewModeState,
@@ -35,7 +37,6 @@ export function createViewNavigationController(deps) {
     "vendorOverview",
     "vendorShareOverTime",
     "vendorAllowedBlockedTimeline",
-    "baselineDetectedBlockedTrend",
     "timeline",
     "topSeen",
     "kinds",
@@ -48,7 +49,6 @@ export function createViewNavigationController(deps) {
     "vendorOverview",
     "vendorAllowedBlockedTimeline",
     "vendorTopDomainsEndpoints",
-    "baselineDetectedBlockedTrend",
     "timeline",
     "kinds",
     "apiGating",
@@ -73,8 +73,11 @@ export function createViewNavigationController(deps) {
 
   function isViewAllowed(viewId, mode = getViewMode()) {
     if (REMOVED_FROM_USER_PATH_VIEW_IDS.has(viewId)) return false;
-    if (mode === "easy") return getEasyViewIds().has(viewId);
-    return getPowerViewIds().has(viewId);
+    const staticallyAllowed = mode === "easy"
+      ? getEasyViewIds().has(viewId)
+      : getPowerViewIds().has(viewId);
+    if (!staticallyAllowed) return false;
+    return isViewRuntimeAvailable(viewId);
   }
 
   function getAllowedViews(mode = getViewMode()) {
@@ -119,6 +122,7 @@ export function createViewNavigationController(deps) {
 
     root.innerHTML = allowed.map((view) => {
       const active = view.id === currentId;
+      const title = getViewTitle(view.id);
       return `
         <button
           class="console-selector-option viz-path-selector-option${active ? " active" : ""}"
@@ -126,10 +130,10 @@ export function createViewNavigationController(deps) {
           data-viz-view-id="${view.id}"
           data-active="${active ? "true" : "false"}"
           aria-pressed="${active ? "true" : "false"}"
-          title="${view.title}"
+          title="${title}"
         >
           <span class="console-selector-marker" aria-hidden="true">&gt;</span>
-          <span class="console-selector-label">${view.title}</span>
+          <span class="console-selector-label">${title}</span>
         </button>
       `;
     }).join("");
@@ -183,6 +187,16 @@ export function createViewNavigationController(deps) {
     el.textContent = `${idx + 1} / ${allowed.length}`;
   }
 
+  function updateVizPathVisibility() {
+    const nav = qs("vizBottomNav");
+    if (!nav) return;
+
+    const allowed = getAllowedViews(getViewMode());
+    const shouldHide = getViewMode() === "easy" && allowed.length <= 1;
+    nav.hidden = shouldHide;
+    nav.setAttribute("aria-hidden", shouldHide ? "true" : "false");
+  }
+
   function updateViewAvailabilityHint() {
     const el = qs("vizModeHelp");
     if (!el) return;
@@ -221,6 +235,7 @@ export function createViewNavigationController(deps) {
       updateVizPositionLabel();
       updateViewAvailabilityHint();
       renderVizPathSelector(options);
+      updateVizPathVisibility();
       return;
     }
 
@@ -230,8 +245,8 @@ export function createViewNavigationController(deps) {
       const allowed = isViewAllowed(opt.value, getViewMode());
       opt.hidden = !allowed;
       opt.disabled = !allowed;
-      opt.textContent = baseLabel;
-      opt.title = "";
+      opt.textContent = getViewTitle(opt.value) || baseLabel;
+      opt.title = getViewTitle(opt.value) || "";
     }
 
     const currentId = views[getVizIndex()]?.id;
@@ -248,6 +263,7 @@ export function createViewNavigationController(deps) {
     updateVizPositionLabel();
     updateViewAvailabilityHint();
     renderVizPathSelector(options);
+    updateVizPathVisibility();
   }
 
   function syncAdvancedControlsByMode() {

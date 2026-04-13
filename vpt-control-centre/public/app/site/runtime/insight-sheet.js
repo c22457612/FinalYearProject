@@ -1050,9 +1050,6 @@ export function createInsightSheet(deps) {
       ...baseLimits,
       "Evidence is constrained by current range/filters and captured events only.",
     ];
-    if (context.viewId === "baselineDetectedBlockedTrend") {
-      limits.push("'No signal detected' indicates no classified signal in captured events, not a guarantee of safety.");
-    }
     if (evs.some((eventItem) => isApiSignalEvent(eventItem))) {
       limits.push("Browser API evidence here is metadata only. VPT stores classification and call metadata, not canvas output, clipboard contents, coordinates, SDP, candidates, or IP addresses.");
     }

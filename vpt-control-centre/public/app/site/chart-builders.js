@@ -237,6 +237,79 @@ function buildBarLikeOption(
   };
 }
 
+function buildHorizontalRankedBarOption(
+  rows,
+  {
+    seriesName = "count",
+    defaultType = "bar",
+    maxLabels = 20,
+    axisLabelFormatter = null,
+    axisLabelWidth = 220,
+    tooltipFormatter = null,
+  } = {},
+) {
+  const ranked = sortRankedRows(rows).slice(0, maxLabels);
+  const normalized = normalizeRows(ranked);
+  const labels = normalized.map((row) => row.label);
+  const values = normalized.map((row) => row.value || 0);
+  const evidenceByLabel = new Map(normalized.map((row) => [row.label, row.evs || []]));
+  const formatAxisLabel = typeof axisLabelFormatter === "function"
+    ? axisLabelFormatter
+    : (value) => String(value || "");
+  const rowByLabel = new Map(normalized.map((row) => [row.label, row]));
+
+  return {
+    option: {
+      tooltip: {
+        trigger: "axis",
+        axisPointer: { type: "shadow" },
+        formatter: typeof tooltipFormatter === "function"
+          ? tooltipFormatter
+          : (params) => {
+            const first = Array.isArray(params) ? params[0] : params;
+            const label = String(first?.axisValue || first?.name || "");
+            const row = rowByLabel.get(label);
+            if (!row) return "";
+
+            const value = Number(first?.value || 0);
+            const rawValue = Number(row?.rawValue ?? row?.value ?? 0);
+            const lines = [`<strong>${label}</strong>`];
+            if (vizOptions.normalize) {
+              lines.push(`${seriesName}: ${value.toFixed(2)}% (${rawValue})`);
+            } else {
+              lines.push(`${seriesName}: ${value}`);
+            }
+            return lines.join("<br/>");
+          },
+      },
+      grid: { left: 24, right: 24, top: 18, bottom: 32, containLabel: true },
+      xAxis: {
+        type: "value",
+        max: vizOptions.normalize ? 100 : null,
+        axisLabel: vizOptions.normalize ? { formatter: "{value}%" } : undefined,
+      },
+      yAxis: {
+        type: "category",
+        inverse: true,
+        data: labels,
+        axisLabel: {
+          width: axisLabelWidth,
+          overflow: "truncate",
+          formatter: formatAxisLabel,
+          interval: 0,
+        },
+      },
+      series: [
+        {
+          ...buildSeries(seriesName, values, { defaultType }),
+          barMaxWidth: 28,
+        },
+      ],
+    },
+    meta: { evidenceByLabel, normalized: vizOptions.normalize },
+  };
+}
+
 function buildTrendTooltipFormatter(params) {
   const rows = Array.isArray(params) ? params : [];
   if (!rows.length) return "";
@@ -798,8 +871,8 @@ function buildVendorAllowedBlockedTimelineOption(events, options = {}) {
       lines.push(`${blockedMarker}Blocked: ${bin.blocked} events`);
     }
     if (bin.allowed > 0) {
-      const allowedMarker = rows.find((row) => row?.seriesName === "Allowed")?.marker || "";
-      lines.push(`${allowedMarker}Allowed: ${bin.allowed} events`);
+      const observedMarker = rows.find((row) => row?.seriesName === "Observed")?.marker || "";
+      lines.push(`${observedMarker}Observed: ${bin.allowed} events`);
     }
     if (bin.total > 0) {
       lines.push(`Total: ${bin.total} events`);
@@ -811,7 +884,7 @@ function buildVendorAllowedBlockedTimelineOption(events, options = {}) {
   };
 
   const blockedSeries = buildForcedStackedBarSeries("Blocked", timeline.blockedSeries, "vendor-allowed-blocked");
-  const allowedSeries = buildForcedStackedBarSeries("Allowed", timeline.allowedSeries, "vendor-allowed-blocked");
+  const allowedSeries = buildForcedStackedBarSeries("Observed", timeline.allowedSeries, "vendor-allowed-blocked");
   for (const series of [blockedSeries, allowedSeries]) {
     series.barWidth = "72%";
     series.barMaxWidth = 40;
@@ -1294,13 +1367,11 @@ function buildTopDomainsOption(events, metric = "seen") {
     evs: item.evs,
   }));
 
-  const built = buildBarLikeOption(rows, {
+  const built = buildHorizontalRankedBarOption(rows, {
     seriesName: metric,
     defaultType: "bar",
     maxLabels: Math.max(5, vizOptions.topN),
-    axisLabelRotate: 45,
-    axisLabelFormatter: (value) => wrapLabelOnDelimiter(value, ".", 18, 3),
-    axisLabelHideOverlap: false,
+    axisLabelWidth: 248,
   });
 
   return {
@@ -1353,26 +1424,125 @@ function buildApiGatingOption(events) {
     if (!isApiLike(ev)) continue;
 
     const d = ev.data.domain;
-    if (!map.has(d)) map.set(d, []);
-    map.get(d).push(ev);
+    if (!map.has(d)) {
+      map.set(d, {
+        label: d,
+        value: 0,
+        blocked: 0,
+        observed: 0,
+        evs: [],
+      });
+    }
+    const row = map.get(d);
+    row.value += 1;
+    if (ev.kind === "network.blocked") row.blocked += 1;
+    if (ev.kind === "network.observed") row.observed += 1;
+    row.evs.push(ev);
   }
 
-  const rows = Array.from(map.entries()).map(([domain, evs]) => ({
-    label: domain,
-    value: evs.length,
-    evs,
-  }));
+  const rows = Array.from(map.values());
+  const domainCount = rows.length;
+  const blockedTotal = rows.reduce((sum, row) => sum + Number(row.blocked || 0), 0);
+  const observedTotal = rows.reduce((sum, row) => sum + Number(row.observed || 0), 0);
+  const shouldUseOutcomeComparison = domainCount >= 2 && blockedTotal >= 3 && observedTotal >= 3;
 
-  const built = buildBarLikeOption(rows, {
-    seriesName: "API-like calls",
-    defaultType: "bar",
-    maxLabels: Math.max(5, vizOptions.topN),
-    axisLabelRotate: 45,
-  });
+  if (!shouldUseOutcomeComparison) {
+    const built = buildHorizontalRankedBarOption(rows, {
+      seriesName: "API-like requests",
+      defaultType: "bar",
+      maxLabels: Math.max(5, vizOptions.topN),
+      axisLabelWidth: 248,
+    });
+
+    return {
+      option: built.option,
+      meta: {
+        evidenceByDomain: built.meta.evidenceByLabel,
+        comparisonMode: "ranked",
+      },
+    };
+  }
+
+  const ranked = sortRankedRows(rows).slice(0, Math.max(5, vizOptions.topN));
+  const labels = ranked.map((row) => row.label);
+  const evidenceByDomain = new Map(ranked.map((row) => [row.label, row.evs || []]));
+  const statsByDomain = new Map();
+  const blockedValues = [];
+  const observedValues = [];
+
+  for (const row of ranked) {
+    const total = Math.max(1, Number(row.value || 0));
+    const blocked = Number(row.blocked || 0);
+    const observed = Number(row.observed || 0);
+    statsByDomain.set(row.label, { total, blocked, observed });
+
+    if (vizOptions.normalize) {
+      blockedValues.push(Number(((blocked * 100) / total).toFixed(2)));
+      observedValues.push(Number(((observed * 100) / total).toFixed(2)));
+    } else {
+      blockedValues.push(blocked);
+      observedValues.push(observed);
+    }
+  }
+
+  const chartTheme = readChartTheme();
+  const blockedSeries = buildForcedStackedBarSeries("Blocked", blockedValues, "api-gating");
+  const observedSeries = buildForcedStackedBarSeries("Observed", observedValues, "api-gating");
+  blockedSeries.barMaxWidth = 28;
+  observedSeries.barMaxWidth = 28;
 
   return {
-    option: built.option,
-    meta: { evidenceByDomain: built.meta.evidenceByLabel },
+    option: {
+      tooltip: {
+        trigger: "axis",
+        axisPointer: { type: "shadow" },
+        formatter: (params) => {
+          const first = Array.isArray(params) ? params[0] : params;
+          const label = String(first?.axisValue || first?.name || "");
+          const stats = statsByDomain.get(label);
+          if (!stats) return "";
+
+          const lines = [`<strong>${label}</strong>`];
+          if (vizOptions.normalize) {
+            lines.push(`Blocked: ${((stats.blocked * 100) / Math.max(1, stats.total)).toFixed(2)}% (${stats.blocked})`);
+            lines.push(`Observed: ${((stats.observed * 100) / Math.max(1, stats.total)).toFixed(2)}% (${stats.observed})`);
+          } else {
+            lines.push(`Blocked: ${stats.blocked}`);
+            lines.push(`Observed: ${stats.observed}`);
+          }
+          lines.push(`Total API-like requests: ${stats.total}`);
+          return lines.join("<br/>");
+        },
+      },
+      legend: {
+        top: 0,
+        textStyle: { color: chartTheme.legendText },
+        itemWidth: 18,
+        itemHeight: 10,
+        itemGap: 14,
+      },
+      grid: { left: 24, right: 24, top: 40, bottom: 32, containLabel: true },
+      xAxis: {
+        type: "value",
+        max: vizOptions.normalize ? 100 : null,
+        axisLabel: vizOptions.normalize ? { formatter: "{value}%" } : undefined,
+      },
+      yAxis: {
+        type: "category",
+        inverse: true,
+        data: labels,
+        axisLabel: {
+          width: 248,
+          overflow: "truncate",
+          interval: 0,
+        },
+      },
+      series: [blockedSeries, observedSeries],
+    },
+    meta: {
+      evidenceByDomain,
+      comparisonMode: "stacked",
+    },
   };
 }
 
@@ -1976,6 +2146,7 @@ function buildRiskTrendOption(events, options = {}) {
     focusedWindow: !!defaultZoomWindow,
     viewMode,
   });
+  const chartTheme = readChartTheme();
 
   return {
     option: {
@@ -1999,137 +2170,6 @@ function buildRiskTrendOption(events, options = {}) {
         buildSeries("High", timeline.high, { defaultType: "bar", stackKey: "risk" }),
         buildSeries("Caution", timeline.caution, { defaultType: "bar", stackKey: "risk" }),
         buildSeries("Info", timeline.info, { defaultType: "bar", stackKey: "risk" }),
-      ],
-    },
-    meta: {
-      start,
-      binMs: effectiveBinMs,
-      binEvents: timeline.binEvents,
-      labels: timeline.labels,
-      densityDefaults: {
-        applied: densityBinApplied || !!defaultZoomWindow,
-        originalBinMs: baseBinMs,
-        appliedBinMs: effectiveBinMs,
-        simplifiedSeries: false,
-        focusedWindow: !!defaultZoomWindow,
-      },
-      stateGuidanceMessage,
-    },
-  };
-}
-
-function getPrivacyTrendBucket(ev) {
-  const privacy = String(getPrivacyStatusBucket(ev) || "").toLowerCase();
-  const mitigation = String(getMitigationStatusBucket(ev) || "").toLowerCase();
-
-  if (privacy === "baseline") return "baseline";
-  if (privacy === "policy_blocked" || mitigation === "blocked") return "blocked";
-  if (privacy === "signal_detected" || privacy === "high_risk" || privacy === "policy_allowed") {
-    return "detected";
-  }
-  return "unknown";
-}
-
-function buildBaselineDetectedBlockedTrendOption(events, options = {}) {
-  const viewMode = String(options?.viewMode || "easy");
-  const densityAware = options?.densityAware === true;
-  const { from, to } = getRangeWindow();
-  const start = from ?? (events[0]?.ts ?? Date.now());
-  const end = to ?? (events[events.length - 1]?.ts ?? Date.now());
-  const span = Math.max(1, end - start);
-  const baseBinMs = getTimelineBinMs();
-  const allowDensityBinOverride = densityAware && String(vizOptions.binSize || "5m") === "5m";
-
-  const buildBuckets = (targetBinMs) => {
-    const bins = Math.max(1, Math.ceil(Math.max(1, span) / targetBinMs));
-    const labels = [];
-    const baseline = new Array(bins).fill(0);
-    const detected = new Array(bins).fill(0);
-    const blocked = new Array(bins).fill(0);
-    const binEvents = new Array(bins).fill(0).map(() => []);
-
-    for (const ev of events) {
-      if (!ev?.ts) continue;
-      const idx = Math.min(bins - 1, Math.max(0, Math.floor((ev.ts - start) / targetBinMs)));
-      binEvents[idx].push(ev);
-
-      const bucket = getPrivacyTrendBucket(ev);
-      if (bucket === "baseline") baseline[idx] += 1;
-      else if (bucket === "blocked") blocked[idx] += 1;
-      else if (bucket === "detected") detected[idx] += 1;
-    }
-
-    for (let i = 0; i < bins; i++) {
-      labels.push(new Date(start + i * targetBinMs).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }));
-    }
-
-    return { bins, labels, baseline, detected, blocked, binEvents };
-  };
-
-  let effectiveBinMs = baseBinMs;
-  let timeline = buildBuckets(effectiveBinMs);
-  const initialSignal = assessTimelineSignal({
-    totalBins: timeline.bins,
-    binEvents: timeline.binEvents,
-    totalEvents: Array.isArray(events) ? events.length : 0,
-  });
-  let densityBinApplied = false;
-
-  if (allowDensityBinOverride && initialSignal.isLowSignal) {
-    const suggestedBinMs = chooseDensityAwareBinMs({
-      spanMs: span,
-      currentBinMs: baseBinMs,
-      totalEvents: Array.isArray(events) ? events.length : 0,
-    });
-    if (suggestedBinMs > effectiveBinMs) {
-      effectiveBinMs = suggestedBinMs;
-      timeline = buildBuckets(effectiveBinMs);
-      densityBinApplied = true;
-    }
-  }
-
-  const finalSignal = assessTimelineSignal({
-    totalBins: timeline.bins,
-    binEvents: timeline.binEvents,
-    totalEvents: Array.isArray(events) ? events.length : 0,
-  });
-  const focusedWindow = densityAware
-    && finalSignal.isLowSignal
-    && !!finalSignal.reasons?.includes("mostly-empty-timespan");
-  const defaultZoomWindow = focusedWindow
-    ? buildLowSignalDataZoomWindow({ totalBins: timeline.bins, binEvents: timeline.binEvents })
-    : null;
-  const stateGuidanceMessage = buildTimelineGuidanceMessage({
-    signal: finalSignal,
-    densityApplied: densityBinApplied,
-    originalBinMs: baseBinMs,
-    appliedBinMs: effectiveBinMs,
-    focusedWindow: !!defaultZoomWindow,
-    viewMode,
-  });
-
-  return {
-    option: {
-      tooltip: { trigger: "axis", formatter: buildTrendTooltipFormatter },
-      legend: { top: 0, textStyle: getTrendLegendTextStyle(), itemWidth: 22, itemHeight: 12, itemGap: 14 },
-      grid: { left: 40, right: 18, top: 36, bottom: 75 },
-      ...buildTrendAxes(timeline.labels),
-      dataZoom: [
-        {
-          type: "inside",
-          ...(defaultZoomWindow ? { start: defaultZoomWindow.start, end: defaultZoomWindow.end } : {}),
-        },
-        {
-          type: "slider",
-          height: 18,
-          bottom: 18,
-          ...(defaultZoomWindow ? { start: defaultZoomWindow.start, end: defaultZoomWindow.end } : {}),
-        },
-      ],
-      series: [
-        buildSeries("Baseline (no signal)", timeline.baseline, { defaultType: "bar", stackKey: "privacy-story" }),
-        buildSeries("Detected", timeline.detected, { defaultType: "bar", stackKey: "privacy-story" }),
-        buildSeries("Blocked", timeline.blocked, { defaultType: "bar", stackKey: "privacy-story" }),
       ],
     },
     meta: {
@@ -2216,11 +2256,11 @@ function buildRuleIdFrequencyOption(events) {
     evs: evsByRule.get(label) || [],
   }));
 
-  const built = buildBarLikeOption(rows, {
+  const built = buildHorizontalRankedBarOption(rows, {
     seriesName: "rule hits",
     defaultType: "bar",
     maxLabels: Math.max(5, vizOptions.topN),
-    axisLabelRotate: 0,
+    axisLabelWidth: 216,
   });
   return {
     option: built.option,
@@ -2236,9 +2276,8 @@ function hasSeriesData(option) {
 function getModeEmptyMessage(viewId) {
   if (viewId === "vendorOverview") return "No vendor activity matches current filters";
   if (viewId === "vendorShareOverTime") return "No multi-vendor timeline data is available for share-over-time comparison";
-  if (viewId === "vendorAllowedBlockedTimeline") return "No blocked/allowed network events match current filters";
+  if (viewId === "vendorAllowedBlockedTimeline") return "No blocked/observed network events match current filters";
   if (viewId === "vendorTopDomainsEndpoints") return "No domain/endpoint buckets match current vendor scope";
-  if (viewId === "baselineDetectedBlockedTrend") return "No baseline/detected/blocked trend data matches current filters";
   if (viewId === "topSeen") return "No third-party network events match current filters";
   if (viewId === "apiGating") return "No third-party API-like requests match current filters";
   if (viewId === "ruleIdFrequency") return "No rule-id data matches current filters";
@@ -2265,7 +2304,6 @@ function getModeEmptyMessage(viewId) {
     buildVendorBlockRateComparisonOption,
     buildVendorShareOverTimeOption,
     buildRiskTrendOption,
-    buildBaselineDetectedBlockedTrendOption,
     buildVendorKindMatrixOption,
     buildRuleIdFrequencyOption,
     hasSeriesData,
