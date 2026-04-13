@@ -399,7 +399,7 @@ export function createInsightSheet(deps) {
     return { group, body };
   }
 
-  function appendEvidenceFact(container, label, value) {
+  function appendEvidenceFact(container, label, value, opts = {}) {
     const factValue = String(value || "").trim();
     if (!container || !label || !factValue) return;
 
@@ -413,6 +413,8 @@ export function createInsightSheet(deps) {
 
     const content = document.createElement("div");
     content.className = "insight-evidence-fact-value";
+    const valueClassName = String(opts?.valueClassName || "").trim();
+    if (valueClassName) content.classList.add(valueClassName);
     content.textContent = factValue;
     row.appendChild(content);
 
@@ -441,18 +443,18 @@ export function createInsightSheet(deps) {
 
     const scopeGroup = createEvidenceGroup("Scope readout");
     appendEvidenceFact(scopeGroup.body, "Scope", label);
-    appendEvidenceFact(scopeGroup.body, "First seen", firstText);
-    appendEvidenceFact(scopeGroup.body, "Last seen", lastText);
+    appendEvidenceFact(scopeGroup.body, "First seen", firstText, { valueClassName: "insight-evidence-fact-value-technical" });
+    appendEvidenceFact(scopeGroup.body, "Last seen", lastText, { valueClassName: "insight-evidence-fact-value-technical" });
     if (selectedVendor?.vendorName) {
       appendEvidenceFact(scopeGroup.body, "Vendor focus", selectedVendor.vendorName);
     }
     if (selection?.bucketKey && context?.viewId !== "vendorTopDomainsEndpoints") {
-      appendEvidenceFact(scopeGroup.body, "Bucket key", selection.bucketKey);
+      appendEvidenceFact(scopeGroup.body, "Bucket key", selection.bucketKey, { valueClassName: "insight-evidence-fact-value-technical" });
     }
     if (context?.viewId === "vendorTopDomainsEndpoints" && selection?.bucketKey) {
-      appendEvidenceFact(scopeGroup.body, "Bucket", selection?.bucketLabel || label);
+      appendEvidenceFact(scopeGroup.body, "Bucket", selection?.bucketLabel || label, { valueClassName: "insight-evidence-fact-value-technical" });
       const example = getBucketExample(selection, list);
-      if (example) appendEvidenceFact(scopeGroup.body, "Example path", example);
+      if (example) appendEvidenceFact(scopeGroup.body, "Example path", example, { valueClassName: "insight-evidence-fact-value-technical" });
     }
     if (scopeGroup.body.childElementCount > 0) {
       box.appendChild(scopeGroup.group);
@@ -972,7 +974,7 @@ export function createInsightSheet(deps) {
       evidence: evs,
     });
 
-    if (qs("insightTitle")) qs("insightTitle").textContent = "Detailed evidence";
+    if (qs("insightTitle")) qs("insightTitle").textContent = "Case sheet";
     if (qs("insightMeta")) {
       const label = activeSelection?.title || "Current scope";
       qs("insightMeta").textContent = `${label} • ${evs.length} events`;
@@ -1032,7 +1034,7 @@ export function createInsightSheet(deps) {
 
   function resetInsightSection() {
     closeDrawer();
-    if (qs("insightTitle")) qs("insightTitle").textContent = "Detailed evidence";
+    if (qs("insightTitle")) qs("insightTitle").textContent = "Case sheet";
     setInsightMeta("");
     setInsightSeverity("info", 0.45);
     setInsightConfidence(0.45);

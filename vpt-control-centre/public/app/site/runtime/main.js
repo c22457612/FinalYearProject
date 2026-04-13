@@ -171,6 +171,7 @@ const RANGE_MS = {
   "7d": 7 * 24 * 60 * 60 * 1000,
   all: null,
 };
+const RANGE_ORDER = ["1h", "24h", "7d", "all"];
 
 const BIN_SIZE_MS = {
   "1m": 60 * 1000,
@@ -296,7 +297,14 @@ function setStatus(ok, text) {
 }
 
 function getRangeKey() {
-  return qs("rangeSelect")?.value || "24h";
+  return qs("rangeSelect")?.value || "all";
+}
+
+function getNextBroaderRangeKey(currentRangeKey = getRangeKey()) {
+  const current = String(currentRangeKey || "").trim();
+  const index = RANGE_ORDER.indexOf(current);
+  if (index < 0 || index >= RANGE_ORDER.length - 1) return "";
+  return RANGE_ORDER[index + 1] || "";
 }
 
 function getRangeWindow() {
@@ -716,7 +724,7 @@ function updateFilterSummary() {
   if (activeLabels.length) parts.push(`${activeLabels.length} filter${activeLabels.length === 1 ? "" : "s"}`);
   if (selectedVendor?.vendorName) parts.push(`${selectedVendor.vendorName} scope`);
   if (vizSelection?.events?.length) parts.push(`${vizSelection.events.length} selected`);
-  parts.push(viewMode === "power" ? "Power" : "Easy");
+  parts.push(viewMode === "power" ? "Power mode" : "Easy mode");
 
   el.textContent = parts.join(" • ");
   syncVendorFocusControls();
@@ -768,6 +776,7 @@ function renderStateGuidance({ events = [], lensPivotActive = false, emptyMessag
     emptyMessage,
     viewId,
     lowInformationThreshold: LOW_INFORMATION_EVENT_THRESHOLD,
+    canBroadenRange: !!getNextBroaderRangeKey(),
   });
 
   if (!model.message) {
@@ -797,7 +806,11 @@ function renderStateGuidance({ events = [], lensPivotActive = false, emptyMessag
       btn.textContent = action.label;
       btn.addEventListener("click", () => {
         if (action.id === "broaden_range") {
-          qs("rangeSelect")?.focus();
+          const nextRangeKey = getNextBroaderRangeKey();
+          const rangeSelect = qs("rangeSelect");
+          if (!rangeSelect || !nextRangeKey) return;
+          rangeSelect.value = nextRangeKey;
+          void applyRangeChanges();
           return;
         }
         if (action.id === "clear_vendor") {

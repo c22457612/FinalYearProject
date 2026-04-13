@@ -7,6 +7,7 @@ export function buildStateGuidanceModel({
   emptyMessage = "",
   viewId = "",
   lowInformationThreshold = 8,
+  canBroadenRange = true,
 } = {}) {
   const total = Number(eventCount || 0);
   const conciseMessage = String(emptyMessage || "").trim();
@@ -60,7 +61,9 @@ export function buildStateGuidanceModel({
   }
 
   const actions = [];
-  actions.push({ id: "broaden_range", label: "Broaden range" });
+  if (canBroadenRange) {
+    actions.push({ id: "broaden_range", label: "Broaden range" });
+  }
   if (hasVendorFocus || lensPivotActive) {
     actions.push({ id: "clear_vendor", label: "Clear vendor" });
   } else if (activeFilterCount > 0) {

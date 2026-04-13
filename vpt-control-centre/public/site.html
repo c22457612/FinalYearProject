@@ -60,10 +60,10 @@
             <label class="viz-toolbar-field" for="rangeSelect">
               <span class="viz-label">Range</span>
               <select id="rangeSelect" class="viz-select viz-toolbar-select">
-                <option value="24h" selected>Last 24h</option>
+                <option value="24h">Last 24h</option>
                 <option value="1h">Last 1h</option>
                 <option value="7d">Last 7d</option>
-                <option value="all">All time</option>
+                <option value="all" selected>All time</option>
               </select>
             </label>
           </div>
@@ -263,53 +263,48 @@
         </div>
         <div id="vizModeHelp" class="viz-mode-help hidden"></div>
 
-        <section class="scope-context-section" aria-label="Scope and context">
-          <div class="scope-context-header">
-            <div class="scope-context-title">Scope &amp; context</div>
-          </div>
-
-          <div class="scope-context-stack">
-            <div class="site-meta-strip" aria-label="Site scope summary">
-              <div class="site-meta-item">
-                <span class="site-meta-label">Total</span>
-                <span id="siteStatTotal" class="site-meta-value">0</span>
-              </div>
-              <div class="site-meta-item">
-                <span class="site-meta-label">Blocked</span>
-                <span id="siteStatBlocked" class="site-meta-value">0</span>
-              </div>
-              <div class="site-meta-item">
-                <span class="site-meta-label">Observed</span>
-                <span id="siteStatObserved" class="site-meta-value">0</span>
-              </div>
-              <div class="site-meta-item">
-                <span class="site-meta-label">3P domains</span>
-                <span id="siteStatUniqueThird" class="site-meta-value">0</span>
-              </div>
-            </div>
-
-            <section class="viz-scope-toolbar" aria-label="Chart scope and state">
+        <section class="scope-context-section" aria-label="Chart scope and state">
+          <section class="viz-scope-toolbar" aria-label="Chart scope and state">
+            <div class="viz-scope-context-row">
               <div class="viz-scope-summary-block">
                 <div id="filterSummary" class="panel-subtitle filter-summary">
                   Showing 0 of 0 events
                 </div>
               </div>
-
-              <div class="viz-scope-vendor-cluster">
-                <div class="viz-scope-chip-block">
-                  <div class="viz-scope-chip-header">
-                    <div class="viz-scope-label">Vendor scope</div>
-                    <div class="viz-scope-actions">
-                      <button id="clearVendorBtn" class="viz-nav hidden" type="button">Clear vendor</button>
-                      <a id="vendorVaultLink" class="viz-nav hidden" href="#" target="_blank" rel="noopener noreferrer">Vendor Vault</a>
-                    </div>
-                  </div>
-                  <div id="vendorChips" class="vendor-chips"></div>
+              <div class="site-meta-strip" aria-label="Site scope summary">
+                <div class="site-meta-item">
+                  <span class="site-meta-label">Total</span>
+                  <span id="siteStatTotal" class="site-meta-value">0</span>
                 </div>
-                <div id="vizStateGuidance" class="viz-state-guidance hidden"></div>
+                <div class="site-meta-item">
+                  <span class="site-meta-label">Blocked</span>
+                  <span id="siteStatBlocked" class="site-meta-value">0</span>
+                </div>
+                <div class="site-meta-item">
+                  <span class="site-meta-label">Observed</span>
+                  <span id="siteStatObserved" class="site-meta-value">0</span>
+                </div>
+                <div class="site-meta-item">
+                  <span class="site-meta-label">3P domains</span>
+                  <span id="siteStatUniqueThird" class="site-meta-value">0</span>
+                </div>
               </div>
-            </section>
-          </div>
+            </div>
+
+            <div class="viz-scope-vendor-cluster">
+              <div class="viz-scope-chip-block">
+                <div class="viz-scope-chip-header">
+                  <div class="viz-scope-label">Vendor scope</div>
+                  <div class="viz-scope-actions">
+                    <button id="clearVendorBtn" class="viz-nav hidden" type="button">Clear vendor</button>
+                    <a id="vendorVaultLink" class="viz-nav hidden" href="#" target="_blank" rel="noopener noreferrer">Vendor Vault</a>
+                  </div>
+                </div>
+                <div id="vendorChips" class="vendor-chips"></div>
+              </div>
+              <div id="vizStateGuidance" class="viz-state-guidance hidden"></div>
+            </div>
+          </section>
         </section>
 
         <section id="insightSheet" class="insight-sheet">
@@ -319,18 +314,18 @@
                 <div class="insight-case-heading">
                   <div class="insight-case-heading-row">
                     <div class="insight-case-title-wrap">
-                      <div id="insightTitle" class="panel-title">Detailed evidence</div>
+                      <div id="insightTitle" class="panel-title">Case sheet</div>
+                      <div id="insightMeta" class="panel-subtitle hidden"></div>
                     </div>
                     <div class="insight-case-badges">
                       <div id="insightSeverity" class="insight-severity severity-info">Severity: Info</div>
                       <div id="insightConfidence" class="insight-confidence-badge">45% confidence</div>
                     </div>
                   </div>
-                  <div id="insightMeta" class="panel-subtitle hidden"></div>
                   <div id="insightSelectedLead" class="insight-selected-lead">No datapoint selected.</div>
+                  <div id="insightTakeaway" class="insight-case-takeaway hidden"></div>
                 </div>
               </div>
-              <div id="insightTakeaway" class="insight-case-takeaway hidden"></div>
             </div>
           </div>
           <div class="insight-sheet-body">
@@ -349,7 +344,7 @@
               <section id="insightActionSection" class="insight-case-section insight-case-section-action hidden">
                 <div class="insight-case-section-header">
                   <span class="insight-section-icon insight-icon-action" aria-hidden="true"></span>
-                  <div class="insight-case-section-title">What to do</div>
+                  <div class="insight-case-section-title">What you can do</div>
                 </div>
                 <div class="insight-case-section-body">
                   <div id="insightActionsFooter" class="insight-actions-footer hidden">
