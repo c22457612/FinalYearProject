@@ -38,6 +38,118 @@ function readChartTheme() {
       };
 }
 
+const TECHNICAL_FONT_FAMILY = "ui-monospace, SFMono-Regular, Menlo, Consolas, monospace";
+
+function escapeHtml(value) {
+  return String(value ?? "")
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#39;");
+}
+
+function readCssVar(name, fallback = "") {
+  try {
+    const value = window.getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+    return value || fallback;
+  } catch {
+    return fallback;
+  }
+}
+
+function getTechnicalChartTextStyle(overrides = {}) {
+  return {
+    fontFamily: TECHNICAL_FONT_FAMILY,
+    fontSize: 13,
+    ...overrides,
+  };
+}
+
+function getCategoryChartTextStyle(overrides = {}) {
+  return {
+    fontSize: 13,
+    ...overrides,
+  };
+}
+
+function getTooltipChrome() {
+  const chartTheme = readChartTheme();
+  return {
+    backgroundColor: readCssVar("--surface-panel", "rgba(15, 23, 42, 0.96)"),
+    borderColor: readCssVar("--site-insights-major-frame-border", chartTheme.axisLine),
+    borderWidth: 1,
+    padding: [11, 13],
+    textStyle: {
+      color: readCssVar("--color-text-main", chartTheme.legendText),
+      fontSize: 14,
+      lineHeight: 21,
+    },
+    extraCssText: "border-radius: 8px; box-shadow: none;",
+    transitionDuration: 0,
+  };
+}
+
+function buildConsoleTooltipHtml(title, rows = []) {
+  const titleText = String(title || "").trim();
+  const list = Array.isArray(rows) ? rows.filter(Boolean) : [];
+  if (!titleText && !list.length) return "";
+
+  const titleColor = escapeHtml(readCssVar("--color-text-faint", readCssVar("--text-faint", "#94a3b8")));
+  const valueColor = escapeHtml(readCssVar("--color-text-main", readCssVar("--text-primary", "#e2e8f0")));
+  const metaColor = escapeHtml(readCssVar("--color-text-muted", readCssVar("--text-secondary", "#cbd5e1")));
+  const fontFamily = escapeHtml(TECHNICAL_FONT_FAMILY);
+
+  const titleHtml = titleText
+    ? `<div style="margin:0 0 6px;font-size:13px;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;color:${titleColor};">${escapeHtml(titleText)}</div>`
+    : "";
+
+  const rowsHtml = list.map((row) => {
+    const marker = String(row.marker || "");
+    const label = String(row.label || "").trim();
+    const value = String(row.value || "").trim();
+    return `<div style="display:flex;align-items:baseline;gap:8px;margin-top:4px;">${marker}<span style="color:${metaColor};font-size:13px;">${escapeHtml(label)}</span><span style="margin-left:auto;color:${valueColor};font-family:${fontFamily};font-size:13px;">${escapeHtml(value)}</span></div>`;
+  }).join("");
+
+  return `${titleHtml}${rowsHtml}`;
+}
+
+function getConsoleLegendConfig(overrides = {}) {
+  const chartTheme = readChartTheme();
+  return {
+    top: 2,
+    left: 0,
+    icon: "roundRect",
+    itemWidth: 16,
+    itemHeight: 10,
+    itemGap: 12,
+    inactiveColor: readCssVar("--color-text-faint", chartTheme.axisLabel),
+    textStyle: {
+      color: chartTheme.legendText,
+      fontSize: 14,
+      fontWeight: 600,
+    },
+    ...overrides,
+  };
+}
+
+function buildTimelineDataZoom(defaultZoomWindow = null) {
+  return [
+    {
+      type: "inside",
+      textStyle: getTechnicalChartTextStyle({ fontSize: 10 }),
+      ...(defaultZoomWindow ? { start: defaultZoomWindow.start, end: defaultZoomWindow.end } : {}),
+    },
+    {
+      type: "slider",
+      height: 18,
+      bottom: 18,
+      textStyle: getTechnicalChartTextStyle({ fontSize: 10 }),
+      ...(defaultZoomWindow ? { start: defaultZoomWindow.start, end: defaultZoomWindow.end } : {}),
+    },
+  ];
+}
+
 function buildEmptyChartOption(message) {
   const chartTheme = readChartTheme();
   return {
@@ -212,12 +324,13 @@ function buildBarLikeOption(
 
   return {
     option: {
-      tooltip: { trigger: "axis" },
+      tooltip: { ...getTooltipChrome(), trigger: "axis" },
       grid: { left: 40, right: 18, top: 18, bottom: getBarLikeGridBottom(axisLabelRotate, maxLabelLines) },
       xAxis: {
         type: "category",
         data: labels,
         axisLabel: {
+          ...getCategoryChartTextStyle(),
           rotate: axisLabelRotate,
           margin: axisLabelMargin,
           fontSize: axisLabelFontSize,
@@ -229,7 +342,9 @@ function buildBarLikeOption(
       yAxis: {
         type: "value",
         max: vizOptions.normalize ? 100 : null,
-        axisLabel: vizOptions.normalize ? { formatter: "{value}%" } : undefined,
+        axisLabel: getTechnicalChartTextStyle(
+          vizOptions.normalize ? { formatter: "{value}%" } : {},
+        ),
       },
       series: [buildSeries(seriesName, values, { defaultType })],
     },
@@ -261,6 +376,7 @@ function buildHorizontalRankedBarOption(
   return {
     option: {
       tooltip: {
+        ...getTooltipChrome(),
         trigger: "axis",
         axisPointer: { type: "shadow" },
         formatter: typeof tooltipFormatter === "function"
@@ -273,26 +389,30 @@ function buildHorizontalRankedBarOption(
 
             const value = Number(first?.value || 0);
             const rawValue = Number(row?.rawValue ?? row?.value ?? 0);
-            const lines = [`<strong>${label}</strong>`];
             if (vizOptions.normalize) {
-              lines.push(`${seriesName}: ${value.toFixed(2)}% (${rawValue})`);
-            } else {
-              lines.push(`${seriesName}: ${value}`);
+              return buildConsoleTooltipHtml(label, [
+                { label: seriesName, value: `${value.toFixed(2)}% (${rawValue})` },
+              ]);
             }
-            return lines.join("<br/>");
+            return buildConsoleTooltipHtml(label, [
+              { label: seriesName, value: `${value}` },
+            ]);
           },
       },
       grid: { left: 24, right: 24, top: 18, bottom: 32, containLabel: true },
       xAxis: {
         type: "value",
         max: vizOptions.normalize ? 100 : null,
-        axisLabel: vizOptions.normalize ? { formatter: "{value}%" } : undefined,
+        axisLabel: getTechnicalChartTextStyle(
+          vizOptions.normalize ? { formatter: "{value}%" } : {},
+        ),
       },
       yAxis: {
         type: "category",
         inverse: true,
         data: labels,
         axisLabel: {
+          ...getCategoryChartTextStyle(),
           width: axisLabelWidth,
           overflow: "truncate",
           formatter: formatAxisLabel,
@@ -315,13 +435,15 @@ function buildTrendTooltipFormatter(params) {
   if (!rows.length) return "";
 
   const label = String(rows[0]?.axisValueLabel || rows[0]?.axisValue || "Time bucket");
-  const lines = [`<strong>${label}</strong>`];
-  for (const row of rows) {
+  return buildConsoleTooltipHtml(label, rows.map((row) => {
     const value = Number(row?.value);
     const count = Number.isFinite(value) ? value : 0;
-    lines.push(`${row?.marker || ""}${row?.seriesName || "Series"}: ${count} events`);
-  }
-  return lines.join("<br/>");
+    return {
+      marker: row?.marker || "",
+      label: row?.seriesName || "Series",
+      value: `${count} events`,
+    };
+  }));
 }
 
 function buildTrendAxes(labels) {
@@ -336,9 +458,9 @@ function buildTrendAxes(labels) {
       axisLine: {
         lineStyle: { color: chartTheme.axisLine },
       },
-      axisLabel: {
+      axisLabel: getTechnicalChartTextStyle({
         color: chartTheme.axisLabel,
-      },
+      }),
       nameTextStyle: {
         color: chartTheme.axisName,
         fontWeight: 700,
@@ -353,9 +475,9 @@ function buildTrendAxes(labels) {
       axisLine: {
         lineStyle: { color: chartTheme.axisLine },
       },
-      axisLabel: {
+      axisLabel: getTechnicalChartTextStyle({
         color: chartTheme.axisLabel,
-      },
+      }),
       splitLine: {
         lineStyle: {
           color: chartTheme.toolboxFill,
@@ -373,8 +495,8 @@ function getTrendLegendTextStyle() {
   const chartTheme = readChartTheme();
   return {
     color: chartTheme.legendText,
-    fontSize: 14,
-    fontWeight: 700,
+    fontSize: 12,
+    fontWeight: 600,
   };
 }
 
@@ -393,32 +515,32 @@ function buildTrendToolbox() {
   const chartTheme = readChartTheme();
   return {
     right: 12,
-    top: -2,
-    itemSize: 21,
-    itemGap: 12,
+    top: 0,
+    itemSize: 18,
+    itemGap: 10,
     showTitle: true,
     iconStyle: {
       borderColor: chartTheme.toolboxBorder,
-      borderWidth: 2.2,
+      borderWidth: 1.8,
       color: chartTheme.toolboxFill,
     },
     textStyle: {
       color: chartTheme.legendText,
-      fontSize: 14,
-      fontWeight: 700,
-      padding: [9, 0, 0, 0],
+      fontSize: 12,
+      fontWeight: 600,
+      padding: [8, 0, 0, 0],
     },
     emphasis: {
       iconStyle: {
         borderColor: chartTheme.toolboxBorder,
         color: chartTheme.toolboxFillHover,
-        borderWidth: 2.4,
+        borderWidth: 2,
       },
       textStyle: {
         color: chartTheme.legendText,
-        fontSize: 14,
-        fontWeight: 700,
-        padding: [10, 0, 0, 0],
+        fontSize: 12,
+        fontWeight: 600,
+        padding: [8, 0, 0, 0],
       },
     },
     feature: {
@@ -684,8 +806,8 @@ function buildTimelineOption(events, options = {}) {
 
   return {
     option: {
-      tooltip: { trigger: "axis", formatter: buildTrendTooltipFormatter },
-      legend: { top: 0, textStyle: getTrendLegendTextStyle(), itemWidth: 22, itemHeight: 12, itemGap: 14 },
+      tooltip: { ...getTooltipChrome(), trigger: "axis", formatter: buildTrendTooltipFormatter },
+      legend: getConsoleLegendConfig({ textStyle: getTrendLegendTextStyle() }),
       toolbox: buildTrendToolbox(),
       brush: {
         xAxisIndex: 0,
@@ -693,18 +815,7 @@ function buildTimelineOption(events, options = {}) {
       },
       grid: { left: 40, right: 18, top: 64, bottom: 60 },
       ...buildTrendAxes(timeline.labels),
-      dataZoom: [
-        {
-          type: "inside",
-          ...(defaultZoomWindow ? { start: defaultZoomWindow.start, end: defaultZoomWindow.end } : {}),
-        },
-        {
-          type: "slider",
-          height: 18,
-          bottom: 18,
-          ...(defaultZoomWindow ? { start: defaultZoomWindow.start, end: defaultZoomWindow.end } : {}),
-        },
-      ],
+      dataZoom: buildTimelineDataZoom(defaultZoomWindow),
       series: simplifiedSeries
         ? [buildSeries("Events", timeline.total, { defaultType: "bar" })]
         : [
@@ -864,23 +975,28 @@ function buildVendorAllowedBlockedTimelineOption(events, options = {}) {
     const label = String(first?.axisValueLabel || first?.axisValue || "Time bucket");
     const dataIndex = Number.isInteger(first?.dataIndex) ? first.dataIndex : timeline.labels.indexOf(label);
     const bin = timeline.binStats?.[dataIndex] || { blocked: 0, allowed: 0, total: 0, presence: "empty" };
-    const lines = [`<strong>${label}</strong>`];
+    const tooltipRows = [];
 
     if (bin.blocked > 0) {
-      const blockedMarker = rows.find((row) => row?.seriesName === "Blocked")?.marker || "";
-      lines.push(`${blockedMarker}Blocked: ${bin.blocked} events`);
+      tooltipRows.push({
+        marker: rows.find((row) => row?.seriesName === "Blocked")?.marker || "",
+        label: "Blocked",
+        value: `${bin.blocked} events`,
+      });
     }
     if (bin.allowed > 0) {
-      const observedMarker = rows.find((row) => row?.seriesName === "Observed")?.marker || "";
-      lines.push(`${observedMarker}Observed: ${bin.allowed} events`);
+      tooltipRows.push({
+        marker: rows.find((row) => row?.seriesName === "Observed")?.marker || "",
+        label: "Observed",
+        value: `${bin.allowed} events`,
+      });
     }
-    if (bin.total > 0) {
-      lines.push(`Total: ${bin.total} events`);
-    } else {
-      lines.push("No captured network events in this interval");
-    }
+    tooltipRows.push({
+      label: bin.total > 0 ? "Total" : "Status",
+      value: bin.total > 0 ? `${bin.total} events` : "No captured network events",
+    });
 
-    return lines.join("<br/>");
+    return buildConsoleTooltipHtml(label, tooltipRows);
   };
 
   const blockedSeries = buildForcedStackedBarSeries("Blocked", timeline.blockedSeries, "vendor-allowed-blocked");
@@ -896,11 +1012,12 @@ function buildVendorAllowedBlockedTimelineOption(events, options = {}) {
   return {
     option: {
       tooltip: {
+        ...getTooltipChrome(),
         trigger: "axis",
         axisPointer: { type: "shadow" },
         formatter: buildVendorTimelineTooltip,
       },
-      legend: { top: 0, textStyle: getTrendLegendTextStyle(), itemWidth: 22, itemHeight: 12, itemGap: 14 },
+      legend: getConsoleLegendConfig({ textStyle: getTrendLegendTextStyle() }),
       toolbox: buildTrendToolbox(),
       brush: {
         xAxisIndex: 0,
@@ -908,18 +1025,7 @@ function buildVendorAllowedBlockedTimelineOption(events, options = {}) {
       },
       grid: { left: 40, right: 18, top: 64, bottom: 60 },
       ...buildTrendAxes(timeline.labels),
-      dataZoom: [
-        {
-          type: "inside",
-          ...(defaultZoomWindow ? { start: defaultZoomWindow.start, end: defaultZoomWindow.end } : {}),
-        },
-        {
-          type: "slider",
-          height: 18,
-          bottom: 18,
-          ...(defaultZoomWindow ? { start: defaultZoomWindow.start, end: defaultZoomWindow.end } : {}),
-        },
-      ],
+      dataZoom: buildTimelineDataZoom(defaultZoomWindow),
       series: [blockedSeries, allowedSeries],
     },
     meta: {
@@ -1212,6 +1318,7 @@ function buildVendorTopDomainsEndpointsOption(events, selectedVendor, metric = "
   return {
     option: {
       tooltip: {
+        ...getTooltipChrome(),
         trigger: "item",
         axisPointer: { type: "none" },
         formatter: (params) => {
@@ -1219,33 +1326,28 @@ function buildVendorTopDomainsEndpointsOption(events, selectedVendor, metric = "
           if (!label) return "";
           const fullLabel = fullLabelByBucketKey.get(label) || label;
           const stats = statsByBucketKey.get(label) || { seen: 0, blocked: 0, observed: 0, blockedApi: 0, observedApi: 0, other: 0, api: 0 };
-          const lines = [`<strong>${fullLabel}</strong>`];
 
           if (vizOptions.normalize) {
             const total = Math.max(1, Number(stats.seen || 0));
-            lines.push(`Blocked: ${(((stats.blocked || 0) * 100) / total).toFixed(2)}% (${stats.blocked})`);
-            lines.push(`Observed: ${(((stats.observed || 0) * 100) / total).toFixed(2)}% (${stats.observed})`);
-            lines.push(`Other: ${(((stats.other || 0) * 100) / total).toFixed(2)}% (${stats.other})`);
-          } else {
-            lines.push(`Blocked: ${stats.blocked}`);
-            lines.push(`Observed: ${stats.observed}`);
-            lines.push(`Other: ${stats.other}`);
+            return buildConsoleTooltipHtml(fullLabel, [
+              { label: "Blocked", value: `${(((stats.blocked || 0) * 100) / total).toFixed(2)}% (${stats.blocked})` },
+              { label: "Observed", value: `${(((stats.observed || 0) * 100) / total).toFixed(2)}% (${stats.observed})` },
+              { label: "Other", value: `${(((stats.other || 0) * 100) / total).toFixed(2)}% (${stats.other})` },
+              ...(stats.api > 0 ? [{ label: "API activity", value: `${stats.api} (${stats.blockedApi} blocked / ${stats.observedApi} observed)` }] : []),
+              { label: "Total", value: `${stats.seen}` },
+            ]);
           }
 
-          if (stats.api > 0) {
-            lines.push(`API activity: ${stats.api} (${stats.blockedApi} blocked / ${stats.observedApi} observed)`);
-          }
-          lines.push(`Total: ${stats.seen}`);
-          return lines.join("<br/>");
+          return buildConsoleTooltipHtml(fullLabel, [
+            { label: "Blocked", value: `${stats.blocked}` },
+            { label: "Observed", value: `${stats.observed}` },
+            { label: "Other", value: `${stats.other}` },
+            ...(stats.api > 0 ? [{ label: "API activity", value: `${stats.api} (${stats.blockedApi} blocked / ${stats.observedApi} observed)` }] : []),
+            { label: "Total", value: `${stats.seen}` },
+          ]);
         },
       },
-      legend: {
-        top: 0,
-        textStyle: { color: chartTheme.legendText },
-        itemWidth: 18,
-        itemHeight: 10,
-        itemGap: 14,
-      },
+      legend: getConsoleLegendConfig({ textStyle: getTrendLegendTextStyle() }),
       grid: { left: 164, right: 22, top: 40, bottom: 28, containLabel: true },
       xAxis: {
         type: "value",
@@ -1263,10 +1365,10 @@ function buildVendorTopDomainsEndpointsOption(events, selectedVendor, metric = "
           lineStyle: { color: chartTheme.axisLine },
         },
         axisTick: { show: true },
-        axisLabel: {
+        axisLabel: getTechnicalChartTextStyle({
           color: chartTheme.axisLabel,
           ...(vizOptions.normalize ? { formatter: "{value}%" } : {}),
-        },
+        }),
       },
       yAxis: {
         type: "category",
@@ -1290,7 +1392,7 @@ function buildVendorTopDomainsEndpointsOption(events, selectedVendor, metric = "
         },
         axisTick: { show: true },
         axisLabel: {
-          color: chartTheme.axisLabel,
+          ...getCategoryChartTextStyle({ color: chartTheme.axisLabel }),
           width: 220,
           overflow: "truncate",
           formatter: (value) => displayLabelByBucketKey.get(String(value || "")) || String(value || ""),
@@ -1494,6 +1596,7 @@ function buildApiGatingOption(events) {
   return {
     option: {
       tooltip: {
+        ...getTooltipChrome(),
         trigger: "axis",
         axisPointer: { type: "shadow" },
         formatter: (params) => {
@@ -1501,37 +1604,35 @@ function buildApiGatingOption(events) {
           const label = String(first?.axisValue || first?.name || "");
           const stats = statsByDomain.get(label);
           if (!stats) return "";
-
-          const lines = [`<strong>${label}</strong>`];
           if (vizOptions.normalize) {
-            lines.push(`Blocked: ${((stats.blocked * 100) / Math.max(1, stats.total)).toFixed(2)}% (${stats.blocked})`);
-            lines.push(`Observed: ${((stats.observed * 100) / Math.max(1, stats.total)).toFixed(2)}% (${stats.observed})`);
-          } else {
-            lines.push(`Blocked: ${stats.blocked}`);
-            lines.push(`Observed: ${stats.observed}`);
+            return buildConsoleTooltipHtml(label, [
+              { label: "Blocked", value: `${((stats.blocked * 100) / Math.max(1, stats.total)).toFixed(2)}% (${stats.blocked})` },
+              { label: "Observed", value: `${((stats.observed * 100) / Math.max(1, stats.total)).toFixed(2)}% (${stats.observed})` },
+              { label: "Total API-like requests", value: `${stats.total}` },
+            ]);
           }
-          lines.push(`Total API-like requests: ${stats.total}`);
-          return lines.join("<br/>");
+          return buildConsoleTooltipHtml(label, [
+            { label: "Blocked", value: `${stats.blocked}` },
+            { label: "Observed", value: `${stats.observed}` },
+            { label: "Total API-like requests", value: `${stats.total}` },
+          ]);
         },
       },
-      legend: {
-        top: 0,
-        textStyle: { color: chartTheme.legendText },
-        itemWidth: 18,
-        itemHeight: 10,
-        itemGap: 14,
-      },
+      legend: getConsoleLegendConfig({ textStyle: getTrendLegendTextStyle() }),
       grid: { left: 24, right: 24, top: 40, bottom: 32, containLabel: true },
       xAxis: {
         type: "value",
         max: vizOptions.normalize ? 100 : null,
-        axisLabel: vizOptions.normalize ? { formatter: "{value}%" } : undefined,
+        axisLabel: getTechnicalChartTextStyle(
+          vizOptions.normalize ? { formatter: "{value}%" } : {},
+        ),
       },
       yAxis: {
         type: "category",
         inverse: true,
         data: labels,
         axisLabel: {
+          ...getCategoryChartTextStyle(),
           width: 248,
           overflow: "truncate",
           interval: 0,
@@ -1668,18 +1769,21 @@ function buildHourHeatmapOption(events) {
   return {
     option: {
       tooltip: {
+        ...getTooltipChrome(),
         position: "top",
         formatter: (params) => {
           const value = Array.isArray(params?.value) ? params.value : [];
           const hour = Number(value[0] || 0);
           const day = Number(value[1] || 0);
           const count = Number(value[2] || 0);
-          return `${dayNames[day]} ${hourLabels[hour]}<br/>Events: ${count}`;
+          return buildConsoleTooltipHtml(`${dayNames[day]} ${hourLabels[hour]}`, [
+            { label: "Events", value: `${count}` },
+          ]);
         },
       },
       grid: { left: 45, right: 18, top: 22, bottom: 42 },
-      xAxis: { type: "category", data: hourLabels, splitArea: { show: true } },
-      yAxis: { type: "category", data: dayNames, splitArea: { show: true } },
+      xAxis: { type: "category", data: hourLabels, axisLabel: getTechnicalChartTextStyle(), splitArea: { show: true } },
+      yAxis: { type: "category", data: dayNames, axisLabel: getCategoryChartTextStyle(), splitArea: { show: true } },
       visualMap: {
         min: 0,
         max: max || 1,
@@ -1807,6 +1911,7 @@ function buildVendorBlockRateComparisonOption(events, options = {}) {
   return {
     option: {
       tooltip: {
+        ...getTooltipChrome(),
         trigger: "item",
         formatter: (params) => {
           const rows = Array.isArray(params) ? params : [params];
@@ -1816,20 +1921,15 @@ function buildVendorBlockRateComparisonOption(events, options = {}) {
           const counts = countsByLabel.get(label) || countsByLabel.get(byIndexLabel) || { seen: 0, blocked: 0, observed: 0 };
           const value = Number(first?.value || 0);
 
-          const lines = [
-            `<strong>${label}</strong>`,
-            `Block rate: ${value.toFixed(1)}%`,
-            `Blocked: ${counts.blocked}`,
-            `Observed: ${counts.observed}`,
-            `Total n: ${counts.seen}`,
-          ];
-          if (counts.seen < LOW_CONFIDENCE_SAMPLE_THRESHOLD) {
-            lines.push("Low confidence: small sample (n < 10).");
-          }
-
-          return [
-            ...lines,
-          ].join("<br/>");
+          return buildConsoleTooltipHtml(label, [
+            { label: "Block rate", value: `${value.toFixed(1)}%` },
+            { label: "Blocked", value: `${counts.blocked}` },
+            { label: "Observed", value: `${counts.observed}` },
+            { label: "Total n", value: `${counts.seen}` },
+            ...(counts.seen < LOW_CONFIDENCE_SAMPLE_THRESHOLD
+              ? [{ label: "Confidence", value: "Low sample (n < 10)" }]
+              : []),
+          ]);
         },
       },
       grid: { left: 170, right: 24, top: 18, bottom: 34 },
@@ -1837,7 +1937,7 @@ function buildVendorBlockRateComparisonOption(events, options = {}) {
         type: "value",
         min: 0,
         max: 100,
-        axisLabel: { formatter: "{value}%" },
+        axisLabel: getTechnicalChartTextStyle({ formatter: "{value}%" }),
       },
       yAxis: {
         type: "category",
@@ -2008,37 +2108,32 @@ function buildVendorShareOverTimeOption(events, options = {}) {
   return {
     option: {
       tooltip: {
+        ...getTooltipChrome(),
         trigger: "axis",
         formatter: (params) => {
           const rowsForBin = Array.isArray(params) ? params : [];
           if (!rowsForBin.length) return "";
           const label = String(rowsForBin[0]?.axisValueLabel || rowsForBin[0]?.axisValue || "Time bucket");
           const total = rowsForBin.reduce((sum, row) => sum + Number(row?.value || 0), 0);
-          const lines = [`<strong>${label}</strong>`, `Total n: ${total}`];
-          for (const row of rowsForBin) {
-            const value = Number(row?.value || 0);
-            const pct = total > 0 ? Number(((value * 100) / total).toFixed(1)) : 0;
-            lines.push(`${row?.marker || ""}${row?.seriesName || "Vendor"}: ${value} (${pct}%)`);
-          }
-          return lines.join("<br/>");
+          return buildConsoleTooltipHtml(label, [
+            { label: "Total n", value: `${total}` },
+            ...rowsForBin.map((row) => {
+              const value = Number(row?.value || 0);
+              const pct = total > 0 ? Number(((value * 100) / total).toFixed(1)) : 0;
+              return {
+                marker: row?.marker || "",
+                label: row?.seriesName || "Vendor",
+                value: `${value} (${pct}%)`,
+              };
+            }),
+          ]);
         },
       },
-      legend: { top: 0, textStyle: getTrendLegendTextStyle(), itemWidth: 22, itemHeight: 12, itemGap: 14 },
+      legend: getConsoleLegendConfig({ textStyle: getTrendLegendTextStyle() }),
       grid: { left: 40, right: 18, top: 36, bottom: 75 },
       ...buildTrendAxes(timeline.labels),
       toolbox: buildTrendToolbox(),
-      dataZoom: [
-        {
-          type: "inside",
-          ...(defaultZoomWindow ? { start: defaultZoomWindow.start, end: defaultZoomWindow.end } : {}),
-        },
-        {
-          type: "slider",
-          height: 18,
-          bottom: 18,
-          ...(defaultZoomWindow ? { start: defaultZoomWindow.start, end: defaultZoomWindow.end } : {}),
-        },
-      ],
+      dataZoom: buildTimelineDataZoom(defaultZoomWindow),
       series,
     },
     meta: {
@@ -2150,22 +2245,11 @@ function buildRiskTrendOption(events, options = {}) {
 
   return {
     option: {
-      tooltip: { trigger: "axis", formatter: buildTrendTooltipFormatter },
-      legend: { top: 0, textStyle: getTrendLegendTextStyle(), itemWidth: 22, itemHeight: 12, itemGap: 14 },
+      tooltip: { ...getTooltipChrome(), trigger: "axis", formatter: buildTrendTooltipFormatter },
+      legend: getConsoleLegendConfig({ textStyle: getTrendLegendTextStyle() }),
       grid: { left: 40, right: 18, top: 18, bottom: 75 },
       ...buildTrendAxes(timeline.labels),
-      dataZoom: [
-        {
-          type: "inside",
-          ...(defaultZoomWindow ? { start: defaultZoomWindow.start, end: defaultZoomWindow.end } : {}),
-        },
-        {
-          type: "slider",
-          height: 18,
-          bottom: 18,
-          ...(defaultZoomWindow ? { start: defaultZoomWindow.start, end: defaultZoomWindow.end } : {}),
-        },
-      ],
+      dataZoom: buildTimelineDataZoom(defaultZoomWindow),
       series: [
         buildSeries("High", timeline.high, { defaultType: "bar", stackKey: "risk" }),
         buildSeries("Caution", timeline.caution, { defaultType: "bar", stackKey: "risk" }),
@@ -2220,16 +2304,19 @@ function buildVendorKindMatrixOption(events) {
   return {
     option: {
       tooltip: {
+        ...getTooltipChrome(),
         formatter: (params) => {
           const v = Array.isArray(params?.value) ? params.value : [];
           const kind = kinds[Number(v[0] || 0)] || "kind";
           const vendor = vendors[Number(v[1] || 0)] || "vendor";
-          return `${vendor}<br/>${kind}: ${Number(v[2] || 0)}`;
+          return buildConsoleTooltipHtml(vendor, [
+            { label: kind, value: `${Number(v[2] || 0)}` },
+          ]);
         },
       },
       grid: { left: 50, right: 18, top: 20, bottom: 52 },
-      xAxis: { type: "category", data: kinds, axisLabel: { rotate: 25 } },
-      yAxis: { type: "category", data: vendors },
+      xAxis: { type: "category", data: kinds, axisLabel: { ...getCategoryChartTextStyle(), rotate: 25 } },
+      yAxis: { type: "category", data: vendors, axisLabel: getCategoryChartTextStyle() },
       visualMap: { min: 0, max: max || 1, calculable: true, orient: "horizontal", left: "center", bottom: 0 },
       series: [{ type: "heatmap", data }],
     },

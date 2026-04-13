@@ -80,7 +80,7 @@ const chartThemeState = {
 };
 const SELECTED_POINT_STYLE = {
   borderColor: chartThemeState.selectedAccent,
-  borderWidth: 2,
+  borderWidth: 3,
 };
 const HOVER_POINT_STYLE = {
   borderColor: chartThemeState.hoverAccent,
@@ -524,6 +524,7 @@ function applyViewFilterPolicy() {
 
 function updateVizPositionLabel() {
   viewNavigationController.updateVizPositionLabel();
+  syncChartConsoleState();
 }
 
 function updateViewAvailabilityHint() {
@@ -728,6 +729,7 @@ function updateFilterSummary() {
 
   el.textContent = parts.join(" • ");
   syncVendorFocusControls();
+  syncChartConsoleState();
 }
 
 function syncVendorFocusControls() {
@@ -836,6 +838,47 @@ function renderTopBucketSummary(viewId, meta = null) {
 
 function renderPowerScopeReadouts() {
   // Supporting evidence now owns these factual readouts.
+}
+
+function getSelectionStatusText() {
+  if (!vizSelection?.events?.length) return "No selection";
+
+  switch (String(vizSelection?.type || "")) {
+    case "bin":
+      return "Time bin selected";
+    case "heatCell":
+      return "Heat cell selected";
+    case "vendorEndpointBucket":
+      return "Endpoint bucket selected";
+    case "vendorKindCell":
+      return "Matrix cell selected";
+    default:
+      return "Selection active";
+  }
+}
+
+function syncChartConsoleState() {
+  const hasSelection = !!(vizSelection?.events?.length || selectedChartPoint);
+  const panel = document.querySelector(".site-viz-panel");
+  const sheet = qs("insightSheet");
+  const statusEl = qs("vizStatusText");
+
+  if (panel) panel.dataset.selectionActive = hasSelection ? "true" : "false";
+  if (sheet) sheet.dataset.selectionActive = hasSelection ? "true" : "false";
+
+  if (!statusEl) return;
+  statusEl.dataset.status = hasSelection ? "active" : "idle";
+  statusEl.textContent = getSelectionStatusText();
+}
+
+function renderVizTitle(viewId = "") {
+  const titleEl = qs("vizTitle");
+  if (!titleEl) return;
+
+  const resolvedViewId = String(viewId || chart?.__vptMeta?.effectiveViewId || VIEWS[vizIndex]?.id || "");
+  titleEl.textContent = resolvedViewId
+    ? `Visualisation - ${getViewTitle(resolvedViewId)}`
+    : "Visualisation";
 }
 
 function getEffectivePowerDockViewId(fallbackViewId = "") {
@@ -1194,6 +1237,7 @@ function clearChartSelectionHighlight() {
     }
   }
   selectedChartPoint = null;
+  syncChartConsoleState();
 }
 
 function applyChartSelectionHighlight() {
@@ -1218,6 +1262,7 @@ function applyChartSelectionHighlight() {
     seriesIndex: resolved.seriesIndex,
     dataIndex: resolved.dataIndex,
   };
+  syncChartConsoleState();
 }
 
 function reapplyChartSelectionHighlight() {
@@ -1493,11 +1538,30 @@ function decorateSeriesInteractionStyles(option) {
       selectedMode: "single",
       emphasis: {
         ...(series.emphasis || {}),
-        focus: "none",
+        focus: "self",
         itemStyle: {
           ...((series.emphasis && series.emphasis.itemStyle) || {}),
           borderColor: chartThemeState.hoverAccent,
-          borderWidth: 1,
+          borderWidth: 1.5,
+        },
+        lineStyle: {
+          ...((series.emphasis && series.emphasis.lineStyle) || {}),
+          width: 2.4,
+        },
+      },
+      blur: {
+        ...(series.blur || {}),
+        itemStyle: {
+          ...((series.blur && series.blur.itemStyle) || {}),
+          opacity: 0.84,
+        },
+        lineStyle: {
+          ...((series.blur && series.blur.lineStyle) || {}),
+          opacity: 0.58,
+        },
+        areaStyle: {
+          ...((series.blur && series.blur.areaStyle) || {}),
+          opacity: 0.12,
         },
       },
       select: {
@@ -1505,7 +1569,17 @@ function decorateSeriesInteractionStyles(option) {
         itemStyle: {
           ...((series.select && series.select.itemStyle) || {}),
           borderColor: chartThemeState.selectedAccent,
-          borderWidth: 2,
+          borderWidth: 3,
+          opacity: 1,
+        },
+        lineStyle: {
+          ...((series.select && series.select.lineStyle) || {}),
+          width: 2.8,
+          opacity: 1,
+        },
+        areaStyle: {
+          ...((series.select && series.select.areaStyle) || {}),
+          opacity: 0.24,
         },
       },
     };
@@ -1612,7 +1686,6 @@ function renderECharts() {
   ].join("|");
   let effectiveViewId = requestedViewId;
   let lensPivotActive = false;
-  const titleEl = qs("vizTitle");
   const events = getChartEvents();
   const clearBeforeSetOption = requestedViewId === "vendorTopDomainsEndpoints";
 
@@ -1641,10 +1714,7 @@ function renderECharts() {
     focusedLensPivotActive = false;
     renderDensityBadge(null);
     renderStateGuidance({ events, emptyMessage: "No events match current filters", viewId: requestedViewId });
-    if (titleEl) {
-      const vendorPart = selectedVendor?.vendorName ? ` | ${selectedVendor.vendorName}` : "";
-      titleEl.textContent = `Visualisation - ${getViewTitle(requestedViewId)}${vendorPart}`;
-    }
+    renderVizTitle(requestedViewId);
     c.__vptMeta = {
       viewId: requestedViewId,
       effectiveViewId,
@@ -1656,6 +1726,7 @@ function renderECharts() {
     c.setOption(empty, { notMerge: true, lazyUpdate: true });
     rememberRenderPerfState();
     clearChartSelectionHighlight();
+    syncChartConsoleState();
     return;
   }
 
@@ -1676,11 +1747,7 @@ function renderECharts() {
   renderDensityBadge(built?.meta);
   const builderGuidanceMessage = String(built?.meta?.stateGuidanceMessage || "").trim();
   renderStateGuidance({ events, lensPivotActive, emptyMessage: builderGuidanceMessage, viewId: requestedViewId });
-
-  if (titleEl) {
-    const vendorPart = selectedVendor?.vendorName ? ` | ${selectedVendor.vendorName}` : "";
-    titleEl.textContent = `Visualisation - ${getViewTitle(requestedViewId)}${vendorPart}`;
-  }
+  renderVizTitle(effectiveViewId || requestedViewId);
 
   if (!hasSeriesData(built?.option)) {
     const emptyMessage = builderGuidanceMessage || getModeEmptyMessage(lensPivotActive ? "timeline" : requestedViewId);
@@ -1698,6 +1765,7 @@ function renderECharts() {
     c.setOption(empty, { notMerge: true, lazyUpdate: true });
     rememberRenderPerfState();
     clearChartSelectionHighlight();
+    syncChartConsoleState();
     return;
   }
 
@@ -1718,6 +1786,7 @@ function renderECharts() {
   rememberRenderPerfState();
   reapplyChartSelectionHighlight();
   syncInteractionOverlayOnCurrentChart();
+  syncChartConsoleState();
 }
 
 function handleChartClick(viewId, params) {

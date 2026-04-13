@@ -41,7 +41,13 @@
     <section class="visualizer-row" aria-label="Site visualizer">
       <div class="panel site-viz-panel">
         <div class="panel-header viz-panel-header">
-          <div id="vizTitle" class="panel-title">Visualisation</div>
+          <div class="viz-title-block">
+            <div id="vizTitle" class="panel-title">Visualisation</div>
+            <div class="viz-chart-status-strip" aria-label="Current chart state">
+              <div id="vizPositionLabel" class="viz-position-label">1 / 1</div>
+              <div id="vizStatusText" class="viz-chart-status-text" data-status="idle">No selection</div>
+            </div>
+          </div>
 
           <div class="viz-panel-actions">
             <button id="vizInfoBtn" class="viz-nav" type="button">Explain / Info</button>
@@ -234,9 +240,6 @@
             </div>
           </div>
           <div class="viz-path-selector-block">
-            <div class="viz-path-selector-header">
-              <div id="vizPositionLabel" class="viz-position-label">1 / 1</div>
-            </div>
             <div id="vizPathSelector" class="console-selector console-selector-inline viz-path-selector" role="toolbar" aria-label="Chart path selector"></div>
           </div>
           <div class="viz-mode-group hidden" aria-hidden="true">
