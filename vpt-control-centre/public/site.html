@@ -288,42 +288,24 @@
               </div>
             </div>
 
-            <section id="insightLead" class="insight-lead" aria-label="Current deterministic insight">
-              <div class="insight-lead-main">
-                <div class="insight-lead-header">
-                  <div id="insightLeadSeverity" class="insight-severity severity-info">Severity: Info</div>
-                  <div id="insightLeadSupport" class="insight-lead-support hidden"></div>
-                </div>
-                <div id="insightLeadSummary" class="insight-lead-summary">
-                  Waiting for captured activity in the current scope.
-                </div>
-                <div id="insightLeadDetail" class="insight-lead-detail hidden"></div>
-                <div id="insightLeadFacts" class="insight-lead-facts hidden"></div>
-              </div>
-              <div id="insightLeadActions" class="insight-lead-actions"></div>
-            </section>
-
             <section class="viz-scope-toolbar" aria-label="Chart scope and state">
               <div class="viz-scope-summary-block">
-              <div id="filterSummary" class="panel-subtitle filter-summary">
+                <div id="filterSummary" class="panel-subtitle filter-summary">
                   Showing 0 of 0 events
                 </div>
-                <div id="vizScopeSummary" class="viz-scope-summary">Waiting for site activity.</div>
-                <div id="powerScopeReadouts" class="viz-support-readouts hidden" aria-label="Power supporting readouts"></div>
               </div>
 
               <div class="viz-scope-vendor-cluster">
-                <div id="vendorScopeBanner" class="vendor-scope-banner hidden"></div>
                 <div class="viz-scope-chip-block">
                   <div class="viz-scope-chip-header">
                     <div class="viz-scope-label">Vendor scope</div>
                     <div class="viz-scope-actions">
                       <button id="clearVendorBtn" class="viz-nav hidden" type="button">Clear vendor</button>
+                      <a id="vendorVaultLink" class="viz-nav hidden" href="#" target="_blank" rel="noopener noreferrer">Vendor Vault</a>
                     </div>
                   </div>
                   <div id="vendorChips" class="vendor-chips"></div>
                 </div>
-                <div id="vizTopBucketSummary" class="viz-top-bucket hidden"></div>
                 <div id="vizStateGuidance" class="viz-state-guidance hidden"></div>
               </div>
             </section>
@@ -353,21 +335,6 @@
           </div>
           <div class="insight-sheet-body">
             <section id="insightCaseMetrics" class="insight-case-metrics hidden" aria-label="Evidence metrics"></section>
-            <section id="insightApiNarrative" class="insight-api-narrative hidden" aria-label="Browser API summary">
-              <div id="insightApiNarrativeConcern" class="insight-api-narrative-concern"></div>
-              <div id="insightApiNarrativeHeadline" class="insight-api-narrative-headline"></div>
-              <div id="insightApiNarrativeDetail" class="insight-api-narrative-detail"></div>
-              <div class="insight-api-narrative-grid">
-                <div class="insight-block">
-                  <div class="insight-label">Why it matters</div>
-                  <ul id="insightApiNarrativeWhy" class="insight-list"></ul>
-                </div>
-                <div class="insight-block">
-                  <div class="insight-label">What you can do</div>
-                  <ul id="insightApiNarrativeActions" class="insight-list"></ul>
-                </div>
-              </div>
-            </section>
             <div id="insightCaseGrid" class="insight-case-grid">
               <section class="insight-case-section">
                 <div class="insight-case-section-header">
@@ -396,8 +363,7 @@
                   <div class="insight-case-section-title">Supporting evidence</div>
                 </div>
                 <div class="insight-case-section-body">
-                  <div id="insightHow" class="insight-case-copy"></div>
-                  <div id="insightEvidenceReadouts" class="insight-supporting-readouts hidden" aria-label="Supporting evidence readouts"></div>
+                  <div id="insightHow" class="insight-evidence-stack" aria-label="Supporting evidence readouts"></div>
                 </div>
               </section>
               <section class="insight-case-section insight-case-section-muted">

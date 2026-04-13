@@ -1,5 +1,4 @@
 import { getApiEventPresentation, isApiSignalEvent } from "../../api-event-presentation.js";
-import { buildSiteBrowserApiNarrative } from "../../browser-api-narratives.js";
 import { getEventListContextText, getEventListKindText, getEventListMetaText } from "../utils.js";
 import { summarizeVisualCategoryCounts } from "../filter-state.js";
 
@@ -24,6 +23,56 @@ function splitInsightLeadSummary(summaryText) {
     headline: String(match[1] || "").trim(),
     detail: String(match[2] || "").trim(),
   };
+}
+
+function normalizeComparableText(text) {
+  return String(text || "")
+    .toLowerCase()
+    .replace(/[^a-z0-9\s]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function looksMetricHeavy(text) {
+  return /\b\d+\b/.test(text) || /\b(events?|blocked|observed|third-party|api|requests?)\b/i.test(text);
+}
+
+function isRepeatedMeaning(text, against) {
+  const left = normalizeComparableText(text);
+  const right = normalizeComparableText(against);
+  if (!left || !right) return false;
+  return left === right || left.includes(right) || right.includes(left);
+}
+
+function dedupeInsightItems(items, { avoid = [], limit = 4 } = {}) {
+  const output = [];
+  const seen = new Set();
+  const avoided = avoid
+    .map((item) => normalizeComparableText(item))
+    .filter(Boolean);
+
+  for (const item of Array.isArray(items) ? items : []) {
+    const text = String(item || "").trim();
+    const normalized = normalizeComparableText(text);
+    if (!normalized || seen.has(normalized)) continue;
+    if (avoided.some((entry) => normalized === entry || normalized.includes(entry) || entry.includes(normalized))) {
+      continue;
+    }
+    seen.add(normalized);
+    output.push(text);
+    if (output.length >= limit) break;
+  }
+
+  return output;
+}
+
+function getCompactWhySummary(summaryDetail, takeaway, whyItems) {
+  const detail = String(summaryDetail || "").trim();
+  if (!detail) return "";
+  if (Array.isArray(whyItems) && whyItems.length) return "";
+  if (isRepeatedMeaning(detail, takeaway)) return "";
+  if (looksMetricHeavy(detail)) return "";
+  return detail;
 }
 
 function pluralizeLeadWord(count, singular, plural = `${singular}s`) {
@@ -182,7 +231,6 @@ export function buildInsightCaseSheetPresentation({ insight = null, evidence = [
 export function createInsightSheet(deps) {
   const {
     qs,
-    friendlyTime,
     pickPrimarySelectedEvent,
     formatSelectedLead,
     triggerDownload,
@@ -383,36 +431,50 @@ export function createInsightSheet(deps) {
     box.innerHTML = "";
 
     const summary = evidenceSummary || {};
+    const list = Array.isArray(evidence) ? evidence : [];
     const label = selection?.title || "Current scope";
     const firstText = summary.firstTs ? new Date(summary.firstTs).toLocaleTimeString() : "-";
     const lastText = summary.lastTs ? new Date(summary.lastTs).toLocaleTimeString() : "-";
     const dominant = formatDominantKinds(summary.dominantKinds, getViewMode());
+    const selectedVendor = getSelectedVendor();
+    const scopeEvents = Array.isArray(getChartEvents?.()) ? getChartEvents() : list;
 
     const scopeGroup = createEvidenceGroup("Scope readout");
     appendEvidenceFact(scopeGroup.body, "Scope", label);
     appendEvidenceFact(scopeGroup.body, "First seen", firstText);
     appendEvidenceFact(scopeGroup.body, "Last seen", lastText);
+    if (selectedVendor?.vendorName) {
+      appendEvidenceFact(scopeGroup.body, "Vendor focus", selectedVendor.vendorName);
+    }
     if (selection?.bucketKey && context?.viewId !== "vendorTopDomainsEndpoints") {
       appendEvidenceFact(scopeGroup.body, "Bucket key", selection.bucketKey);
+    }
+    if (context?.viewId === "vendorTopDomainsEndpoints" && selection?.bucketKey) {
+      appendEvidenceFact(scopeGroup.body, "Bucket", selection?.bucketLabel || label);
+      const example = getBucketExample(selection, list);
+      if (example) appendEvidenceFact(scopeGroup.body, "Example path", example);
     }
     if (scopeGroup.body.childElementCount > 0) {
       box.appendChild(scopeGroup.group);
     }
 
-    if (context?.viewId === "vendorTopDomainsEndpoints" && selection?.bucketKey) {
-      const bucketGroup = createEvidenceGroup("Bucket detail");
-      const bucketLabel = selection?.bucketLabel || label;
-      appendEvidenceFact(bucketGroup.body, "Bucket", bucketLabel);
-      const example = getBucketExample(selection, evidence);
-      if (example) {
-        appendEvidenceFact(bucketGroup.body, "Example path", example);
-      }
-      if (bucketGroup.body.childElementCount > 0) {
-        box.appendChild(bucketGroup.group);
-      }
-    } else if (dominant !== "-") {
-      const profileGroup = createEvidenceGroup("Activity profile");
+    const profileGroup = createEvidenceGroup("Activity profile");
+    if (dominant !== "-") {
       appendEvidenceFact(profileGroup.body, "Dominant activity", dominant);
+    }
+    const modeCounts = new Map();
+    for (const ev of list) {
+      const mode = String(ev?.mode || "unknown").trim().toLowerCase() || "unknown";
+      modeCounts.set(mode, (modeCounts.get(mode) || 0) + 1);
+    }
+    const modeMix = ["strict", "moderate", "low", "unknown"]
+      .filter((mode) => Number(modeCounts.get(mode) || 0) > 0)
+      .map((mode) => `${mode} ${modeCounts.get(mode)}`)
+      .join(" • ");
+    if (modeMix) {
+      appendEvidenceFact(profileGroup.body, "Protection modes", modeMix);
+    }
+    if (profileGroup.body.childElementCount > 0) {
       box.appendChild(profileGroup.group);
     }
 
@@ -432,6 +494,55 @@ export function createInsightSheet(deps) {
         ].join(", "),
       );
       box.appendChild(apiGroup.group);
+    }
+
+    const thirdParty = list.filter((ev) => ev?.data?.isThirdParty === true).length;
+    const firstOrUnknown = Math.max(0, list.length - thirdParty);
+    if (list.length > 0) {
+      const trafficGroup = createEvidenceGroup("Traffic mix");
+      appendEvidenceFact(
+        trafficGroup.body,
+        "Party split",
+        `${thirdParty} third-party • ${firstOrUnknown} first/unknown`,
+      );
+      appendEvidenceFact(
+        trafficGroup.body,
+        "Third-party share",
+        `${Math.round((thirdParty * 100) / Math.max(1, list.length))}% of events`,
+      );
+      if (trafficGroup.body.childElementCount > 0) {
+        box.appendChild(trafficGroup.group);
+      }
+    }
+
+    if (selectedVendor?.vendorId && typeof buildVendorEndpointReadoutData === "function") {
+      const readout = buildVendorEndpointReadoutData(scopeEvents, selectedVendor, { limit: 5 });
+      if (Array.isArray(readout?.items) && readout.items.length) {
+        const connectionGroup = createEvidenceGroup("Vendor connection points");
+        const endpointList = document.createElement("ul");
+        endpointList.className = "insight-support-endpoint-list";
+
+        for (const item of readout.items.slice(0, 5)) {
+          const li = document.createElement("li");
+          li.className = "insight-support-endpoint-item";
+
+          const endpointLabel = document.createElement("span");
+          endpointLabel.className = "insight-support-endpoint-label";
+          endpointLabel.textContent = item.displayLabel || item.fullLabel || item.bucketKey || "Endpoint";
+          li.appendChild(endpointLabel);
+
+          const meta = document.createElement("span");
+          meta.className = "insight-support-endpoint-meta";
+          const apiSuffix = Number(item.api || 0) > 0 ? ` • ${item.api} API` : "";
+          meta.textContent = `${item.blocked} blocked • ${item.observed} observed${apiSuffix}`;
+          li.appendChild(meta);
+
+          endpointList.appendChild(li);
+        }
+
+        connectionGroup.body.appendChild(endpointList);
+        box.appendChild(connectionGroup.group);
+      }
     }
 
     return box.childElementCount > 0;
@@ -776,68 +887,6 @@ export function createInsightSheet(deps) {
     box.classList.toggle("hidden", box.childElementCount === 0);
   }
 
-  function renderSupportingReadouts(events) {
-    const box = qs("insightEvidenceReadouts");
-    if (!box) return;
-    box.innerHTML = "";
-
-    const evidence = Array.isArray(events) ? events : [];
-    const scopeEvents = Array.isArray(getChartEvents?.()) ? getChartEvents() : evidence;
-    const viewMode = getViewMode();
-
-    const thirdParty = evidence.filter((ev) => ev?.data?.isThirdParty === true).length;
-    const firstOrUnknown = Math.max(0, evidence.length - thirdParty);
-    if (evidence.length > 0) {
-      const partyCard = document.createElement("section");
-      partyCard.className = "insight-support-readout";
-      partyCard.innerHTML = `
-        <div class="insight-support-readout-title">Traffic mix</div>
-        <div class="insight-support-readout-copy">${thirdParty} third-party / ${firstOrUnknown} first-party or unknown</div>
-      `;
-      box.appendChild(partyCard);
-    }
-
-    const selectedVendor = getSelectedVendor();
-    if (viewMode === "easy" && selectedVendor?.vendorId && typeof buildVendorEndpointReadoutData === "function") {
-      const readout = buildVendorEndpointReadoutData(scopeEvents, selectedVendor, { limit: 5 });
-      if (Array.isArray(readout?.items) && readout.items.length) {
-        const card = document.createElement("section");
-        card.className = "insight-support-readout insight-support-readout-secondary";
-
-        const title = document.createElement("div");
-        title.className = "insight-support-readout-title";
-        title.textContent = "Vendor connection points";
-        card.appendChild(title);
-
-        const list = document.createElement("ul");
-        list.className = "insight-support-endpoint-list";
-
-        for (const item of readout.items.slice(0, 5)) {
-          const li = document.createElement("li");
-          li.className = "insight-support-endpoint-item";
-
-          const label = document.createElement("span");
-          label.className = "insight-support-endpoint-label";
-          label.textContent = item.displayLabel || item.fullLabel || item.bucketKey || "Endpoint";
-          li.appendChild(label);
-
-          const meta = document.createElement("span");
-          meta.className = "insight-support-endpoint-meta";
-          const apiSuffix = Number(item.api || 0) > 0 ? ` | ${item.api} API` : "";
-          meta.textContent = `${item.blocked} blocked / ${item.observed} observed${apiSuffix}`;
-          li.appendChild(meta);
-
-          list.appendChild(li);
-        }
-
-        card.appendChild(list);
-        box.appendChild(card);
-      }
-    }
-
-    box.classList.toggle("hidden", box.childElementCount === 0);
-  }
-
   function syncInsightFooterVisibility() {
     const actionSection = qs("insightActionSection");
     const footer = qs("insightActionsFooter");
@@ -898,63 +947,16 @@ export function createInsightSheet(deps) {
   }
 
   function renderBrowserApiNarrative(events) {
-    const container = qs("insightApiNarrative");
-    const concern = qs("insightApiNarrativeConcern");
-    const headline = qs("insightApiNarrativeHeadline");
-    const detail = qs("insightApiNarrativeDetail");
-    const whyList = qs("insightApiNarrativeWhy");
-    const actionsList = qs("insightApiNarrativeActions");
-    if (!container || !concern || !headline || !detail || !whyList || !actionsList) return;
-
-    const subject = getSelectedVendor() ? "this vendor-focused scope" : "this site";
-    const narrative = buildSiteBrowserApiNarrative(events, { subject });
-    if (!narrative) {
-      container.classList.add("hidden");
-      concern.className = "insight-api-narrative-concern";
-      concern.textContent = "";
-      headline.textContent = "";
-      detail.textContent = "";
-      renderListItems(whyList, [], "No Browser API-specific privacy meaning in the current scope.");
-      renderActionListItems(actionsList, [], "No Browser API-specific actions for the current scope.");
-      return;
-    }
-
-    container.classList.remove("hidden");
-    concern.className = `insight-api-narrative-concern insight-api-narrative-concern-${narrative.concern.level}`;
-    concern.textContent = narrative.concern.label;
-    headline.textContent = narrative.headline;
-    detail.textContent = narrative.detail;
-    renderListItems(whyList, narrative.whyItMatters, "No Browser API-specific privacy meaning in the current scope.");
-    renderActionListItems(actionsList, narrative.actions, "No Browser API-specific actions for the current scope.");
+    void events;
   }
 
   function resetInsightLead() {
-    setInsightLeadSeverity("info");
-    if (qs("insightLeadSummary")) {
-      qs("insightLeadSummary").textContent = "Waiting for captured activity in the current scope.";
-    }
-    setInsightLeadDetail("");
-    setInsightLeadSupport("");
-    setInsightLeadFacts([]);
-    renderActionButtons(qs("insightLeadActions"), [], { maxItems: 1 });
+    // The case sheet is now the only explanatory surface.
   }
 
   function renderInsightLead(selection, evidence) {
     const model = buildInsightView(selection, evidence);
     activeEvidence = model.evs;
-    const presentation = buildInsightLeadPresentation({
-      insight: model.insight,
-      evidence: model.evs,
-    });
-
-    if (qs("insightLeadSummary")) {
-      qs("insightLeadSummary").textContent = presentation.headline;
-    }
-    setInsightLeadDetail(presentation.detail);
-    setInsightLeadSupport(formatInsightLeadSupport(selection, model.primaryEvent, model.context));
-    setInsightLeadFacts(presentation.facts);
-    setInsightLeadSeverity(model.insight?.severity);
-    renderActionButtons(qs("insightLeadActions"), [], { maxItems: 1 });
     return model;
   }
 
@@ -963,7 +965,7 @@ export function createInsightSheet(deps) {
     allowAutoScroll = true,
     scrollSource = "selection",
   } = {}) {
-    const model = renderInsightLead(selection, evidence);
+    const model = buildInsightView(selection, evidence);
     const { selection: activeSelection, evs, primaryEvent, context, insight } = model;
     const caseSheet = buildInsightCaseSheetPresentation({
       insight,
@@ -978,8 +980,12 @@ export function createInsightSheet(deps) {
     setInsightMeta("");
     if (qs("insightSelectedLead")) qs("insightSelectedLead").textContent = formatSelectedLead(activeSelection, primaryEvent);
     setInsightTakeaway(caseSheet.takeaway);
+    const whyItems = dedupeInsightItems([
+      ...(Array.isArray(insight.warnings) ? insight.warnings : []),
+      ...(Array.isArray(insight.dangers) ? insight.dangers : []),
+    ], { avoid: [caseSheet.takeaway], limit: 4 });
     if (qs("insightSummary")) {
-      const summaryText = String(caseSheet.summaryDetail || "").trim();
+      const summaryText = getCompactWhySummary(caseSheet.summaryDetail, caseSheet.takeaway, whyItems);
       qs("insightSummary").textContent = summaryText;
     }
     setInsightSeverity(insight.severity, insight.confidence);
@@ -995,13 +1001,7 @@ export function createInsightSheet(deps) {
       evidence: evs,
     });
 
-    const whyItems = [
-      ...(Array.isArray(insight.warnings) ? insight.warnings : []),
-      ...(Array.isArray(insight.dangers) ? insight.dangers : []),
-    ];
-    const baseLimits = Array.isArray(insight.precautions) ? insight.precautions : [];
     const limits = [
-      ...baseLimits,
       "Evidence is constrained by current range/filters and captured events only.",
     ];
     if (evs.some((eventItem) => isApiSignalEvent(eventItem))) {
@@ -1014,10 +1014,8 @@ export function createInsightSheet(deps) {
     const hasWhyItems = renderListItems(qs("insightWhy"), whyItems, "", { hideWhenEmpty: true });
     qs("insightWhy")?.classList.toggle("hidden", !hasWhyItems);
     const hasLimits = renderListItems(qs("insightLimits"), limits, "", { hideWhenEmpty: true });
-    renderSupportingReadouts(evs);
-    const hasReadouts = (qs("insightEvidenceReadouts")?.childElementCount || 0) > 0;
     setCaseSectionVisibility(qs("insightSummary"), !!String(qs("insightSummary")?.textContent || "").trim() || hasWhyItems);
-    setCaseSectionVisibility(qs("insightHow"), hasSupportingEvidence || hasReadouts);
+    setCaseSectionVisibility(qs("insightHow"), hasSupportingEvidence);
     setCaseSectionVisibility(qs("insightLimits"), hasLimits);
 
     if (getViewMode() === "power" && evs.length) {
@@ -1035,19 +1033,17 @@ export function createInsightSheet(deps) {
   function resetInsightSection() {
     closeDrawer();
     if (qs("insightTitle")) qs("insightTitle").textContent = "Detailed evidence";
-    renderBrowserApiNarrative([]);
     setInsightMeta("");
     setInsightSeverity("info", 0.45);
     setInsightConfidence(0.45);
     if (qs("insightSelectedLead")) qs("insightSelectedLead").textContent = "No datapoint selected.";
     setInsightTakeaway("");
     if (qs("insightSummary")) qs("insightSummary").textContent = "";
-    if (qs("insightHow")) qs("insightHow").textContent = "";
+    if (qs("insightHow")) qs("insightHow").innerHTML = "";
     setInsightCaseMetrics([]);
     renderListItems(qs("insightWhy"), [], "", { hideWhenEmpty: true });
     qs("insightWhy")?.classList.add("hidden");
     renderListItems(qs("insightLimits"), [], "", { hideWhenEmpty: true });
-    renderSupportingReadouts([]);
     setCaseSectionVisibility(qs("insightSummary"), false);
     setCaseSectionVisibility(qs("insightHow"), false);
     setCaseSectionVisibility(qs("insightLimits"), false);

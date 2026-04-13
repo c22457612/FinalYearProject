@@ -1,5 +1,4 @@
 import { createChartBuilders } from "../chart-builders.js";
-import { createScopeInsights } from "./scope-insights.js";
 import { createInsightVisibility } from "./insight-visibility.js";
 import { createInsightSheet } from "./insight-sheet.js";
 import { createVendorScope } from "./vendor-scope.js";
@@ -7,7 +6,6 @@ import { createViewNavigationController } from "./view-navigation-controller.js"
 import { createPollingController } from "./polling-controller.js";
 import { createSelectionController } from "./selection-controller.js";
 import { createChartOrchestrationController } from "./chart-orchestration-controller.js";
-import { createVendorScopeBanner } from "./vendor-scope-banner.js";
 import { buildStateGuidanceModel } from "./state-guidance.js";
 import {
   defaultFilterState,
@@ -137,7 +135,6 @@ function getViewTitle(viewId, context = {}) {
   void context;
   return VIEW_TITLE_BY_ID.get(String(viewId || "")) || "Current view";
 }
-const POWER_SCOPE_MODE_ORDER = ["strict", "moderate", "low", "unknown"];
 const POWER_DOCK_ALWAYS_VISIBLE_CONTROLS = new Set([
   "blocked",
   "observed",
@@ -274,7 +271,6 @@ const insightVisibility = createInsightVisibility({
 
 const insightSheet = createInsightSheet({
   qs,
-  friendlyTime,
   pickPrimarySelectedEvent,
   formatSelectedLead,
   triggerDownload,
@@ -288,14 +284,6 @@ const insightSheet = createInsightSheet({
   buildVendorEndpointReadoutData: chartBuilders.buildVendorEndpointReadoutData,
   getViews: () => VIEWS,
   getVizIndex: () => vizIndex,
-});
-
-const vendorScopeBanner = createVendorScopeBanner({
-  qs,
-  getSelectedVendor: () => selectedVendor,
-  getChartEvents,
-  getFocusedLensPivotActive: () => focusedLensPivotActive,
-  getSiteName: () => siteName,
 });
 
 function setStatus(ok, text) {
@@ -713,7 +701,6 @@ function getActiveFilterLabels() {
 function updateFilterSummary() {
   const el = qs("filterSummary");
   if (!el) return;
-  const clearVendorBtn = qs("clearVendorBtn");
 
   const baseCount = Array.isArray(windowEvents) ? windowEvents.length : 0;
   const filteredCount = Array.isArray(filteredEvents) ? filteredEvents.length : 0;
@@ -732,10 +719,26 @@ function updateFilterSummary() {
   parts.push(viewMode === "power" ? "Power" : "Easy");
 
   el.textContent = parts.join(" • ");
-  clearVendorBtn?.classList.toggle("hidden", !selectedVendor?.vendorId);
-  vendorScopeBanner.renderVendorScopeBanner();
-  renderPowerScopeReadouts();
-  renderCurrentInsightLead();
+  syncVendorFocusControls();
+}
+
+function syncVendorFocusControls() {
+  const clearVendorBtn = qs("clearVendorBtn");
+  const vendorVaultLink = qs("vendorVaultLink");
+  const hasVendorFocus = !!selectedVendor?.vendorId;
+  const vendorLabel = String(selectedVendor?.vendorName || selectedVendor?.vendorId || "").trim();
+
+  clearVendorBtn?.classList.toggle("hidden", !hasVendorFocus);
+
+  if (!vendorVaultLink) return;
+  if (!hasVendorFocus || !vendorLabel) {
+    vendorVaultLink.classList.add("hidden");
+    vendorVaultLink.removeAttribute("href");
+    return;
+  }
+
+  vendorVaultLink.href = `/vendor-vault.html?site=${encodeURIComponent(siteName || "")}&vendor=${encodeURIComponent(vendorLabel)}`;
+  vendorVaultLink.classList.remove("hidden");
 }
 
 function ensureDensityBadge() {
@@ -814,89 +817,12 @@ function renderStateGuidance({ events = [], lensPivotActive = false, emptyMessag
 }
 
 function renderTopBucketSummary(viewId, meta = null) {
-  const box = qs("vizTopBucketSummary");
-  if (!box) return;
-
-  if (viewId !== "vendorTopDomainsEndpoints") {
-    box.classList.add("hidden");
-    box.textContent = "";
-    return;
-  }
-
-  const summary = meta?.topBucketSummary || null;
-  if (!summary) {
-    box.classList.add("hidden");
-    box.textContent = "";
-    return;
-  }
-
-  box.classList.remove("hidden");
-  box.textContent = `Top endpoint: ${summary.displayLabel} (${summary.blocked} blocked / ${summary.observed} observed).`;
+  void viewId;
+  void meta;
 }
 
 function renderPowerScopeReadouts() {
-  const box = qs("powerScopeReadouts");
-  if (!box) return;
-
-  if (viewMode !== "power") {
-    box.classList.add("hidden");
-    box.innerHTML = "";
-    return;
-  }
-
-  const events = Array.isArray(getChartEvents()) ? getChartEvents() : [];
-  if (!events.length) {
-    box.classList.add("hidden");
-    box.innerHTML = "";
-    return;
-  }
-
-  const modeCounts = new Map();
-  for (const ev of events) {
-    const mode = String(ev?.mode || "unknown").trim().toLowerCase() || "unknown";
-    modeCounts.set(mode, (modeCounts.get(mode) || 0) + 1);
-  }
-  const modeParts = POWER_SCOPE_MODE_ORDER
-    .filter((mode) => Number(modeCounts.get(mode) || 0) > 0)
-    .map((mode) => `${mode} ${modeCounts.get(mode)}`);
-
-  let thirdParty = 0;
-  for (const ev of events) {
-    if (getPartyBucket(ev) === "third") thirdParty += 1;
-  }
-  const firstOrUnknown = Math.max(0, events.length - thirdParty);
-  const thirdPartyShare = Math.round((thirdParty * 100) / Math.max(1, events.length));
-
-  const readouts = [
-    {
-      label: "Protection mode mix",
-      value: modeParts.length ? modeParts.join(" • ") : "No mode metadata in this scope",
-    },
-    {
-      label: "Traffic mix",
-      value: `${thirdParty} third-party • ${firstOrUnknown} first/unknown • ${thirdPartyShare}% third-party`,
-    },
-  ];
-
-  box.innerHTML = "";
-  for (const readout of readouts) {
-    const item = document.createElement("section");
-    item.className = "viz-support-readout";
-
-    const label = document.createElement("div");
-    label.className = "viz-support-readout-label";
-    label.textContent = readout.label;
-    item.appendChild(label);
-
-    const value = document.createElement("div");
-    value.className = "viz-support-readout-value";
-    value.textContent = readout.value;
-    item.appendChild(value);
-
-    box.appendChild(item);
-  }
-
-  box.classList.remove("hidden");
+  // Supporting evidence now owns these factual readouts.
 }
 
 function getEffectivePowerDockViewId(fallbackViewId = "") {
@@ -929,22 +855,7 @@ function syncAdvancedControlsForView(viewId = "") {
 }
 
 function renderCurrentInsightLead() {
-  const evidence = getChartEvents();
-  if (!evidence.length) {
-    insightSheet.resetInsightLead();
-    return;
-  }
-
-  const currentSelection = vizSelection?.events?.length
-    ? vizSelection
-    : {
-      type: "scope",
-      value: getCurrentViewId() || VIEWS[vizIndex]?.id || "scope",
-      title: `${getViewTitle(getCurrentViewId() || VIEWS[vizIndex]?.id || "")} scope`,
-      summaryHtml: "",
-      events: evidence,
-    };
-  insightSheet.renderInsightLead(currentSelection, evidence);
+  // The case sheet is now the only explanatory surface.
 }
 
 function readFilterStateFromControls() {
@@ -1365,12 +1276,6 @@ const {
   getModeEmptyMessage,
 } = chartBuilders;
 
-const scopeInsights = createScopeInsights({
-  qs,
-  getSiteLens,
-  getTimelineBinMs,
-});
-
 function readPrimaryDataZoomState() {
   const option = chart?.getOption?.();
   const list = Array.isArray(option?.dataZoom) ? option.dataZoom : [];
@@ -1719,13 +1624,9 @@ function renderECharts() {
   };
 
   if (!events.length) {
-    insightSheet.renderBrowserApiNarrative([]);
     const empty = buildEmptyChartOption("No events match current filters");
     focusedLensPivotActive = false;
     renderDensityBadge(null);
-    scopeInsights.renderLensNotice({ active: false });
-    scopeInsights.renderScopeInsights(events);
-    renderTopBucketSummary(requestedViewId, null);
     renderStateGuidance({ events, emptyMessage: "No events match current filters", viewId: requestedViewId });
     if (titleEl) {
       const vendorPart = selectedVendor?.vendorName ? ` | ${selectedVendor.vendorName}` : "";
@@ -1746,7 +1647,6 @@ function renderECharts() {
   }
 
   const viewBuild = chartOrchestrationController.buildViewOption(requestedViewId, events, { viewMode });
-  insightSheet.renderBrowserApiNarrative(events);
   const built = viewBuild.built;
   effectiveViewId = viewBuild.effectiveViewId;
   lensPivotActive = viewBuild.lensPivotActive;
@@ -1760,10 +1660,7 @@ function renderECharts() {
   applyHoverPointerConfigToOption(built?.option, { disablePointer, pointerAxis });
   decorateSeriesInteractionStyles(built?.option);
 
-  scopeInsights.renderLensNotice({ active: false });
-  scopeInsights.renderScopeInsights(events);
   renderDensityBadge(built?.meta);
-  renderTopBucketSummary(requestedViewId, built?.meta);
   const builderGuidanceMessage = String(built?.meta?.stateGuidanceMessage || "").trim();
   renderStateGuidance({ events, lensPivotActive, emptyMessage: builderGuidanceMessage, viewId: requestedViewId });
 
@@ -1776,7 +1673,6 @@ function renderECharts() {
     const emptyMessage = builderGuidanceMessage || getModeEmptyMessage(lensPivotActive ? "timeline" : requestedViewId);
     const empty = buildEmptyChartOption(emptyMessage);
     focusedLensPivotActive = false;
-    renderTopBucketSummary(requestedViewId, null);
     renderStateGuidance({ events, lensPivotActive, emptyMessage, viewId: requestedViewId });
     c.__vptMeta = {
       viewId: requestedViewId,
