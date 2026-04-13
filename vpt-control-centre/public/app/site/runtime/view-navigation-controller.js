@@ -3,10 +3,11 @@ export function createViewNavigationController(deps) {
     qs,
     getDocumentBody,
     views,
-    easyViewIds,
-    powerOnlyViewLabelSuffix,
+    easySiteWideViewIds,
+    easyVendorFocusViewIds,
     privacyFilterAllOnlyViewIds,
     getViewMode,
+    getSelectedVendor,
     setViewModeState,
     getVizIndex,
     setVizIndex,
@@ -23,9 +24,57 @@ export function createViewNavigationController(deps) {
     updateFilterSummary,
   } = deps;
 
+  const REMOVED_FROM_USER_PATH_VIEW_IDS = new Set([
+    "vendorBlockRateComparison",
+    "riskTrend",
+    "vendorKindMatrix",
+    "modeBreakdown",
+    "partySplit",
+  ]);
+  const POWER_SITE_WIDE_VIEW_IDS = new Set([
+    "vendorOverview",
+    "vendorShareOverTime",
+    "vendorAllowedBlockedTimeline",
+    "baselineDetectedBlockedTrend",
+    "timeline",
+    "topSeen",
+    "kinds",
+    "apiGating",
+    "ruleIdFrequency",
+    "resourceTypes",
+    "hourHeatmap",
+  ]);
+  const POWER_VENDOR_FOCUS_VIEW_IDS = new Set([
+    "vendorOverview",
+    "vendorAllowedBlockedTimeline",
+    "vendorTopDomainsEndpoints",
+    "baselineDetectedBlockedTrend",
+    "timeline",
+    "kinds",
+    "apiGating",
+    "ruleIdFrequency",
+    "resourceTypes",
+    "hourHeatmap",
+  ]);
+  const GUIDED_FILL_COUNTS = new Set([3, 4]);
+  const GUIDED_FILL_MIN_TAB_WIDTH = 184;
+
+  function hasVendorFocus() {
+    return !!getSelectedVendor?.()?.vendorId;
+  }
+
+  function getEasyViewIds() {
+    return hasVendorFocus() ? easyVendorFocusViewIds : easySiteWideViewIds;
+  }
+
+  function getPowerViewIds() {
+    return hasVendorFocus() ? POWER_VENDOR_FOCUS_VIEW_IDS : POWER_SITE_WIDE_VIEW_IDS;
+  }
+
   function isViewAllowed(viewId, mode = getViewMode()) {
-    if (mode === "easy") return easyViewIds.has(viewId);
-    return true;
+    if (REMOVED_FROM_USER_PATH_VIEW_IDS.has(viewId)) return false;
+    if (mode === "easy") return getEasyViewIds().has(viewId);
+    return getPowerViewIds().has(viewId);
   }
 
   function getAllowedViews(mode = getViewMode()) {
@@ -34,6 +83,22 @@ export function createViewNavigationController(deps) {
 
   function getCurrentViewId() {
     return views[getVizIndex()]?.id || views[0]?.id || "";
+  }
+
+  function applyVizPathLayoutState(root, allowed) {
+    const block = root?.closest?.(".viz-path-selector-block");
+    if (!block) return;
+
+    const count = Array.isArray(allowed) ? allowed.length : 0;
+    const guidedFillCandidate = getViewMode() === "easy" && GUIDED_FILL_COUNTS.has(count);
+    const availableWidth = Math.max(0, Number(root?.clientWidth || block?.clientWidth || 0));
+    const estimatedTabWidth = guidedFillCandidate
+      ? Math.max(0, (availableWidth - Math.max(0, count - 1)) / Math.max(1, count))
+      : 0;
+    const guidedFillActive = guidedFillCandidate && estimatedTabWidth >= GUIDED_FILL_MIN_TAB_WIDTH;
+
+    block.dataset.pathLayout = guidedFillActive ? "guided-fill" : "compact";
+    block.dataset.guidedCount = guidedFillActive ? String(count) : "";
   }
 
   function renderVizPathSelector(options = {}) {
@@ -68,6 +133,7 @@ export function createViewNavigationController(deps) {
         </button>
       `;
     }).join("");
+    applyVizPathLayoutState(root, allowed);
 
     if (typeof root.querySelectorAll !== "function") return;
 
@@ -88,25 +154,15 @@ export function createViewNavigationController(deps) {
   }
 
   function applyViewFilterPolicy() {
-    const viewId = getCurrentViewId();
-    const privacyAllOnly = privacyFilterAllOnlyViewIds.has(viewId);
     const filterState = getFilterState();
     let changed = false;
 
-    if (privacyAllOnly && filterState.privacyStatus !== "all") {
+    if (filterState.privacyStatus !== "all") {
       filterState.privacyStatus = "all";
       changed = true;
     }
 
     writeFilterStateToControls();
-
-    const privacyEl = qs("privacyStatusFilter");
-    if (privacyEl) {
-      privacyEl.disabled = privacyAllOnly;
-      privacyEl.title = privacyAllOnly
-        ? "Privacy filter is fixed to All for this view to avoid collapsed single-group charts."
-        : "";
-    }
 
     return changed;
   }
@@ -132,17 +188,15 @@ export function createViewNavigationController(deps) {
     if (!el) return;
 
     if (getViewMode() !== "easy") {
-      el.textContent = "Power mode: all chart views are available. Extra controls stay tucked into Power chart options.";
+      el.textContent = hasVendorFocus()
+        ? "Power mode keeps the focused technical path for the current vendor scope."
+        : "Power mode keeps the richer technical path for site-wide inspection.";
       return;
     }
 
-    const powerOnlyCount = views.filter((view) => !easyViewIds.has(view.id)).length;
-    if (!powerOnlyCount) {
-      el.textContent = "";
-      return;
-    }
-
-    el.textContent = `Easy mode is guided. ${powerOnlyCount} additional views are listed as "${powerOnlyViewLabelSuffix.trim()}" and unlock from the visualizer toolbar in Power mode.`;
+    el.textContent = hasVendorFocus()
+      ? "Easy mode is guided for vendor investigation. Comparison-only charts are removed from the path."
+      : "Easy mode is guided. Power mode keeps the broader comparison and technical views.";
   }
 
   function updateDrawerButtonState() {
@@ -171,14 +225,13 @@ export function createViewNavigationController(deps) {
     }
 
     for (const opt of select.options) {
-      const baseLabel = String(opt.dataset.baseLabel || opt.textContent || "")
-        .replace(powerOnlyViewLabelSuffix, "");
+      const baseLabel = String(opt.dataset.baseLabel || opt.textContent || "");
       if (!opt.dataset.baseLabel) opt.dataset.baseLabel = baseLabel;
       const allowed = isViewAllowed(opt.value, getViewMode());
-      opt.hidden = false;
+      opt.hidden = !allowed;
       opt.disabled = !allowed;
-      opt.textContent = allowed ? baseLabel : `${baseLabel}${powerOnlyViewLabelSuffix}`;
-      opt.title = allowed ? "" : "Switch the visualizer toolbar to Power to use this chart mode.";
+      opt.textContent = baseLabel;
+      opt.title = "";
     }
 
     const currentId = views[getVizIndex()]?.id;

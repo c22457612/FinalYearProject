@@ -68,20 +68,176 @@
             </label>
           </div>
           <div class="viz-toolbar-actions">
-            <button id="filterResetBtn" class="viz-nav" type="button">Reset filters</button>
+            <button id="filterResetEasyBtn" class="viz-nav viz-nav-quiet viz-toolbar-reset" type="button">Reset filters</button>
           </div>
         </section>
 
         <div class="viz-wrap">
           <div id="vizChart" class="viz-chart"></div>
         </div>
+        <details id="advancedControlsPanel" class="viz-advanced-panel">
+          <summary>
+            <span class="viz-advanced-summary-copy">
+              <span class="viz-advanced-kicker">Power mode</span>
+              <span class="viz-advanced-summary-title">Chart inspection controls</span>
+              <span class="viz-advanced-summary-text">Inspect the active chart with focused outcome, shaping, and filter controls.</span>
+            </span>
+          </summary>
+          <div class="viz-advanced-panel-body">
+            <section class="viz-advanced-section" aria-label="Outcome controls">
+              <div class="viz-advanced-section-header">
+                <div class="viz-advanced-section-title">Outcome</div>
+                <div class="viz-advanced-section-copy">Which result states stay visible in the current chart.</div>
+              </div>
+              <div class="kind-toggles">
+                <label class="kind-toggle" data-dock-control="blocked"><input id="kindBlockedToggle" type="checkbox" checked />Blocked</label>
+                <label class="kind-toggle" data-dock-control="observed"><input id="kindObservedToggle" type="checkbox" checked />Observed</label>
+                <label class="kind-toggle" data-dock-control="other"><input id="kindOtherToggle" type="checkbox" checked />Other</label>
+              </div>
+            </section>
+
+            <section class="viz-advanced-section" id="powerChartShapingSection" data-dock-group="chart-shaping" aria-label="Chart shaping controls">
+              <div class="viz-advanced-section-header">
+                <div class="viz-advanced-section-title">Chart shaping</div>
+                <div class="viz-advanced-section-copy">Tune how the active chart groups and reads.</div>
+              </div>
+              <div class="viz-advanced-grid viz-advanced-grid-compact">
+                <label class="viz-advanced-field" data-dock-control="metric">
+                  <span class="viz-label">Metric</span>
+                  <select id="vizMetricSelect" class="viz-select">
+                    <option value="seen" selected>Seen</option>
+                    <option value="blocked">Blocked</option>
+                    <option value="observed">Observed</option>
+                  </select>
+                </label>
+
+                <label class="viz-advanced-field" data-dock-control="series">
+                  <span class="viz-label">Series</span>
+                  <select id="vizSeriesTypeSelect" class="viz-select">
+                    <option value="auto" selected>Auto</option>
+                    <option value="bar">Bar</option>
+                    <option value="line">Line</option>
+                    <option value="area">Area</option>
+                  </select>
+                </label>
+
+                <label class="viz-advanced-field" data-dock-control="topN">
+                  <span class="viz-label">Top N</span>
+                  <select id="vizTopNSelect" class="viz-select">
+                    <option value="10">10</option>
+                    <option value="20" selected>20</option>
+                    <option value="40">40</option>
+                  </select>
+                </label>
+
+                <label class="viz-advanced-field" data-dock-control="sort">
+                  <span class="viz-label">Sort</span>
+                  <select id="vizSortSelect" class="viz-select">
+                    <option value="value_desc" selected>Value desc</option>
+                    <option value="value_asc">Value asc</option>
+                    <option value="label_asc">Label A-Z</option>
+                  </select>
+                </label>
+
+                <label class="viz-advanced-field" data-dock-control="binSize">
+                  <span class="viz-label">Bin size</span>
+                  <select id="vizBinSizeSelect" class="viz-select">
+                    <option value="1m">1m</option>
+                    <option value="5m" selected>5m</option>
+                    <option value="15m">15m</option>
+                    <option value="60m">60m</option>
+                  </select>
+                </label>
+              </div>
+              <div class="viz-advanced-toggles">
+                <label class="kind-toggle" data-dock-control="normalize"><input id="vizNormalizeToggle" type="checkbox" />Normalize %</label>
+                <label class="kind-toggle" data-dock-control="stackBars"><input id="vizStackToggle" type="checkbox" checked />Stack bars</label>
+              </div>
+            </section>
+
+            <section class="viz-advanced-section" id="powerFilteringSection" data-dock-group="filtering" aria-label="Filtering controls">
+              <div class="viz-advanced-section-header">
+                <div class="viz-advanced-section-title">Filtering</div>
+                <div class="viz-advanced-section-copy">Refine vendor, resource, policy, and domain evidence.</div>
+              </div>
+              <div class="viz-advanced-grid">
+                <label class="viz-advanced-field" data-dock-control="party">
+                  <span class="viz-label">Party</span>
+                  <select id="partyFilter" class="viz-select">
+                    <option value="all" selected>All</option>
+                    <option value="third">Third-party</option>
+                    <option value="first_or_unknown">First/unknown</option>
+                  </select>
+                </label>
+
+                <label class="viz-advanced-field" data-dock-control="resource">
+                  <span class="viz-label">Resource</span>
+                  <select id="resourceFilter" class="viz-select">
+                    <option value="all" selected>All</option>
+                    <option value="script">Script</option>
+                    <option value="xhr_fetch">XHR/Fetch</option>
+                    <option value="image">Image</option>
+                    <option value="sub_frame">Sub-frame</option>
+                    <option value="other">Other</option>
+                  </select>
+                </label>
+
+                <label class="viz-advanced-field" data-dock-control="surface">
+                  <span class="viz-label">Signal surface</span>
+                  <select id="surfaceFilter" class="viz-select">
+                    <option value="all" selected>All</option>
+                    <option value="network">Network</option>
+                    <option value="cookies">Cookies</option>
+                    <option value="storage">Storage</option>
+                    <option value="api">API</option>
+                    <option value="script">Script</option>
+                    <option value="unknown">Unknown</option>
+                  </select>
+                </label>
+
+                <label class="viz-advanced-field" data-dock-control="mitigation">
+                  <span class="viz-label">Policy outcome</span>
+                  <select id="mitigationStatusFilter" class="viz-select">
+                    <option value="all" selected>All</option>
+                    <option value="allowed">Allowed</option>
+                    <option value="blocked">Blocked</option>
+                    <option value="observed_only">Observed only</option>
+                    <option value="modified">Modified</option>
+                    <option value="unknown">Unknown</option>
+                  </select>
+                </label>
+
+                <label class="viz-advanced-field viz-advanced-field-wide" data-dock-control="domain">
+                  <span class="viz-label">Filter domain or URL</span>
+                  <input id="domainFilter" class="viz-select viz-domain-input" placeholder="Filter domain/url..." />
+                </label>
+              </div>
+            </section>
+
+            <section class="viz-advanced-section viz-advanced-section-actions" aria-label="Selection and reset controls">
+              <div class="viz-advanced-section-header">
+                <div class="viz-advanced-section-title">Cleanup</div>
+                <div class="viz-advanced-section-copy">Clear the current inspection state without leaving Power mode.</div>
+              </div>
+              <div class="viz-scope-actions viz-advanced-actions">
+                <button id="vizClearSelectionBtn" class="viz-nav" data-dock-control="clearSelection" type="button">Clear selection</button>
+                <button id="filterResetBtn" class="viz-nav" data-dock-control="resetFilters" type="button">Reset filters</button>
+              </div>
+            </section>
+          </div>
+        </details>
         <div class="viz-bottom-nav">
-          <div class="viz-arrow-group">
-            <button id="vizPrevBtn" class="viz-nav" type="button" title="Previous">&larr;</button>
-            <button id="vizNextBtn" class="viz-nav" type="button" title="Next">&rarr;</button>
+          <div class="viz-arrow-nav-block">
+            <div class="viz-label">Chart path</div>
+            <div class="viz-arrow-group">
+              <button id="vizPrevBtn" class="viz-nav" type="button" title="Previous">&larr;</button>
+              <button id="vizNextBtn" class="viz-nav" type="button" title="Next">&rarr;</button>
+            </div>
           </div>
           <div class="viz-path-selector-block">
-            <div class="viz-label">Chart path</div>
+            <div class="viz-path-selector-header">
+              <div id="vizPositionLabel" class="viz-position-label">1 / 1</div>
+            </div>
             <div id="vizPathSelector" class="console-selector console-selector-inline viz-path-selector" role="toolbar" aria-label="Chart path selector"></div>
           </div>
           <div class="viz-mode-group hidden" aria-hidden="true">
@@ -96,8 +252,8 @@
               <option value="baselineDetectedBlockedTrend">Baseline vs detected vs blocked trend</option>
               <option value="timeline">Activity timeline (last 24h)</option>
               <option value="topSeen">Top third-party domains (seen)</option>
-              <option value="kinds">Event breakdown (kind)</option>
-              <option value="apiGating">3P API-like calls (heuristic)</option>
+              <option value="kinds">Event type breakdown</option>
+              <option value="apiGating">Third-party API-like requests</option>
               <option value="vendorKindMatrix">Vendor-kind matrix</option>
               <option value="ruleIdFrequency">Rule ID frequency</option>
               <option value="resourceTypes">Resource type breakdown</option>
@@ -106,14 +262,13 @@
               <option value="hourHeatmap">Activity heatmap (hour x day)</option>
             </select>
           </div>
-          <div id="vizPositionLabel" class="viz-position-label">1 / 1</div>
         </div>
         <div id="vizModeHelp" class="viz-mode-help"></div>
 
         <section class="scope-context-section" aria-label="Scope and context">
           <div class="scope-context-header">
             <div class="scope-context-title">Scope &amp; context</div>
-            <div class="scope-context-subtitle">Current scope, vendor focus, and extra chart controls.</div>
+            <div class="scope-context-subtitle">Current scope, vendor focus, and inspection context.</div>
           </div>
 
           <div class="scope-context-stack">
@@ -153,10 +308,11 @@
 
             <section class="viz-scope-toolbar" aria-label="Chart scope and state">
               <div class="viz-scope-summary-block">
-                <div id="filterSummary" class="panel-subtitle filter-summary">
+              <div id="filterSummary" class="panel-subtitle filter-summary">
                   Showing 0 of 0 events
                 </div>
                 <div id="vizScopeSummary" class="viz-scope-summary">Waiting for site activity.</div>
+                <div id="powerScopeReadouts" class="viz-support-readouts hidden" aria-label="Power supporting readouts"></div>
               </div>
 
               <div class="viz-scope-vendor-cluster">
@@ -173,141 +329,6 @@
                 <div id="vizTopBucketSummary" class="viz-top-bucket hidden"></div>
                 <div id="vizStateGuidance" class="viz-state-guidance hidden"></div>
               </div>
-
-              <details id="advancedControlsPanel" class="viz-advanced-panel">
-                <summary>Power chart options</summary>
-                <div class="viz-advanced-panel-body">
-                  <div class="viz-filters">
-                    <div class="kind-toggles">
-                      <label class="kind-toggle"><input id="kindBlockedToggle" type="checkbox" checked />Blocked</label>
-                      <label class="kind-toggle"><input id="kindObservedToggle" type="checkbox" checked />Observed</label>
-                      <label class="kind-toggle"><input id="kindOtherToggle" type="checkbox" checked />Other</label>
-                    </div>
-
-                    <div class="viz-advanced-grid">
-                      <label class="viz-advanced-field">
-                        <span class="viz-label">Party</span>
-                        <select id="partyFilter" class="viz-select">
-                          <option value="all" selected>All</option>
-                          <option value="third">Third-party</option>
-                          <option value="first_or_unknown">First/unknown</option>
-                        </select>
-                      </label>
-
-                      <label class="viz-advanced-field">
-                        <span class="viz-label">Resource</span>
-                        <select id="resourceFilter" class="viz-select">
-                          <option value="all" selected>All</option>
-                          <option value="script">Script</option>
-                          <option value="xhr_fetch">XHR/Fetch</option>
-                          <option value="image">Image</option>
-                          <option value="sub_frame">Sub-frame</option>
-                          <option value="other">Other</option>
-                        </select>
-                      </label>
-
-                      <label class="viz-advanced-field">
-                        <span class="viz-label">Surface</span>
-                        <select id="surfaceFilter" class="viz-select">
-                          <option value="all" selected>All</option>
-                          <option value="network">Network</option>
-                          <option value="cookies">Cookies</option>
-                          <option value="storage">Storage</option>
-                          <option value="api">API</option>
-                          <option value="script">Script</option>
-                          <option value="unknown">Unknown</option>
-                        </select>
-                      </label>
-
-                      <label class="viz-advanced-field">
-                        <span class="viz-label">Privacy</span>
-                        <select id="privacyStatusFilter" class="viz-select">
-                          <option value="all" selected>All</option>
-                          <option value="baseline">Baseline</option>
-                          <option value="signal_detected">Signal detected</option>
-                          <option value="high_risk">High risk</option>
-                          <option value="policy_blocked">Policy blocked</option>
-                          <option value="policy_allowed">Policy allowed</option>
-                          <option value="unknown">Unknown</option>
-                        </select>
-                      </label>
-
-                      <label class="viz-advanced-field">
-                        <span class="viz-label">Mitigation</span>
-                        <select id="mitigationStatusFilter" class="viz-select">
-                          <option value="all" selected>All</option>
-                          <option value="allowed">Allowed</option>
-                          <option value="blocked">Blocked</option>
-                          <option value="observed_only">Observed only</option>
-                          <option value="modified">Modified</option>
-                          <option value="unknown">Unknown</option>
-                        </select>
-                      </label>
-
-                      <label class="viz-advanced-field">
-                        <span class="viz-label">Metric</span>
-                        <select id="vizMetricSelect" class="viz-select">
-                          <option value="seen" selected>Seen</option>
-                          <option value="blocked">Blocked</option>
-                          <option value="observed">Observed</option>
-                        </select>
-                      </label>
-
-                      <label class="viz-advanced-field">
-                        <span class="viz-label">Series</span>
-                        <select id="vizSeriesTypeSelect" class="viz-select">
-                          <option value="auto" selected>Auto</option>
-                          <option value="bar">Bar</option>
-                          <option value="line">Line</option>
-                          <option value="area">Area</option>
-                        </select>
-                      </label>
-
-                      <label class="viz-advanced-field">
-                        <span class="viz-label">Top N</span>
-                        <select id="vizTopNSelect" class="viz-select">
-                          <option value="10">10</option>
-                          <option value="20" selected>20</option>
-                          <option value="40">40</option>
-                        </select>
-                      </label>
-
-                      <label class="viz-advanced-field">
-                        <span class="viz-label">Sort</span>
-                        <select id="vizSortSelect" class="viz-select">
-                          <option value="value_desc" selected>Value desc</option>
-                          <option value="value_asc">Value asc</option>
-                          <option value="label_asc">Label A-Z</option>
-                        </select>
-                      </label>
-
-                      <label class="viz-advanced-field">
-                        <span class="viz-label">Bin size</span>
-                        <select id="vizBinSizeSelect" class="viz-select">
-                          <option value="1m">1m</option>
-                          <option value="5m" selected>5m</option>
-                          <option value="15m">15m</option>
-                          <option value="60m">60m</option>
-                        </select>
-                      </label>
-
-                      <label class="viz-advanced-field viz-advanced-field-wide">
-                        <span class="viz-label">Filter domain or URL</span>
-                        <input id="domainFilter" class="viz-select viz-domain-input" placeholder="Filter domain/url..." />
-                      </label>
-                    </div>
-
-                    <div class="viz-advanced-toggles">
-                      <label class="kind-toggle"><input id="vizNormalizeToggle" type="checkbox" />Normalize %</label>
-                      <label class="kind-toggle"><input id="vizStackToggle" type="checkbox" checked />Stack bars</label>
-                    </div>
-
-                    <div class="viz-scope-actions">
-                      <button id="vizClearSelectionBtn" class="viz-nav" type="button">Clear selection</button>
-                    </div>
-                  </div>
-                </div>
-              </details>
             </section>
           </div>
         </section>
@@ -360,31 +381,35 @@
               <section class="insight-case-section">
                 <div class="insight-case-section-header">
                   <span class="insight-section-icon insight-icon-summary" aria-hidden="true"></span>
-                  <div class="insight-case-section-title">Interpretation</div>
+                  <div class="insight-case-section-title">Why it matters</div>
                 </div>
                 <div class="insight-case-section-body">
                   <div id="insightSummary" class="insight-case-copy"></div>
+                  <ul id="insightWhy" class="insight-list insight-list-compact"></ul>
                 </div>
               </section>
-              <section class="insight-case-section">
+              <section id="insightActionSection" class="insight-case-section insight-case-section-action hidden">
+                <div class="insight-case-section-header">
+                  <span class="insight-section-icon insight-icon-action" aria-hidden="true"></span>
+                  <div class="insight-case-section-title">What to do</div>
+                </div>
+                <div class="insight-case-section-body">
+                  <div id="insightActionsFooter" class="insight-actions-footer hidden">
+                    <div id="insightActions" class="insight-actions"></div>
+                  </div>
+                </div>
+              </section>
+              <section class="insight-case-section insight-case-section-supporting">
                 <div class="insight-case-section-header">
                   <span class="insight-section-icon insight-icon-evidence" aria-hidden="true"></span>
-                  <div class="insight-case-section-title">Observed evidence</div>
+                  <div class="insight-case-section-title">Supporting evidence</div>
                 </div>
                 <div class="insight-case-section-body">
                   <div id="insightHow" class="insight-case-copy"></div>
+                  <div id="insightEvidenceReadouts" class="insight-supporting-readouts hidden" aria-label="Supporting evidence readouts"></div>
                 </div>
               </section>
-              <section class="insight-case-section">
-                <div class="insight-case-section-header">
-                  <span class="insight-section-icon insight-icon-risk" aria-hidden="true"></span>
-                  <div class="insight-case-section-title">Risk cues</div>
-                </div>
-                <div class="insight-case-section-body">
-                  <ul id="insightWhy" class="insight-list"></ul>
-                </div>
-              </section>
-              <section class="insight-case-section">
+              <section class="insight-case-section insight-case-section-muted">
                 <div class="insight-case-section-header">
                   <span class="insight-section-icon insight-icon-limits" aria-hidden="true"></span>
                   <div class="insight-case-section-title">Limits</div>
@@ -394,22 +419,15 @@
                 </div>
               </section>
             </div>
-            <div id="insightActionsFooter" class="insight-actions-footer">
-              <div id="insightActionsLabel" class="insight-footer-heading">
-                <span class="insight-section-icon insight-icon-action" aria-hidden="true"></span>
-                Recommended action
+            <details id="insightTechnicalPanel" class="insight-technical hidden">
+              <summary>Technical evidence (Power)</summary>
+              <div class="insight-technical-body">
+                <div id="drawerTitle" class="insight-technical-title">Selection</div>
+                <div class="insight-technical-label">Advanced details</div>
+                <div id="drawerSummary" class="insight-technical-summary"></div>
+                <div id="drawerEvents" class="insight-technical-events"></div>
               </div>
-              <div id="insightActions" class="insight-actions"></div>
-              <details id="insightTechnicalPanel" class="insight-technical hidden">
-                <summary>Technical evidence (Power)</summary>
-                <div class="insight-technical-body">
-                  <div id="drawerTitle" class="insight-technical-title">Selection</div>
-                  <div class="insight-technical-label">Advanced details</div>
-                  <div id="drawerSummary" class="insight-technical-summary"></div>
-                  <div id="drawerEvents" class="insight-technical-events"></div>
-                </div>
-              </details>
-            </div>
+            </details>
           </div>
         </section>
       </div>

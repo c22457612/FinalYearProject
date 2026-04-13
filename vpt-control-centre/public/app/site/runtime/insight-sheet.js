@@ -57,6 +57,55 @@ function getLeadSignalCounts(evidence) {
   return counts;
 }
 
+function humanizeEasyKindLabel(kind, viewMode = "power") {
+  const raw = String(kind || "").trim();
+  if (!raw) return "Activity";
+  if (viewMode !== "easy") return raw;
+
+  const normalized = raw.toLowerCase();
+  if (normalized === "network.blocked") return "Network blocked";
+  if (normalized === "network.observed") return "Network observed";
+  if (normalized === "cookies.snapshot") return "Cookie activity";
+  if (normalized === "cookies.cleared" || normalized === "cookies.removed") return "Cookie cleanup";
+  if (normalized.startsWith("storage.")) return "Storage activity";
+  if (normalized.startsWith("script.")) return "Script activity";
+  if (normalized.includes("webrtc")) return "WebRTC activity";
+  if (normalized.includes("canvas")) return "Canvas activity";
+  if (normalized.includes("clipboard")) return "Clipboard activity";
+  if (normalized.includes("geolocation")) return "Geolocation activity";
+  if (normalized.startsWith("api.") || normalized.startsWith("browser_api.")) return "Browser API activity";
+  return raw.replaceAll(".", " ");
+}
+
+function formatCategorySummary(summary, viewMode = "power") {
+  const blocked = Number(summary?.blocked || 0) + Number(summary?.blockedApi || 0);
+  const observed = Number(summary?.observed || 0) + Number(summary?.observedApi || 0);
+  const other = Number(summary?.other || 0);
+  const blockedApi = Number(summary?.blockedApi || 0);
+  const observedApi = Number(summary?.observedApi || 0);
+
+  if (viewMode === "easy") {
+    const parts = [`${blocked} blocked`, `${observed} observed`];
+    if (other > 0) parts.push(`${other} other`);
+    return parts.join(", ");
+  }
+
+  const parts = [
+    `${Number(summary?.blocked || 0)} blocked`,
+    `${Number(summary?.observed || 0)} observed`,
+  ];
+  if (blockedApi > 0) parts.push(`${blockedApi} blocked API`);
+  if (observedApi > 0) parts.push(`${observedApi} observed API`);
+  if (other > 0) parts.push(`${other} other`);
+  return parts.join(", ");
+}
+
+function formatDominantKinds(dominantKinds, viewMode = "power") {
+  const list = Array.isArray(dominantKinds) ? dominantKinds : [];
+  if (!list.length) return "-";
+  return list.map((item) => `${humanizeEasyKindLabel(item?.kind, viewMode)}: ${item?.count || 0}`).join(", ");
+}
+
 export function buildInsightLeadPresentation({ insight = null, evidence = [] } = {}) {
   const summaryText = String(insight?.summary || "").trim();
   const text = splitInsightLeadSummary(summaryText);
@@ -166,6 +215,8 @@ export function createInsightSheet(deps) {
     getViewMode,
     getSiteName,
     getSelectedVendor,
+    getChartEvents,
+    buildVendorEndpointReadoutData,
     getViews,
     getVizIndex,
   } = deps;
@@ -251,22 +302,24 @@ export function createInsightSheet(deps) {
     ]).join("\n");
   }
 
-  function renderListItems(el, items, emptyText) {
+  function renderListItems(el, items, emptyText, { hideWhenEmpty = false } = {}) {
     if (!el) return;
     const list = Array.isArray(items) ? items.filter(Boolean) : [];
     el.innerHTML = "";
     if (!list.length) {
+      if (hideWhenEmpty) return false;
       const li = document.createElement("li");
       li.className = "muted";
       li.textContent = emptyText;
       el.appendChild(li);
-      return;
+      return false;
     }
     for (const item of list) {
       const li = document.createElement("li");
       li.textContent = item;
       el.appendChild(li);
     }
+    return true;
   }
 
   function renderActionListItems(el, items, emptyText) {
@@ -296,10 +349,139 @@ export function createInsightSheet(deps) {
     }
   }
 
-  function getWhatThisAnswersLine(viewId) {
-    if (viewId === "vendorBlockRateComparison") {
-      return "What this answers: Which vendors have the highest blocked-share in this scope, relative to their total observed activity.";
+  function setCaseSectionVisibility(target, visible) {
+    const el = typeof target === "string" ? qs(target) : target;
+    const section = el?.closest?.(".insight-case-section");
+    if (section) {
+      section.classList.toggle("hidden", !visible);
     }
+  }
+
+  function createEvidenceGroup(title) {
+    const group = document.createElement("section");
+    group.className = "insight-evidence-group";
+
+    if (title) {
+      const heading = document.createElement("div");
+      heading.className = "insight-evidence-group-title";
+      heading.textContent = title;
+      group.appendChild(heading);
+    }
+
+    const body = document.createElement("div");
+    body.className = "insight-evidence-group-body";
+    group.appendChild(body);
+    return { group, body };
+  }
+
+  function appendEvidenceNote(container, text) {
+    const content = String(text || "").trim();
+    if (!container || !content) return;
+    const note = document.createElement("div");
+    note.className = "insight-evidence-note";
+    note.textContent = content;
+    container.appendChild(note);
+  }
+
+  function appendEvidenceFact(container, label, value) {
+    const factValue = String(value || "").trim();
+    if (!container || !label || !factValue) return;
+
+    const row = document.createElement("div");
+    row.className = "insight-evidence-fact";
+
+    const key = document.createElement("div");
+    key.className = "insight-evidence-fact-key";
+    key.textContent = label;
+    row.appendChild(key);
+
+    const content = document.createElement("div");
+    content.className = "insight-evidence-fact-value";
+    content.textContent = factValue;
+    row.appendChild(content);
+
+    container.appendChild(row);
+  }
+
+  function renderSupportingEvidenceBlock({
+    selection,
+    evidenceSummary,
+    context,
+    primaryEvent,
+    evidence,
+  } = {}) {
+    const box = qs("insightHow");
+    if (!box) return false;
+    box.innerHTML = "";
+
+    const summary = evidenceSummary || {};
+    const label = selection?.title || "Current scope";
+    const firstText = summary.firstTs ? new Date(summary.firstTs).toLocaleTimeString() : "-";
+    const lastText = summary.lastTs ? new Date(summary.lastTs).toLocaleTimeString() : "-";
+    const dominant = formatDominantKinds(summary.dominantKinds, getViewMode());
+    const categorySummary = formatCategorySummary(summary, getViewMode());
+    const whatThisAnswers = getWhatThisAnswersLine(context?.viewId);
+
+    appendEvidenceNote(box, whatThisAnswers);
+
+    const scopeGroup = createEvidenceGroup("Scope readout");
+    appendEvidenceFact(scopeGroup.body, "Scope", label);
+    appendEvidenceFact(scopeGroup.body, "Activity", `${summary.total || 0} total events`);
+    appendEvidenceFact(scopeGroup.body, "Outcome", categorySummary);
+    appendEvidenceFact(scopeGroup.body, "First seen", firstText);
+    appendEvidenceFact(scopeGroup.body, "Last seen", lastText);
+    if (selection?.bucketKey && context?.viewId !== "vendorTopDomainsEndpoints") {
+      appendEvidenceFact(scopeGroup.body, "Bucket key", selection.bucketKey);
+    }
+    if (scopeGroup.body.childElementCount > 0) {
+      box.appendChild(scopeGroup.group);
+    }
+
+    if (context?.viewId === "vendorTopDomainsEndpoints" && selection?.bucketKey) {
+      const bucketGroup = createEvidenceGroup("Bucket detail");
+      const bucketLabel = selection?.bucketLabel || label;
+      const seen = Number(selection?.seen || 0);
+      const blocked = Number(selection?.blocked || 0);
+      const observed = Number(selection?.observed || 0);
+      const other = Number(selection?.other || 0);
+      appendEvidenceFact(bucketGroup.body, "Bucket", bucketLabel);
+      appendEvidenceFact(bucketGroup.body, "Activity", `${seen} total events`);
+      appendEvidenceFact(bucketGroup.body, "Outcome", `${blocked} blocked, ${observed} observed${other > 0 ? `, ${other} other` : ""}`);
+      const example = getBucketExample(selection, evidence);
+      if (example) {
+        appendEvidenceFact(bucketGroup.body, "Example path", example);
+      }
+      if (bucketGroup.body.childElementCount > 0) {
+        box.appendChild(bucketGroup.group);
+      }
+    } else if (dominant !== "-") {
+      const profileGroup = createEvidenceGroup("Activity profile");
+      appendEvidenceFact(profileGroup.body, "Dominant activity", dominant);
+      box.appendChild(profileGroup.group);
+    }
+
+    if (primaryEvent && isApiSignalEvent(primaryEvent)) {
+      const presentation = getApiEventPresentation(primaryEvent);
+      const apiGroup = createEvidenceGroup("Browser API note");
+      appendEvidenceFact(apiGroup.body, "Signal", presentation.label);
+      appendEvidenceFact(apiGroup.body, "Meaning", presentation.explanation);
+      appendEvidenceFact(apiGroup.body, "Observed detail", presentation.summary);
+      appendEvidenceFact(
+        apiGroup.body,
+        "Classification",
+        [
+          presentation.canonicalId ? `pattern ${presentation.canonicalId}` : "pattern not yet classified",
+          `signal type ${presentation.signalType}`,
+          `confidence ${presentation.confidenceText}`,
+        ].join(", "),
+      );
+      box.appendChild(apiGroup.group);
+    }
+
+    return box.childElementCount > 0;
+  }
+
+  function getWhatThisAnswersLine(viewId) {
     if (viewId === "vendorShareOverTime") {
       return "What this answers: How each top vendor contributes to total activity over time, including grouped long-tail vendors.";
     }
@@ -649,16 +831,75 @@ export function createInsightSheet(deps) {
     box.classList.toggle("hidden", box.childElementCount === 0);
   }
 
+  function renderSupportingReadouts(events) {
+    const box = qs("insightEvidenceReadouts");
+    if (!box) return;
+    box.innerHTML = "";
+
+    const evidence = Array.isArray(events) ? events : [];
+    const scopeEvents = Array.isArray(getChartEvents?.()) ? getChartEvents() : evidence;
+    const viewMode = getViewMode();
+
+    const thirdParty = evidence.filter((ev) => ev?.data?.isThirdParty === true).length;
+    const firstOrUnknown = Math.max(0, evidence.length - thirdParty);
+    if (evidence.length > 0) {
+      const partyCard = document.createElement("section");
+      partyCard.className = "insight-support-readout";
+      partyCard.innerHTML = `
+        <div class="insight-support-readout-title">Traffic mix</div>
+        <div class="insight-support-readout-copy">${thirdParty} third-party / ${firstOrUnknown} first-party or unknown</div>
+      `;
+      box.appendChild(partyCard);
+    }
+
+    const selectedVendor = getSelectedVendor();
+    if (viewMode === "easy" && selectedVendor?.vendorId && typeof buildVendorEndpointReadoutData === "function") {
+      const readout = buildVendorEndpointReadoutData(scopeEvents, selectedVendor, { limit: 5 });
+      if (Array.isArray(readout?.items) && readout.items.length) {
+        const card = document.createElement("section");
+        card.className = "insight-support-readout insight-support-readout-secondary";
+
+        const title = document.createElement("div");
+        title.className = "insight-support-readout-title";
+        title.textContent = "Vendor connection points";
+        card.appendChild(title);
+
+        const list = document.createElement("ul");
+        list.className = "insight-support-endpoint-list";
+
+        for (const item of readout.items.slice(0, 5)) {
+          const li = document.createElement("li");
+          li.className = "insight-support-endpoint-item";
+
+          const label = document.createElement("span");
+          label.className = "insight-support-endpoint-label";
+          label.textContent = item.displayLabel || item.fullLabel || item.bucketKey || "Endpoint";
+          li.appendChild(label);
+
+          const meta = document.createElement("span");
+          meta.className = "insight-support-endpoint-meta";
+          const apiSuffix = Number(item.api || 0) > 0 ? ` | ${item.api} API` : "";
+          meta.textContent = `${item.blocked} blocked / ${item.observed} observed${apiSuffix}`;
+          li.appendChild(meta);
+
+          list.appendChild(li);
+        }
+
+        card.appendChild(list);
+        box.appendChild(card);
+      }
+    }
+
+    box.classList.toggle("hidden", box.childElementCount === 0);
+  }
+
   function syncInsightFooterVisibility() {
+    const actionSection = qs("insightActionSection");
     const footer = qs("insightActionsFooter");
     const actions = qs("insightActions");
-    const label = qs("insightActionsLabel");
-    const technical = qs("insightTechnicalPanel");
     const hasActions = !!actions && actions.childElementCount > 0;
-    const hasTechnical = !!technical && !technical.classList.contains("hidden");
-
-    label?.classList.toggle("hidden", !hasActions);
-    footer?.classList.toggle("hidden", !hasActions && !hasTechnical);
+    footer?.classList.toggle("hidden", !hasActions);
+    actionSection?.classList.toggle("hidden", !hasActions);
   }
 
   function buildFallbackInsight(selection, evidence) {
@@ -758,7 +999,7 @@ export function createInsightSheet(deps) {
     setInsightLeadSupport(formatInsightLeadSupport(selection, model.primaryEvent, model.context));
     setInsightLeadFacts(presentation.facts);
     setInsightLeadSeverity(model.insight?.severity);
-    renderActionButtons(qs("insightLeadActions"), getInsightLeadActions(model.insight?.actions || []), { maxItems: 1 });
+    renderActionButtons(qs("insightLeadActions"), [], { maxItems: 1 });
     return model;
   }
 
@@ -781,52 +1022,24 @@ export function createInsightSheet(deps) {
     }
     if (qs("insightSelectedLead")) qs("insightSelectedLead").textContent = formatSelectedLead(activeSelection, primaryEvent);
     setInsightTakeaway(caseSheet.takeaway);
-    if (qs("insightSummary")) qs("insightSummary").textContent = insight.summary || "No summary generated.";
+    if (qs("insightSummary")) {
+      const summaryText = String(caseSheet.summaryDetail || "").trim()
+        || `This finding is based on ${Number(insight?.evidenceSummary?.total || evs.length || 0)} captured events in the current scope.`;
+      qs("insightSummary").textContent = summaryText;
+    }
 
     setInsightSeverity(insight.severity, insight.confidence);
     setInsightConfidence(insight.confidence);
     setInsightCaseMetrics(caseSheet.metrics);
 
     const summary = insight.evidenceSummary || {};
-    const firstText = summary.firstTs ? new Date(summary.firstTs).toLocaleTimeString() : "-";
-    const lastText = summary.lastTs ? new Date(summary.lastTs).toLocaleTimeString() : "-";
-    const dominant = Array.isArray(summary.dominantKinds) && summary.dominantKinds.length
-      ? summary.dominantKinds.map((d) => `${d.kind}:${d.count}`).join(", ")
-      : "-";
-    const categorySummary = buildCategorySummaryParts(summary).join(", ");
-
-    if (qs("insightHow")) {
-      const label = activeSelection?.title || "current scope";
-      const evidenceLine = `From ${label}: total ${summary.total || 0}, ${categorySummary}, first ${firstText}, last ${lastText}, dominant ${dominant}.`;
-      const whatThisAnswers = getWhatThisAnswersLine(context.viewId);
-      const apiHowLine = primaryEvent && isApiSignalEvent(primaryEvent)
-        ? (() => {
-            const presentation = getApiEventPresentation(primaryEvent);
-            const technical = [
-              presentation.canonicalId ? `pattern ${presentation.canonicalId}` : "pattern not yet classified",
-              `signal type ${presentation.signalType}`,
-              `confidence ${presentation.confidenceText}`,
-            ].join(", ");
-            return `Representative Browser API signal: ${presentation.label}. ${presentation.explanation} Observed details: ${presentation.summary}. Backend classification: ${technical}.`;
-          })()
-        : "";
-      if (context.viewId === "vendorTopDomainsEndpoints" && activeSelection?.bucketKey) {
-        const bucketLabel = activeSelection?.bucketLabel || label;
-        const seen = Number(activeSelection?.seen || 0);
-        const blocked = Number(activeSelection?.blocked || 0);
-        const observed = Number(activeSelection?.observed || 0);
-        const other = Number(activeSelection?.other || 0);
-        const bucketLine = `Selected bucket: ${bucketLabel} (${seen} total; ${blocked} blocked; ${observed} observed; ${other} other).`;
-        const example = getBucketExample(activeSelection, evs);
-        const exampleLine = example ? ` Example URL/path: ${example}.` : "";
-        qs("insightHow").textContent = `${whatThisAnswers ? `${whatThisAnswers} ` : ""}${apiHowLine ? `${apiHowLine} ` : ""}${bucketLine}${exampleLine}`;
-      } else {
-        const bucketKeyLine = activeSelection?.bucketKey
-          ? ` Bucket key: ${activeSelection.bucketKey}.`
-          : "";
-        qs("insightHow").textContent = `${whatThisAnswers ? `${whatThisAnswers} ` : ""}${apiHowLine ? `${apiHowLine} ` : ""}${evidenceLine}${bucketKeyLine}`;
-      }
-    }
+    const hasSupportingEvidence = renderSupportingEvidenceBlock({
+      selection: activeSelection,
+      evidenceSummary: summary,
+      context,
+      primaryEvent,
+      evidence: evs,
+    });
 
     const whyItems = [
       ...(Array.isArray(insight.warnings) ? insight.warnings : []),
@@ -847,8 +1060,14 @@ export function createInsightSheet(deps) {
       limits.push("Low confidence due to small sample size; gather more events before acting.");
     }
 
-    renderListItems(qs("insightWhy"), whyItems, "No immediate risk narrative for this scope.");
-    renderListItems(qs("insightLimits"), limits, "No additional caveats.");
+    const hasWhyItems = renderListItems(qs("insightWhy"), whyItems, "", { hideWhenEmpty: true });
+    qs("insightWhy")?.classList.toggle("hidden", !hasWhyItems);
+    const hasLimits = renderListItems(qs("insightLimits"), limits, "", { hideWhenEmpty: true });
+    renderSupportingReadouts(evs);
+    const hasReadouts = (qs("insightEvidenceReadouts")?.childElementCount || 0) > 0;
+    setCaseSectionVisibility(qs("insightSummary"), !!String(qs("insightSummary")?.textContent || "").trim() || hasWhyItems);
+    setCaseSectionVisibility(qs("insightHow"), hasSupportingEvidence || hasReadouts);
+    setCaseSectionVisibility(qs("insightLimits"), hasLimits);
 
     if (getViewMode() === "power" && evs.length) {
       openDrawer(activeSelection?.title, evs);
@@ -870,11 +1089,16 @@ export function createInsightSheet(deps) {
     setInsightConfidence(0.45);
     if (qs("insightSelectedLead")) qs("insightSelectedLead").textContent = "You selected: no datapoint yet.";
     setInsightTakeaway("Choose a datapoint or use Explain / Info to expand the current deterministic scope summary.");
-    if (qs("insightSummary")) qs("insightSummary").textContent = "Choose a datapoint or use Explain / Info to expand the current deterministic scope summary.";
-    if (qs("insightHow")) qs("insightHow").textContent = "This section describes deterministic evidence from current range, filters, and selected scope.";
+    if (qs("insightSummary")) qs("insightSummary").textContent = "Select a chart point to inspect why this scope stands out.";
+    if (qs("insightHow")) qs("insightHow").textContent = "Select a chart point to inspect captured evidence for this scope.";
     setInsightCaseMetrics([]);
-    renderListItems(qs("insightWhy"), [], "No immediate risk narrative until evidence is selected.");
-    renderListItems(qs("insightLimits"), [], "Derived from captured events only; not a complete audit of all page behavior.");
+    renderListItems(qs("insightWhy"), [], "", { hideWhenEmpty: true });
+    qs("insightWhy")?.classList.add("hidden");
+    renderListItems(qs("insightLimits"), ["Insights reflect captured events in the active range and filters."], "", { hideWhenEmpty: true });
+    renderSupportingReadouts([]);
+    setCaseSectionVisibility(qs("insightSummary"), true);
+    setCaseSectionVisibility(qs("insightHow"), true);
+    setCaseSectionVisibility(qs("insightLimits"), true);
     renderInsightActions([]);
     syncInsightFooterVisibility();
   }

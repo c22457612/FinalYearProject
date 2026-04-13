@@ -25,6 +25,7 @@ export function createChartOrchestrationController(deps) {
     buildVendorKindMatrixOption,
     buildRuleIdFrequencyOption,
     setVizSelection,
+    syncVizSelectByMode,
     renderVendorChips,
     renderECharts,
     focusVendorDetailsUx,
@@ -42,7 +43,6 @@ export function createChartOrchestrationController(deps) {
       viewId === "timeline"
       || viewId === "vendorAllowedBlockedTimeline"
       || viewId === "vendorShareOverTime"
-      || viewId === "riskTrend"
       || viewId === "baselineDetectedBlockedTrend"
     ) {
       semanticKey = `bin:${typeof dataIndex === "number" ? dataIndex : ""}`;
@@ -200,9 +200,11 @@ export function createChartOrchestrationController(deps) {
       const vendor = meta.vendorByLabel?.get(label) || null;
       if (vendor) {
         setSelectedVendor(vendor);
+        syncVizSelectByMode();
         renderVendorChips();
         renderECharts();
       } else {
+        syncVizSelectByMode();
         renderVendorChips();
         hideVendorSelectionCue();
       }
@@ -228,9 +230,11 @@ export function createChartOrchestrationController(deps) {
 
       if (vendor) {
         setSelectedVendor(vendor);
+        syncVizSelectByMode();
         renderVendorChips();
         renderECharts();
       } else {
+        syncVizSelectByMode();
         renderVendorChips();
         hideVendorSelectionCue();
       }
@@ -309,7 +313,7 @@ export function createChartOrchestrationController(deps) {
       setVizSelection({
         type: viewId === "kinds" ? "kind" : "rule",
         value: kind || "",
-        title: viewId === "kinds" ? `Kind: ${kind}` : `Rule ID: ${kind}`,
+        title: viewId === "kinds" ? `Event type: ${kind}` : `Rule ID: ${kind}`,
         summaryHtml: `<div class="muted">${evs.length} events in this group (current filters/range).</div>`,
         events: evs,
         chartPoint,

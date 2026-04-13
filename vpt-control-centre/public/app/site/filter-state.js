@@ -209,7 +209,6 @@ export function getActiveFilterLabels(filterState) {
   if (filterState.party !== "all") labels.push(`party=${filterState.party}`);
   if (filterState.resource !== "all") labels.push(`resource=${filterState.resource}`);
   if (filterState.surface !== "all") labels.push(`surface=${filterState.surface}`);
-  if (filterState.privacyStatus !== "all") labels.push(`privacy=${filterState.privacyStatus}`);
   if (filterState.mitigationStatus !== "all") labels.push(`mitigation=${filterState.mitigationStatus}`);
 
   const term = String(filterState.domainText || "").trim();
@@ -241,7 +240,7 @@ export function readFilterStateFromControls(qs, filterState) {
   filterState.party = qs("partyFilter")?.value || "all";
   filterState.resource = qs("resourceFilter")?.value || "all";
   filterState.surface = qs("surfaceFilter")?.value || "all";
-  filterState.privacyStatus = qs("privacyStatusFilter")?.value || "all";
+  filterState.privacyStatus = "all";
   filterState.mitigationStatus = qs("mitigationStatusFilter")?.value || "all";
   filterState.domainText = qs("domainFilter")?.value || "";
 }
@@ -254,7 +253,6 @@ export function writeFilterStateToControls(qs, filterState) {
   if (qs("partyFilter")) qs("partyFilter").value = filterState.party;
   if (qs("resourceFilter")) qs("resourceFilter").value = filterState.resource;
   if (qs("surfaceFilter")) qs("surfaceFilter").value = filterState.surface;
-  if (qs("privacyStatusFilter")) qs("privacyStatusFilter").value = filterState.privacyStatus;
   if (qs("mitigationStatusFilter")) qs("mitigationStatusFilter").value = filterState.mitigationStatus;
   if (qs("domainFilter")) qs("domainFilter").value = filterState.domainText;
 }

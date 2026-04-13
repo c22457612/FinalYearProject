@@ -13,20 +13,6 @@ const CHART_GUIDE_BY_VIEW_ID = Object.freeze({
     gotcha: "Sparse vendor scopes may compact to a timeline-style focus.",
     powerDetail: "Switch metric to compare seen, blocked, or observed emphasis.",
   }),
-  vendorBlockRateComparison: Object.freeze({
-    what: "Which vendors have the highest blocked-share in this scope.",
-    how: [
-      "Each horizontal bar is a vendor and the value is blocked percent.",
-      "Higher bars mean more requests were blocked relative to that vendor's total.",
-      "Compare bar height alongside total counts in tooltip.",
-    ],
-    bestFor: [
-      "Prioritizing vendors with high mitigation pressure.",
-      "Comparing enforcement balance across vendors.",
-    ],
-    gotcha: "Small totals can produce unstable percentages.",
-    powerDetail: "Use filters/range to validate whether high rates persist with larger samples.",
-  }),
   vendorShareOverTime: Object.freeze({
     what: "How top vendors share total activity across time in this scope.",
     how: [
@@ -68,20 +54,6 @@ const CHART_GUIDE_BY_VIEW_ID = Object.freeze({
     ],
     gotcha: "Requires vendor focus; sparse scopes may show compact fallback.",
     powerDetail: "Top N and sort help surface long-tail endpoint patterns.",
-  }),
-  riskTrend: Object.freeze({
-    what: "How risk-weighted activity rises or falls over time.",
-    how: [
-      "Time runs left to right; count rises upward.",
-      "Series separate risk/severity buckets.",
-      "Look for sustained climbs, not only single spikes.",
-    ],
-    bestFor: [
-      "Monitoring risk drift in current scope.",
-      "Checking whether risk stabilizes after mitigation.",
-    ],
-    gotcha: "Low-volume windows can appear flat.",
-    powerDetail: "Use semantic filters to isolate specific risk surfaces.",
   }),
   baselineDetectedBlockedTrend: Object.freeze({
     what: "How baseline, detected, and blocked outcomes change over time.",
@@ -126,23 +98,23 @@ const CHART_GUIDE_BY_VIEW_ID = Object.freeze({
     powerDetail: "Sort and Top N expose head-versus-tail differences.",
   }),
   kinds: Object.freeze({
-    what: "Which event kinds are most common in this scope.",
+    what: "Which event types are most common in this scope.",
     how: [
-      "Each bar represents an event-kind bucket.",
+      "Each bar represents an event-type bucket.",
       "Bar height is total count.",
-      "Compare blocked and observed mix by kind.",
+      "Compare blocked and observed mix by event type.",
     ],
     bestFor: [
       "Quick event-type mix checks.",
       "Validating capture patterns.",
     ],
-    gotcha: "Kind toggles can hide categories.",
-    powerDetail: "Combine with surface filter for tighter comparisons.",
+    gotcha: "Outcome toggles can hide categories.",
+    powerDetail: "Combine with signal surface filtering for tighter comparisons.",
   }),
   apiGating: Object.freeze({
-    what: "How often API-like third-party calls appear and how they resolve.",
+    what: "How often third-party API-like requests appear and how they resolve.",
     how: [
-      "Bars group API-like call buckets.",
+      "Bars group third-party API-like request buckets.",
       "Height reflects frequency in current scope.",
       "Outcome split shows blocked versus observed balance.",
     ],
@@ -152,20 +124,6 @@ const CHART_GUIDE_BY_VIEW_ID = Object.freeze({
     ],
     gotcha: "Heuristic grouping can under/over-group rare calls.",
     powerDetail: "Pair with domain filter for targeted investigation.",
-  }),
-  vendorKindMatrix: Object.freeze({
-    what: "How vendor activity is distributed across event kinds.",
-    how: [
-      "Rows and columns map vendor-versus-kind pairings.",
-      "Stronger intensity means higher count.",
-      "Look for concentrated hotspots.",
-    ],
-    bestFor: [
-      "Comparing behavior across vendors.",
-      "Finding vendor-kind outliers.",
-    ],
-    gotcha: "Sparse matrices can look empty even with valid data.",
-    powerDetail: "Reduce noise with range narrowing or focused filters.",
   }),
   ruleIdFrequency: Object.freeze({
     what: "Which rule IDs trigger most often in the current scope.",
@@ -194,34 +152,6 @@ const CHART_GUIDE_BY_VIEW_ID = Object.freeze({
     ],
     gotcha: "Unknown can include mixed residual traffic.",
     powerDetail: "Use party filter to split first-party versus third-party patterns.",
-  }),
-  modeBreakdown: Object.freeze({
-    what: "How activity splits across protection outcomes.",
-    how: [
-      "Bars show blocked, observed, and other mode totals.",
-      "Relative size indicates enforcement balance.",
-      "Watch shifts as range or filters change.",
-    ],
-    bestFor: [
-      "Checking policy impact at a glance.",
-      "Tracking blocked-to-observed balance.",
-    ],
-    gotcha: "Mode labels reflect captured outcomes, not user intent.",
-    powerDetail: "Apply vendor focus to inspect one vendor's policy profile.",
-  }),
-  partySplit: Object.freeze({
-    what: "How activity splits between first/unknown party and third-party.",
-    how: [
-      "Bars compare party groups within current scope.",
-      "Bar height is event volume.",
-      "Use range changes to compare balance shifts.",
-    ],
-    bestFor: [
-      "Quick third-party share checks.",
-      "Communicating party-balance trends.",
-    ],
-    gotcha: "Party classification depends on available domain context.",
-    powerDetail: "Pair with vendor views to see which vendors drive third-party share.",
   }),
   hourHeatmap: Object.freeze({
     what: "When activity clusters by hour and day.",

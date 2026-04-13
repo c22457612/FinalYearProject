@@ -142,33 +142,88 @@ function normalizeRows(rows) {
   }));
 }
 
-function getBarLikeGridBottom(axisLabelRotate = 45) {
+function getBarLikeGridBottom(axisLabelRotate = 45, maxLabelLines = 1) {
   const rotate = Math.abs(Number(axisLabelRotate || 0));
-  if (rotate >= 40) return 82;
-  if (rotate >= 28) return 68;
-  if (rotate >= 12) return 56;
-  return 44;
+  const lineCount = Math.max(1, Number(maxLabelLines) || 1);
+  const extraLineRoom = Math.max(0, lineCount - 1) * 16;
+  if (rotate >= 40) return 82 + extraLineRoom;
+  if (rotate >= 28) return 68 + extraLineRoom;
+  if (rotate >= 12) return 56 + extraLineRoom;
+  return 44 + extraLineRoom;
 }
 
-function buildBarLikeOption(rows, { seriesName = "count", defaultType = "bar", maxLabels = 20, axisLabelRotate = 45 } = {}) {
+function wrapLabelOnDelimiter(value, delimiter = ".", maxLineLength = 16, maxLines = 3) {
+  const raw = String(value || "").trim();
+  if (!raw) return "";
+  if (!delimiter || !raw.includes(delimiter) || raw.length <= maxLineLength) return raw;
+
+  const parts = raw.split(delimiter).map((part) => String(part || "").trim()).filter(Boolean);
+  if (!parts.length) return raw;
+
+  const lines = [];
+  let current = parts.shift() || "";
+
+  while (parts.length) {
+    const nextPart = parts.shift();
+    const candidate = current ? `${current}${delimiter}${nextPart}` : nextPart;
+    if (candidate.length <= maxLineLength || !current) {
+      current = candidate;
+      continue;
+    }
+
+    lines.push(current);
+    if (lines.length >= Math.max(1, maxLines) - 1) {
+      current = [nextPart, ...parts].filter(Boolean).join(delimiter);
+      parts.length = 0;
+      break;
+    }
+    current = nextPart;
+  }
+
+  if (current) lines.push(current);
+  return lines.join("\n");
+}
+
+function buildBarLikeOption(
+  rows,
+  {
+    seriesName = "count",
+    defaultType = "bar",
+    maxLabels = 20,
+    axisLabelRotate = 45,
+    axisLabelFormatter = null,
+    axisLabelHideOverlap = true,
+    axisLabelFontSize = 13,
+    axisLabelMargin = 10,
+  } = {},
+) {
   const ranked = sortRankedRows(rows).slice(0, maxLabels);
   const normalized = normalizeRows(ranked);
   const labels = normalized.map((row) => row.label);
   const values = normalized.map((row) => row.value || 0);
   const evidenceByLabel = new Map(normalized.map((row) => [row.label, row.evs || []]));
+  const formatAxisLabel = typeof axisLabelFormatter === "function"
+    ? axisLabelFormatter
+    : (value) => String(value || "");
+  const maxLabelLines = Math.max(
+    1,
+    ...labels.map((label) => String(formatAxisLabel(label)).split("\n").filter(Boolean).length || 1),
+  );
 
   return {
     option: {
       tooltip: { trigger: "axis" },
-      grid: { left: 40, right: 18, top: 18, bottom: getBarLikeGridBottom(axisLabelRotate) },
+      grid: { left: 40, right: 18, top: 18, bottom: getBarLikeGridBottom(axisLabelRotate, maxLabelLines) },
       xAxis: {
         type: "category",
         data: labels,
         axisLabel: {
           rotate: axisLabelRotate,
-          margin: 10,
-          fontSize: 13,
-          hideOverlap: true,
+          margin: axisLabelMargin,
+          fontSize: axisLabelFontSize,
+          hideOverlap: axisLabelHideOverlap,
+          lineHeight: maxLabelLines > 1 ? Math.max(16, axisLabelFontSize + 2) : undefined,
+          formatter: axisLabelFormatter || undefined,
         },
       },
       yAxis: {
@@ -636,6 +691,12 @@ function buildVendorAllowedBlockedTimelineOption(events, options = {}) {
     const allowed = new Array(bins).fill(0);
     const total = new Array(bins).fill(0);
     const binEvents = new Array(bins).fill(0).map(() => []);
+    const binStats = new Array(bins).fill(null).map(() => ({
+      blocked: 0,
+      allowed: 0,
+      total: 0,
+      presence: "empty",
+    }));
 
     for (const ev of networkEvents) {
       if (!ev?.ts) continue;
@@ -647,10 +708,35 @@ function buildVendorAllowedBlockedTimelineOption(events, options = {}) {
     }
 
     for (let i = 0; i < bins; i++) {
+      const blockedCount = Number(blocked[i] || 0);
+      const allowedCount = Number(allowed[i] || 0);
+      const totalCount = Number(total[i] || 0);
+      binStats[i] = {
+        blocked: blockedCount,
+        allowed: allowedCount,
+        total: totalCount,
+        presence: blockedCount > 0 && allowedCount > 0
+          ? "mixed"
+          : blockedCount > 0
+            ? "blocked-only"
+            : allowedCount > 0
+              ? "allowed-only"
+              : "empty",
+      };
       labels.push(new Date(start + i * targetBinMs).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }));
     }
 
-    return { bins, labels, blocked, allowed, total, binEvents };
+    return {
+      bins,
+      labels,
+      blocked,
+      allowed,
+      total,
+      blockedSeries: binStats.map((bin) => (bin.blocked > 0 ? bin.blocked : null)),
+      allowedSeries: binStats.map((bin) => (bin.allowed > 0 ? bin.allowed : null)),
+      binEvents,
+      binStats,
+    };
   };
 
   let effectiveBinMs = baseBinMs;
@@ -680,9 +766,7 @@ function buildVendorAllowedBlockedTimelineOption(events, options = {}) {
     binEvents: timeline.binEvents,
     totalEvents: networkEvents.length,
   });
-  const simplifiedSeries = densityAware
-    && finalSignal.isLowSignal
-    && finalSignal.totalEvents <= LOW_SIGNAL_SIMPLE_SERIES_EVENT_THRESHOLD;
+  const simplifiedSeries = false;
   const focusedWindow = densityAware
     && finalSignal.isLowSignal
     && !!finalSignal.reasons?.includes("mostly-empty-timespan");
@@ -699,9 +783,50 @@ function buildVendorAllowedBlockedTimelineOption(events, options = {}) {
     viewMode,
   });
 
+  const buildVendorTimelineTooltip = (params) => {
+    const rows = Array.isArray(params) ? params : [params];
+    const first = rows.find(Boolean);
+    if (!first) return "";
+
+    const label = String(first?.axisValueLabel || first?.axisValue || "Time bucket");
+    const dataIndex = Number.isInteger(first?.dataIndex) ? first.dataIndex : timeline.labels.indexOf(label);
+    const bin = timeline.binStats?.[dataIndex] || { blocked: 0, allowed: 0, total: 0, presence: "empty" };
+    const lines = [`<strong>${label}</strong>`];
+
+    if (bin.blocked > 0) {
+      const blockedMarker = rows.find((row) => row?.seriesName === "Blocked")?.marker || "";
+      lines.push(`${blockedMarker}Blocked: ${bin.blocked} events`);
+    }
+    if (bin.allowed > 0) {
+      const allowedMarker = rows.find((row) => row?.seriesName === "Allowed")?.marker || "";
+      lines.push(`${allowedMarker}Allowed: ${bin.allowed} events`);
+    }
+    if (bin.total > 0) {
+      lines.push(`Total: ${bin.total} events`);
+    } else {
+      lines.push("No captured network events in this interval");
+    }
+
+    return lines.join("<br/>");
+  };
+
+  const blockedSeries = buildForcedStackedBarSeries("Blocked", timeline.blockedSeries, "vendor-allowed-blocked");
+  const allowedSeries = buildForcedStackedBarSeries("Allowed", timeline.allowedSeries, "vendor-allowed-blocked");
+  for (const series of [blockedSeries, allowedSeries]) {
+    series.barWidth = "72%";
+    series.barMaxWidth = 40;
+    series.barMinHeight = 4;
+    series.barCategoryGap = "20%";
+    series.barGap = "-100%";
+  }
+
   return {
     option: {
-      tooltip: { trigger: "axis", formatter: buildTrendTooltipFormatter },
+      tooltip: {
+        trigger: "axis",
+        axisPointer: { type: "shadow" },
+        formatter: buildVendorTimelineTooltip,
+      },
       legend: { top: 0, textStyle: getTrendLegendTextStyle(), itemWidth: 22, itemHeight: 12, itemGap: 14 },
       toolbox: buildTrendToolbox(),
       brush: {
@@ -722,18 +847,14 @@ function buildVendorAllowedBlockedTimelineOption(events, options = {}) {
           ...(defaultZoomWindow ? { start: defaultZoomWindow.start, end: defaultZoomWindow.end } : {}),
         },
       ],
-      series: simplifiedSeries
-        ? [buildSeries("Network events", timeline.total, { defaultType: "bar" })]
-        : [
-          buildSeries("Blocked", timeline.blocked, { defaultType: "bar", stackKey: "vendor-allowed-blocked" }),
-          buildSeries("Allowed", timeline.allowed, { defaultType: "bar", stackKey: "vendor-allowed-blocked" }),
-        ],
+      series: [blockedSeries, allowedSeries],
     },
     meta: {
       start,
       binMs: effectiveBinMs,
       binEvents: timeline.binEvents,
       labels: timeline.labels,
+      binStats: timeline.binStats,
       lowSignal: finalSignal,
       densityDefaults: {
         applied: densityBinApplied || simplifiedSeries || !!defaultZoomWindow,
@@ -748,7 +869,7 @@ function buildVendorAllowedBlockedTimelineOption(events, options = {}) {
 }
 
 const GENERIC_ENDPOINT_PREFIXES = new Set(["api", "v1", "v2", "v3"]);
-const VENDOR_ENDPOINT_COMPACT_SUMMARY_KEY = "__vendor-endpoint-compact-summary";
+const DEFAULT_VENDOR_ENDPOINT_READOUT_LIMIT = 5;
 
 function parseUrlObject(value) {
   const raw = String(value || "").trim();
@@ -838,110 +959,14 @@ function assessVendorBucketSignal(rows) {
   };
 }
 
-function buildVendorEndpointCompactSummaryOption({
-  blockedTotal = 0,
-  observedTotal = 0,
-  blockedApiTotal = 0,
-  observedApiTotal = 0,
-  otherTotal = 0,
-  blockedTotalRaw = 0,
-  observedTotalRaw = 0,
-  blockedApiTotalRaw = 0,
-  observedApiTotalRaw = 0,
-  otherTotalRaw = 0,
-  bucketCount = 0,
-  displayLabelByBucketKey,
-  fullLabelByBucketKey,
-  statsByBucketKey,
-} = {}) {
-  const summaryLabel = `All ${bucketCount} endpoint bucket${bucketCount === 1 ? "" : "s"}`;
-  displayLabelByBucketKey.set(VENDOR_ENDPOINT_COMPACT_SUMMARY_KEY, summaryLabel);
-  fullLabelByBucketKey.set(VENDOR_ENDPOINT_COMPACT_SUMMARY_KEY, summaryLabel);
-  statsByBucketKey.set(VENDOR_ENDPOINT_COMPACT_SUMMARY_KEY, {
-    seen: Number(blockedTotalRaw + observedTotalRaw + blockedApiTotalRaw + observedApiTotalRaw + otherTotalRaw),
-    blocked: Number(blockedTotalRaw),
-    observed: Number(observedTotalRaw),
-    blockedApi: Number(blockedApiTotalRaw),
-    observedApi: Number(observedApiTotalRaw),
-    api: Number(blockedApiTotalRaw + observedApiTotalRaw),
-    other: Number(otherTotalRaw),
-  });
-
-  return {
-    option: {
-      tooltip: {
-        trigger: "item",
-        axisPointer: { type: "none" },
-        formatter: (params) => {
-          const first = Array.isArray(params) ? params[0] : params;
-          const key = String(first?.axisValue ?? first?.name ?? VENDOR_ENDPOINT_COMPACT_SUMMARY_KEY);
-          const stats = statsByBucketKey.get(key) || { seen: 0, blocked: 0, observed: 0, blockedApi: 0, observedApi: 0, other: 0 };
-          const lines = [`<strong>${summaryLabel}</strong>`];
-          if (vizOptions.normalize) {
-            lines.push(`Blocked: ${Number(first?.seriesName === "Blocked" ? first?.value : (stats.blocked * 100) / Math.max(1, stats.seen)).toFixed(2)}% (${stats.blocked})`);
-            lines.push(`Observed: ${Number(first?.seriesName === "Observed" ? first?.value : (stats.observed * 100) / Math.max(1, stats.seen)).toFixed(2)}% (${stats.observed})`);
-            lines.push(`Blocked API: ${Number(first?.seriesName === "Blocked API" ? first?.value : (stats.blockedApi * 100) / Math.max(1, stats.seen)).toFixed(2)}% (${stats.blockedApi})`);
-            lines.push(`Observed API: ${Number(first?.seriesName === "Observed API" ? first?.value : (stats.observedApi * 100) / Math.max(1, stats.seen)).toFixed(2)}% (${stats.observedApi})`);
-            lines.push(`Other: ${Number(first?.seriesName === "Other" ? first?.value : (stats.other * 100) / Math.max(1, stats.seen)).toFixed(2)}% (${stats.other})`);
-          } else {
-            lines.push(`Blocked: ${stats.blocked}`);
-            lines.push(`Observed: ${stats.observed}`);
-            lines.push(`Blocked API: ${stats.blockedApi}`);
-            lines.push(`Observed API: ${stats.observedApi}`);
-            lines.push(`Other: ${stats.other}`);
-          }
-          lines.push(`Total: ${stats.seen}`);
-          return lines.join("<br/>");
-        },
-      },
-      legend: { top: 0 },
-      grid: { left: 110, right: 18, top: 44, bottom: 46, containLabel: true },
-      xAxis: {
-        type: "value",
-        name: "Events",
-        nameLocation: "middle",
-        nameGap: 34,
-        max: vizOptions.normalize ? 100 : null,
-        axisLabel: vizOptions.normalize ? { formatter: "{value}%" } : undefined,
-      },
-      yAxis: {
-        type: "category",
-        data: [VENDOR_ENDPOINT_COMPACT_SUMMARY_KEY],
-        axisLabel: {
-          formatter: (value) => displayLabelByBucketKey.get(String(value || "")) || String(value || ""),
-        },
-      },
-      series: [
-        buildForcedStackedBarSeries("Blocked", [blockedTotal], "vendor-endpoint-compact"),
-        buildForcedStackedBarSeries("Observed", [observedTotal], "vendor-endpoint-compact"),
-        buildForcedStackedBarSeries("Blocked API", [blockedApiTotal], "vendor-endpoint-compact"),
-        buildForcedStackedBarSeries("Observed API", [observedApiTotal], "vendor-endpoint-compact"),
-        buildForcedStackedBarSeries("Other", [otherTotal], "vendor-endpoint-compact"),
-      ],
-    },
-    categoryKeys: [VENDOR_ENDPOINT_COMPACT_SUMMARY_KEY],
-  };
-}
-
-function buildVendorTopDomainsEndpointsOption(events, selectedVendor, metric = "seen", options = {}) {
-  const densityAware = options?.densityAware === true;
+function buildVendorEndpointRanking(events, selectedVendor, metric = "seen", { limit = null } = {}) {
   const vendorId = String(selectedVendor?.vendorId || "");
   const vendorName = selectedVendor?.vendorName || "the selected vendor";
   if (!vendorId) {
-    return {
-      option: { xAxis: { type: "category", data: [] }, yAxis: { type: "value" }, series: [] },
-      meta: {
-        evidenceByBucket: new Map(),
-        bucketKeyByLabel: new Map(),
-        displayLabelByBucketKey: new Map(),
-        fullLabelByBucketKey: new Map(),
-        topBucketSummary: null,
-        stateGuidanceMessage: "Select a vendor to see where it connects (top domains/endpoints).",
-      },
-    };
+    return { vendorName, rows: [], lowSignal: null, stateGuidanceMessage: "Select a vendor to see where it connects (top domains/endpoints)." };
   }
 
-  const map = new Map(); // bucketKey -> aggregated row
+  const map = new Map();
   for (const ev of Array.isArray(events) ? events : []) {
     const domain = deriveBucketDomain(ev);
     if (!domain) continue;
@@ -977,20 +1002,75 @@ function buildVendorTopDomainsEndpointsOption(events, selectedVendor, metric = "
 
   const rows = Array.from(map.values()).map((row) => {
     const metricValue = metric === "blocked"
-      ? row.blockedCount
+      ? Number(row.blockedCount || 0) + Number(row.blockedApiCount || 0)
       : metric === "observed"
-        ? row.observedCount
+        ? Number(row.observedCount || 0) + Number(row.observedApiCount || 0)
         : row.seenCount;
 
     return {
       ...row,
       value: metricValue,
-      displayLabel: `${row.domain} \u2014 ${row.bucketShort}`,
-      fullLabel: `${row.domain} \u2014 ${row.bucketRaw}`,
+      displayLabel: `${row.domain} - ${row.bucketShort}`,
+      fullLabel: `${row.domain} - ${row.bucketRaw}`,
     };
+  }).sort((a, b) => {
+    const diff = Number(b.value || 0) - Number(a.value || 0);
+    if (diff !== 0) return diff;
+    return String(a.bucketKey || "").localeCompare(String(b.bucketKey || ""), undefined, { sensitivity: "base" });
   });
 
   if (!rows.length) {
+    return {
+      vendorName,
+      rows: [],
+      lowSignal: null,
+      stateGuidanceMessage: "",
+    };
+  }
+
+  const limited = Number.isFinite(Number(limit)) && Number(limit) > 0
+    ? rows.slice(0, Number(limit))
+    : rows;
+  const lowSignal = assessVendorBucketSignal(limited);
+  const stateGuidanceMessage = lowSignal.isLowSignal
+    ? `Low-signal inspection: only ${lowSignal.totalEvents} events span ${lowSignal.bucketCount} endpoint bucket${lowSignal.bucketCount === 1 ? "" : "s"} for ${vendorName} in this scope.`
+    : "";
+
+  return {
+    vendorName,
+    rows: limited,
+    lowSignal,
+    stateGuidanceMessage,
+  };
+}
+
+function buildVendorEndpointReadoutData(events, selectedVendor, options = {}) {
+  const limit = Math.min(
+    DEFAULT_VENDOR_ENDPOINT_READOUT_LIMIT,
+    Math.max(1, Number(options?.limit) || DEFAULT_VENDOR_ENDPOINT_READOUT_LIMIT),
+  );
+  const ranking = buildVendorEndpointRanking(events, selectedVendor, options?.metric || "seen", { limit });
+  return {
+    vendorName: ranking.vendorName,
+    stateGuidanceMessage: ranking.stateGuidanceMessage,
+    items: ranking.rows.map((row) => ({
+      bucketKey: row.bucketKey,
+      displayLabel: row.displayLabel,
+      fullLabel: row.fullLabel,
+      total: Number(row.seenCount || 0),
+      blocked: Number(row.blockedCount || 0) + Number(row.blockedApiCount || 0),
+      observed: Number(row.observedCount || 0) + Number(row.observedApiCount || 0),
+      api: Number(row.blockedApiCount || 0) + Number(row.observedApiCount || 0),
+      other: Number(row.otherCount || 0),
+    })),
+  };
+}
+
+function buildVendorTopDomainsEndpointsOption(events, selectedVendor, metric = "seen", options = {}) {
+  void options;
+  const topLimit = Math.max(1, Number(vizOptions.topN) || 20);
+  const ranking = buildVendorEndpointRanking(events, selectedVendor, metric, { limit: topLimit });
+  if (!ranking.rows.length) {
     return {
       option: { xAxis: { type: "category", data: [] }, yAxis: { type: "value" }, series: [] },
       meta: {
@@ -999,50 +1079,36 @@ function buildVendorTopDomainsEndpointsOption(events, selectedVendor, metric = "
         displayLabelByBucketKey: new Map(),
         fullLabelByBucketKey: new Map(),
         topBucketSummary: null,
-        stateGuidanceMessage: `No domain/endpoint activity is available for ${vendorName} in this scope.`,
+        lowSignal: ranking.lowSignal,
+        stateGuidanceMessage: ranking.stateGuidanceMessage || `No domain/endpoint activity is available for ${ranking.vendorName} in this scope.`,
       },
     };
   }
 
-  const topLimit = Math.max(1, Number(vizOptions.topN) || 20);
-  const ranked = rows
-    .slice()
-    .sort((a, b) => {
-      const diff = Number(b.value || 0) - Number(a.value || 0);
-      if (diff !== 0) return diff;
-      return String(a.bucketKey || "").localeCompare(String(b.bucketKey || ""), undefined, { sensitivity: "base" });
-    })
-    .slice(0, topLimit);
-
-  const bucketSignal = assessVendorBucketSignal(ranked);
-  const compactSummaryActive = densityAware && bucketSignal.isLowSignal;
-  let categoryKeys = ranked.map((row) => row.bucketKey);
-  let blocked = new Array(categoryKeys.length).fill(0);
-  let observed = new Array(categoryKeys.length).fill(0);
-  let blockedApi = new Array(categoryKeys.length).fill(0);
-  let observedApi = new Array(categoryKeys.length).fill(0);
-  let other = new Array(categoryKeys.length).fill(0);
+  const ranked = ranking.rows;
   const evidenceByBucket = new Map();
   const bucketKeyByLabel = new Map();
   const displayLabelByBucketKey = new Map();
   const fullLabelByBucketKey = new Map();
   const statsByBucketKey = new Map();
+  const categoryKeys = ranked.map((row) => row.bucketKey);
+  const blocked = new Array(categoryKeys.length).fill(0);
+  const observed = new Array(categoryKeys.length).fill(0);
+  const other = new Array(categoryKeys.length).fill(0);
 
   for (let i = 0; i < ranked.length; i++) {
     const row = ranked[i];
     const total = Math.max(1, Number(row.seenCount || 0));
+    const blockedTotal = Number(row.blockedCount || 0) + Number(row.blockedApiCount || 0);
+    const observedTotal = Number(row.observedCount || 0) + Number(row.observedApiCount || 0);
 
     if (vizOptions.normalize) {
-      blocked[i] = Number((((row.blockedCount || 0) * 100) / total).toFixed(2));
-      observed[i] = Number((((row.observedCount || 0) * 100) / total).toFixed(2));
-      blockedApi[i] = Number((((row.blockedApiCount || 0) * 100) / total).toFixed(2));
-      observedApi[i] = Number((((row.observedApiCount || 0) * 100) / total).toFixed(2));
+      blocked[i] = Number(((blockedTotal * 100) / total).toFixed(2));
+      observed[i] = Number(((observedTotal * 100) / total).toFixed(2));
       other[i] = Number((((row.otherCount || 0) * 100) / total).toFixed(2));
     } else {
-      blocked[i] = row.blockedCount || 0;
-      observed[i] = row.observedCount || 0;
-      blockedApi[i] = row.blockedApiCount || 0;
-      observedApi[i] = row.observedApiCount || 0;
+      blocked[i] = blockedTotal;
+      observed[i] = observedTotal;
       other[i] = row.otherCount || 0;
     }
 
@@ -1052,8 +1118,8 @@ function buildVendorTopDomainsEndpointsOption(events, selectedVendor, metric = "
     fullLabelByBucketKey.set(row.bucketKey, row.fullLabel);
     statsByBucketKey.set(row.bucketKey, {
       seen: Number(row.seenCount || 0),
-      blocked: Number(row.blockedCount || 0),
-      observed: Number(row.observedCount || 0),
+      blocked: blockedTotal,
+      observed: observedTotal,
       blockedApi: Number(row.blockedApiCount || 0),
       observedApi: Number(row.observedApiCount || 0),
       api: Number((row.blockedApiCount || 0) + (row.observedApiCount || 0)),
@@ -1061,195 +1127,129 @@ function buildVendorTopDomainsEndpointsOption(events, selectedVendor, metric = "
     });
   }
 
-  const stackKey = "total";
-  let blockedSeries = buildForcedStackedBarSeries("Blocked", blocked, stackKey);
-  let observedSeries = buildForcedStackedBarSeries("Observed", observed, stackKey);
-  let blockedApiSeries = buildForcedStackedBarSeries("Blocked API", blockedApi, stackKey);
-  let observedApiSeries = buildForcedStackedBarSeries("Observed API", observedApi, stackKey);
-  let otherSeries = buildForcedStackedBarSeries("Other", other, stackKey);
-
   const topBucket = ranked[0] || null;
-  let compactSummary = null;
   const chartTheme = readChartTheme();
-  let option = {
-    tooltip: {
-      trigger: "item",
-      axisPointer: {
-        type: "none",
-      },
-      formatter: (params) => {
-        const list = Array.isArray(params) ? params : [params];
-        const first = list[0] || {};
-        const key = String(first?.axisValue ?? first?.name ?? "");
-        if (!key) return "";
-        const fullLabel = fullLabelByBucketKey.get(key) || key;
-        const stats = statsByBucketKey.get(key) || { seen: 0, blocked: 0, observed: 0, blockedApi: 0, observedApi: 0, other: 0 };
-        const lines = [`<strong>${fullLabel}</strong>`];
-
-        if (vizOptions.normalize) {
-          const bySeries = new Map(list.map((row) => [String(row?.seriesName || ""), Number(row?.value || 0)]));
-          lines.push(`Blocked: ${Number(bySeries.get("Blocked") || 0).toFixed(2)}% (${stats.blocked})`);
-          lines.push(`Observed: ${Number(bySeries.get("Observed") || 0).toFixed(2)}% (${stats.observed})`);
-          lines.push(`Blocked API: ${Number(bySeries.get("Blocked API") || 0).toFixed(2)}% (${stats.blockedApi})`);
-          lines.push(`Observed API: ${Number(bySeries.get("Observed API") || 0).toFixed(2)}% (${stats.observedApi})`);
-          lines.push(`Other: ${Number(bySeries.get("Other") || 0).toFixed(2)}% (${stats.other})`);
-        } else {
-          lines.push(`Blocked: ${stats.blocked}`);
-          lines.push(`Observed: ${stats.observed}`);
-          lines.push(`Blocked API: ${stats.blockedApi}`);
-          lines.push(`Observed API: ${stats.observedApi}`);
-          lines.push(`Other: ${stats.other}`);
-        }
-
-        lines.push(`Total: ${stats.seen}`);
-        return lines.join("<br/>");
-      },
-    },
-    legend: { top: 0 },
-    grid: { left: 68, right: 16, top: 44, bottom: 46, containLabel: true },
-    xAxis: {
-      type: "value",
-      name: "Events",
-      nameLocation: "middle",
-      nameGap: 34,
-      nameTextStyle: {
-        color: chartTheme.axisName,
-        fontWeight: 700,
-        fontSize: 12,
-      },
-      max: vizOptions.normalize ? 100 : null,
-      axisLine: {
-        show: true,
-        lineStyle: { color: chartTheme.axisLine },
-      },
-      axisTick: { show: true },
-      axisLabel: {
-        color: chartTheme.axisLabel,
-        ...(vizOptions.normalize ? { formatter: "{value}%" } : {}),
-      },
-    },
-    yAxis: {
-      type: "category",
-      name: "Domains / endpoints",
-      nameLocation: "end",
-      nameRotate: 0,
-      nameGap: 92,
-      nameTextStyle: {
-        color: chartTheme.axisName,
-        fontWeight: 700,
-        fontSize: 12,
-        align: "right",
-        verticalAlign: "top",
-        padding: [54, 0, 0, 0],
-      },
-      data: categoryKeys,
-      axisLine: {
-        show: true,
-        lineStyle: { color: chartTheme.axisLine },
-      },
-      axisTick: { show: true },
-      axisLabel: {
-        color: chartTheme.axisLabel,
-        formatter: (value) => displayLabelByBucketKey.get(String(value || "")) || String(value || ""),
-      },
-    },
-    series: [blockedSeries, observedSeries, blockedApiSeries, observedApiSeries, otherSeries],
-  };
-
-  if (compactSummaryActive) {
-    const blockedTotalRaw = ranked.reduce((acc, row) => acc + Number(row.blockedCount || 0), 0);
-    const observedTotalRaw = ranked.reduce((acc, row) => acc + Number(row.observedCount || 0), 0);
-    const blockedApiTotalRaw = ranked.reduce((acc, row) => acc + Number(row.blockedApiCount || 0), 0);
-    const observedApiTotalRaw = ranked.reduce((acc, row) => acc + Number(row.observedApiCount || 0), 0);
-    const otherTotalRaw = ranked.reduce((acc, row) => acc + Number(row.otherCount || 0), 0);
-    const totalRaw = Math.max(1, blockedTotalRaw + observedTotalRaw + blockedApiTotalRaw + observedApiTotalRaw + otherTotalRaw);
-
-    const blockedTotal = vizOptions.normalize ? Number(((blockedTotalRaw * 100) / totalRaw).toFixed(2)) : blockedTotalRaw;
-    const observedTotal = vizOptions.normalize ? Number(((observedTotalRaw * 100) / totalRaw).toFixed(2)) : observedTotalRaw;
-    const blockedApiTotal = vizOptions.normalize ? Number(((blockedApiTotalRaw * 100) / totalRaw).toFixed(2)) : blockedApiTotalRaw;
-    const observedApiTotal = vizOptions.normalize ? Number(((observedApiTotalRaw * 100) / totalRaw).toFixed(2)) : observedApiTotalRaw;
-    const otherTotal = vizOptions.normalize ? Number(((otherTotalRaw * 100) / totalRaw).toFixed(2)) : otherTotalRaw;
-
-    const compact = buildVendorEndpointCompactSummaryOption({
-      blockedTotal,
-      observedTotal,
-      blockedApiTotal,
-      observedApiTotal,
-      otherTotal,
-      blockedTotalRaw,
-      observedTotalRaw,
-      blockedApiTotalRaw,
-      observedApiTotalRaw,
-      otherTotalRaw,
-      bucketCount: bucketSignal.bucketCount,
-      displayLabelByBucketKey,
-      fullLabelByBucketKey,
-      statsByBucketKey,
-    });
-    option = compact.option;
-    categoryKeys = compact.categoryKeys;
-    blocked = [blockedTotal];
-    observed = [observedTotal];
-    blockedApi = [blockedApiTotal];
-    observedApi = [observedApiTotal];
-    other = [otherTotal];
-    blockedSeries = buildForcedStackedBarSeries("Blocked", blocked, stackKey);
-    observedSeries = buildForcedStackedBarSeries("Observed", observed, stackKey);
-    blockedApiSeries = buildForcedStackedBarSeries("Blocked API", blockedApi, stackKey);
-    observedApiSeries = buildForcedStackedBarSeries("Observed API", observedApi, stackKey);
-    otherSeries = buildForcedStackedBarSeries("Other", other, stackKey);
-    option.series = [blockedSeries, observedSeries, blockedApiSeries, observedApiSeries, otherSeries];
-
-    const allEvidence = ranked.flatMap((row) => (Array.isArray(row.events) ? row.events : []));
-    evidenceByBucket.set(VENDOR_ENDPOINT_COMPACT_SUMMARY_KEY, allEvidence);
-    bucketKeyByLabel.set(VENDOR_ENDPOINT_COMPACT_SUMMARY_KEY, VENDOR_ENDPOINT_COMPACT_SUMMARY_KEY);
-    compactSummary = {
-      vendorName,
-      totalEvents: bucketSignal.totalEvents,
-      bucketCount: bucketSignal.bucketCount,
-      blocked: blockedTotalRaw,
-      observed: observedTotalRaw,
-      blockedApi: blockedApiTotalRaw,
-      observedApi: observedApiTotalRaw,
-      api: blockedApiTotalRaw + observedApiTotalRaw,
-      other: otherTotalRaw,
-    };
-  }
-
-  const stateGuidanceMessage = bucketSignal.isLowSignal
-    ? compactSummaryActive
-      ? `Easy fallback: showing compact summary for ${vendorName} because only ${bucketSignal.totalEvents} events span ${bucketSignal.bucketCount} endpoint bucket${bucketSignal.bucketCount === 1 ? "" : "s"}.`
-      : `Low-information view: only ${bucketSignal.totalEvents} events span ${bucketSignal.bucketCount} endpoint bucket${bucketSignal.bucketCount === 1 ? "" : "s"} for ${vendorName} in this scope.`
-    : "";
+  const blockedSeries = buildForcedStackedBarSeries("Blocked", blocked, "vendor-endpoint-inspection");
+  const observedSeries = buildForcedStackedBarSeries("Observed", observed, "vendor-endpoint-inspection");
+  const otherSeries = buildForcedStackedBarSeries("Other", other, "vendor-endpoint-inspection");
+  blockedSeries.itemStyle = { ...(blockedSeries.itemStyle || {}), borderRadius: [6, 0, 0, 6] };
+  observedSeries.itemStyle = { ...(observedSeries.itemStyle || {}) };
+  otherSeries.itemStyle = { ...(otherSeries.itemStyle || {}), borderRadius: [0, 6, 6, 0] };
 
   return {
-    option,
+    option: {
+      tooltip: {
+        trigger: "item",
+        axisPointer: { type: "none" },
+        formatter: (params) => {
+          const label = String(params?.name ?? params?.axisValue ?? "");
+          if (!label) return "";
+          const fullLabel = fullLabelByBucketKey.get(label) || label;
+          const stats = statsByBucketKey.get(label) || { seen: 0, blocked: 0, observed: 0, blockedApi: 0, observedApi: 0, other: 0, api: 0 };
+          const lines = [`<strong>${fullLabel}</strong>`];
+
+          if (vizOptions.normalize) {
+            const total = Math.max(1, Number(stats.seen || 0));
+            lines.push(`Blocked: ${(((stats.blocked || 0) * 100) / total).toFixed(2)}% (${stats.blocked})`);
+            lines.push(`Observed: ${(((stats.observed || 0) * 100) / total).toFixed(2)}% (${stats.observed})`);
+            lines.push(`Other: ${(((stats.other || 0) * 100) / total).toFixed(2)}% (${stats.other})`);
+          } else {
+            lines.push(`Blocked: ${stats.blocked}`);
+            lines.push(`Observed: ${stats.observed}`);
+            lines.push(`Other: ${stats.other}`);
+          }
+
+          if (stats.api > 0) {
+            lines.push(`API activity: ${stats.api} (${stats.blockedApi} blocked / ${stats.observedApi} observed)`);
+          }
+          lines.push(`Total: ${stats.seen}`);
+          return lines.join("<br/>");
+        },
+      },
+      legend: {
+        top: 0,
+        textStyle: { color: chartTheme.legendText },
+        itemWidth: 18,
+        itemHeight: 10,
+        itemGap: 14,
+      },
+      grid: { left: 164, right: 22, top: 40, bottom: 28, containLabel: true },
+      xAxis: {
+        type: "value",
+        name: "Events",
+        nameLocation: "middle",
+        nameGap: 30,
+        nameTextStyle: {
+          color: chartTheme.axisName,
+          fontWeight: 700,
+          fontSize: 12,
+        },
+        max: vizOptions.normalize ? 100 : null,
+        axisLine: {
+          show: true,
+          lineStyle: { color: chartTheme.axisLine },
+        },
+        axisTick: { show: true },
+        axisLabel: {
+          color: chartTheme.axisLabel,
+          ...(vizOptions.normalize ? { formatter: "{value}%" } : {}),
+        },
+      },
+      yAxis: {
+        type: "category",
+        name: "Domains / endpoints",
+        nameLocation: "end",
+        nameRotate: 0,
+        nameGap: 80,
+        inverse: true,
+        nameTextStyle: {
+          color: chartTheme.axisName,
+          fontWeight: 700,
+          fontSize: 12,
+          align: "right",
+          verticalAlign: "top",
+          padding: [42, 0, 0, 0],
+        },
+        data: categoryKeys,
+        axisLine: {
+          show: true,
+          lineStyle: { color: chartTheme.axisLine },
+        },
+        axisTick: { show: true },
+        axisLabel: {
+          color: chartTheme.axisLabel,
+          width: 220,
+          overflow: "truncate",
+          formatter: (value) => displayLabelByBucketKey.get(String(value || "")) || String(value || ""),
+        },
+      },
+      series: [blockedSeries, observedSeries, otherSeries],
+    },
     meta: {
       evidenceByBucket,
       bucketKeyByLabel,
       displayLabelByBucketKey,
       fullLabelByBucketKey,
-      compactSummary,
       topBucketSummary: topBucket
         ? {
           bucketKey: topBucket.bucketKey,
           displayLabel: topBucket.displayLabel,
           fullLabel: topBucket.fullLabel,
           seen: Number(topBucket.seenCount || 0),
-          blocked: Number(topBucket.blockedCount || 0),
-          observed: Number(topBucket.observedCount || 0),
+          blocked: Number(topBucket.blockedCount || 0) + Number(topBucket.blockedApiCount || 0),
+          observed: Number(topBucket.observedCount || 0) + Number(topBucket.observedApiCount || 0),
           blockedApi: Number(topBucket.blockedApiCount || 0),
           observedApi: Number(topBucket.observedApiCount || 0),
           api: Number((topBucket.blockedApiCount || 0) + (topBucket.observedApiCount || 0)),
           other: Number(topBucket.otherCount || 0),
         }
         : null,
-      lowSignal: bucketSignal,
+      lowSignal: ranking.lowSignal,
       densityDefaults: {
-        applied: compactSummaryActive,
-        compactSummary: compactSummaryActive,
+        applied: false,
+        compactSummary: false,
       },
-      stateGuidanceMessage,
+      stateGuidanceMessage: ranking.stateGuidanceMessage,
     },
   };
 }
@@ -1299,6 +1299,8 @@ function buildTopDomainsOption(events, metric = "seen") {
     defaultType: "bar",
     maxLabels: Math.max(5, vizOptions.topN),
     axisLabelRotate: 45,
+    axisLabelFormatter: (value) => wrapLabelOnDelimiter(value, ".", 18, 3),
+    axisLabelHideOverlap: false,
   });
 
   return {
@@ -1332,7 +1334,9 @@ function buildKindsOption(events) {
     seriesName: "kind count",
     defaultType: "bar",
     maxLabels: Math.max(6, vizOptions.topN),
-    axisLabelRotate: 45,
+    axisLabelRotate: 0,
+    axisLabelFormatter: (value) => wrapLabelOnDelimiter(value, ".", 14, 2),
+    axisLabelHideOverlap: false,
   });
 
   return {
@@ -2231,19 +2235,14 @@ function hasSeriesData(option) {
 
 function getModeEmptyMessage(viewId) {
   if (viewId === "vendorOverview") return "No vendor activity matches current filters";
-  if (viewId === "vendorBlockRateComparison") return "No multi-vendor data is available for block-rate comparison";
   if (viewId === "vendorShareOverTime") return "No multi-vendor timeline data is available for share-over-time comparison";
   if (viewId === "vendorAllowedBlockedTimeline") return "No blocked/allowed network events match current filters";
   if (viewId === "vendorTopDomainsEndpoints") return "No domain/endpoint buckets match current vendor scope";
-  if (viewId === "riskTrend") return "No risk trend data matches current filters";
   if (viewId === "baselineDetectedBlockedTrend") return "No baseline/detected/blocked trend data matches current filters";
   if (viewId === "topSeen") return "No third-party network events match current filters";
-  if (viewId === "apiGating") return "No third-party API-like calls match current filters";
-  if (viewId === "vendorKindMatrix") return "No vendor-kind matrix data matches current filters";
+  if (viewId === "apiGating") return "No third-party API-like requests match current filters";
   if (viewId === "ruleIdFrequency") return "No rule-id data matches current filters";
   if (viewId === "resourceTypes") return "No resource-type data matches current filters";
-  if (viewId === "modeBreakdown") return "No protection-mode data matches current filters";
-  if (viewId === "partySplit") return "No party-split data matches current filters";
   if (viewId === "hourHeatmap") return "No heatmap data matches current filters";
   return "No events match current filters";
 }
@@ -2254,6 +2253,7 @@ function getModeEmptyMessage(viewId) {
     buildTimelineOption,
     buildVendorAllowedBlockedTimelineOption,
     buildVendorTopDomainsEndpointsOption,
+    buildVendorEndpointReadoutData,
     buildTopDomainsOption,
     buildKindsOption,
     buildApiGatingOption,

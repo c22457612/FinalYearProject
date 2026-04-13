@@ -12,6 +12,7 @@ export function createVendorScope(deps) {
     setSelectedInsightTarget,
     hideVendorSelectionCue,
     clearVizSelection,
+    syncVizSelectByMode,
     renderECharts,
     renderRecentEventsFromEvents,
     updateFilterSummary,
@@ -166,6 +167,7 @@ export function createVendorScope(deps) {
     setSelectedInsightTarget(null);
     hideVendorSelectionCue();
     clearVizSelection({ close: true, clearBrush: true, renderTable: false, updateSummary: false });
+    syncVizSelectByMode();
     renderVendorChips();
     renderECharts();
     renderRecentEventsFromEvents(getChartEvents(), "No events match current filters.");
@@ -184,6 +186,7 @@ export function createVendorScope(deps) {
     });
     setSelectedInsightTarget({ type: "vendor", value: row.vendorName });
     clearVizSelection({ close: true, clearBrush: true, renderTable: false, updateSummary: false });
+    syncVizSelectByMode();
     renderVendorChips();
     renderECharts();
     renderRecentEventsFromEvents(getChartEvents(), "No events match current filters.");
@@ -239,6 +242,7 @@ export function createVendorScope(deps) {
     if (selectedVendor?.vendorId && !allRows.some((r) => r.vendorId === selectedVendor.vendorId)) {
       setSelectedVendor(null);
       hideVendorSelectionCue();
+      syncVizSelectByMode();
     }
 
     const rows = allRows
