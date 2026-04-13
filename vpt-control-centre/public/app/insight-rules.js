@@ -185,18 +185,37 @@
 
   function buildNarrative(context, summary, stats) {
     const vendorName = context?.selectedVendor?.vendorName || null;
-    const scopeLabel = vendorName ? `${vendorName} activity` : "selected activity";
-    const blocked = summary.blocked;
-    const observed = summary.observed;
-    const api = summary.api;
-    const other = summary.other;
+    const blocked = summary.blocked + summary.blockedApi;
+    const observed = summary.observed + summary.observedApi;
+    const scopeLabel = vendorName ? `${vendorName} activity` : "This scope";
+    let summaryLine = `${scopeLabel} shows mixed activity worth reviewing.`;
 
-    let summaryLine = `${scopeLabel} includes ${summary.total} events (${buildCategorySummaryParts(summary).join(", ")}).`;
-    if (api > 0) {
-      summaryLine += " This selection includes Browser API activity (e.g. Canvas, WebRTC, Clipboard).";
+    if (summary.total < 8) {
+      summaryLine = vendorName
+        ? `${vendorName} activity suggests external tracking pressure, but the signal is still thin.`
+        : "This scope suggests external tracking pressure, but the signal is still thin.";
+    } else if (stats.apiSignals > 0) {
+      summaryLine = vendorName
+        ? `${vendorName} activity includes Browser API signals, broadening the fingerprinting or session-exposure surface.`
+        : "This scope includes Browser API signals, broadening the fingerprinting or session-exposure surface.";
+    } else if (stats.thirdParty > 0 && observed > blocked) {
+      summaryLine = vendorName
+        ? `${vendorName} activity is largely getting through the current protections, so it represents active external exposure on this site.`
+        : "This scope is largely getting through the current protections, so it represents active external exposure on this site.";
+    } else if (stats.thirdParty > 0 && blocked > observed) {
+      summaryLine = vendorName
+        ? `${vendorName} activity is putting pressure on the site, but VPT is containing more of it than it allows through.`
+        : "This scope shows external activity putting pressure on the site, but VPT is containing more of it than it allows through.";
+    } else if (stats.thirdParty > 0) {
+      summaryLine = vendorName
+        ? `${vendorName} activity shows both containment and exposure, so it merits closer review before relaxing controls.`
+        : "This scope shows both containment and exposure, so it merits closer review before relaxing controls.";
+    } else if (stats.scripts > 0 || stats.xhrFetch > 0) {
+      summaryLine = "This scope is driven more by site-side traffic patterns than by clear third-party exposure.";
     }
+
     if (vendorName && String(context?.selectedVendor?.vendorId || "") === "google") {
-      summaryLine += " This likely reflects analytics/tag-manager and ad delivery infrastructure.";
+      summaryLine = "Google activity here likely reflects analytics, tag-manager, or ad-delivery infrastructure that extends the site's external measurement surface.";
     }
 
     const why = [];
@@ -209,7 +228,7 @@
     if (stats.xhrFetch > 0) {
       why.push(`Data endpoint traffic exists (${stats.xhrFetch} XHR/fetch requests).`);
     }
-    if (api > 0) {
+    if (summary.api > 0) {
       why.push("Includes Browser API activity beyond the general blocked and observed event buckets.");
     }
 
@@ -304,7 +323,7 @@
 
     return {
       title: narrative.title,
-      summary: `${narrative.summary} ${narrative.whyThisMatters}`.trim(),
+      summary: narrative.summary,
       severity,
       confidence,
       warnings: buildWarnings(summary, stats, severity),

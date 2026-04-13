@@ -58,21 +58,21 @@ export function pickPrimarySelectedEvent(events) {
 }
 
 export function formatSelectedLead(selection, primaryEvent) {
-  if (!selection) return "You selected: no datapoint yet.";
+  if (!selection) return "No datapoint selected.";
 
   const label = selection?.title || selection?.value || "current scope";
-  if (!primaryEvent) return `You selected: ${label}. No representative event available.`;
+  if (!primaryEvent) return `Selected: ${label}.`;
 
   if (isApiSignalEvent(primaryEvent)) {
     const presentation = getApiEventPresentation(primaryEvent);
     const when = primaryEvent?.ts ? friendlyTime(primaryEvent.ts) : "unknown time";
-    return `You selected: ${label}. Representative event: ${presentation.label} at ${when}.`;
+    return `Selected: ${label}. Representative event: ${presentation.label} at ${when}.`;
   }
 
   const kind = primaryEvent.kind || "event";
   const domain = primaryEvent?.data?.domain ? ` on ${primaryEvent.data.domain}` : "";
   const when = primaryEvent?.ts ? friendlyTime(primaryEvent.ts) : "unknown time";
-  return `You selected: ${label}. Representative event: ${kind}${domain} at ${when}.`;
+  return `Selected: ${label}. Representative event: ${kind}${domain} at ${when}.`;
 }
 
 export function getEventListKindText(ev) {

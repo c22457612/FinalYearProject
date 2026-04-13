@@ -11,6 +11,14 @@ export function buildStateGuidanceModel({
   const total = Number(eventCount || 0);
   const conciseMessage = String(emptyMessage || "").trim();
   let message = "";
+  const isPlainEmptyMessage = (value) => {
+    const lower = String(value || "").trim().toLowerCase();
+    return lower.startsWith("no ")
+      || lower.includes("no activity")
+      || lower.includes("no events")
+      || lower.includes("no vendor activity")
+      || lower.includes("no domain/endpoint");
+  };
 
   const normalizeBuilderMessage = (value) => {
     const text = String(value || "").trim();
@@ -34,18 +42,17 @@ export function buildStateGuidanceModel({
   };
 
   if (!total) {
-    message = normalizeBuilderMessage(conciseMessage)
-      || (hasVendorFocus
-        ? `No activity for ${vendorName || "this vendor"} in the current scope.`
-        : "No activity in the current scope.");
+    message = "";
   } else if (lensPivotActive) {
     message = `Focused timeline shown because comparison is thin${vendorName ? ` for ${vendorName}` : ""}.`;
   } else if (viewId === "vendorTopDomainsEndpoints" && conciseMessage) {
-    message = normalizeBuilderMessage(conciseMessage);
+    const normalized = normalizeBuilderMessage(conciseMessage);
+    message = isPlainEmptyMessage(normalized) ? "" : normalized;
   } else if (total < Number(lowInformationThreshold || 8)) {
     message = `Limited signal in the current scope: ${total} events.`;
   } else if (conciseMessage) {
-    message = normalizeBuilderMessage(conciseMessage);
+    const normalized = normalizeBuilderMessage(conciseMessage);
+    message = isPlainEmptyMessage(normalized) ? "" : normalized;
   }
 
   if (!message) {

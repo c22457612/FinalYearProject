@@ -200,17 +200,11 @@ export function createViewNavigationController(deps) {
   function updateViewAvailabilityHint() {
     const el = qs("vizModeHelp");
     if (!el) return;
-
-    if (getViewMode() !== "easy") {
-      el.textContent = hasVendorFocus()
-        ? "Power mode keeps the focused technical path for the current vendor scope."
-        : "Power mode keeps the richer technical path for site-wide inspection.";
-      return;
-    }
-
-    el.textContent = hasVendorFocus()
-      ? "Easy mode is guided for vendor investigation. Comparison-only charts are removed from the path."
-      : "Easy mode is guided. Power mode keeps the broader comparison and technical views.";
+    const message = getViewMode() === "easy" && hasVendorFocus()
+      ? "Comparison views are hidden while vendor focus is active."
+      : "";
+    el.textContent = message;
+    el.classList.toggle("hidden", !message);
   }
 
   function updateDrawerButtonState() {

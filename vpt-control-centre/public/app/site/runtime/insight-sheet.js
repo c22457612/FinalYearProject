@@ -77,29 +77,6 @@ function humanizeEasyKindLabel(kind, viewMode = "power") {
   return raw.replaceAll(".", " ");
 }
 
-function formatCategorySummary(summary, viewMode = "power") {
-  const blocked = Number(summary?.blocked || 0) + Number(summary?.blockedApi || 0);
-  const observed = Number(summary?.observed || 0) + Number(summary?.observedApi || 0);
-  const other = Number(summary?.other || 0);
-  const blockedApi = Number(summary?.blockedApi || 0);
-  const observedApi = Number(summary?.observedApi || 0);
-
-  if (viewMode === "easy") {
-    const parts = [`${blocked} blocked`, `${observed} observed`];
-    if (other > 0) parts.push(`${other} other`);
-    return parts.join(", ");
-  }
-
-  const parts = [
-    `${Number(summary?.blocked || 0)} blocked`,
-    `${Number(summary?.observed || 0)} observed`,
-  ];
-  if (blockedApi > 0) parts.push(`${blockedApi} blocked API`);
-  if (observedApi > 0) parts.push(`${observedApi} observed API`);
-  if (other > 0) parts.push(`${other} other`);
-  return parts.join(", ");
-}
-
 function formatDominantKinds(dominantKinds, viewMode = "power") {
   const list = Array.isArray(dominantKinds) ? dominantKinds : [];
   if (!list.length) return "-";
@@ -374,15 +351,6 @@ export function createInsightSheet(deps) {
     return { group, body };
   }
 
-  function appendEvidenceNote(container, text) {
-    const content = String(text || "").trim();
-    if (!container || !content) return;
-    const note = document.createElement("div");
-    note.className = "insight-evidence-note";
-    note.textContent = content;
-    container.appendChild(note);
-  }
-
   function appendEvidenceFact(container, label, value) {
     const factValue = String(value || "").trim();
     if (!container || !label || !factValue) return;
@@ -419,15 +387,9 @@ export function createInsightSheet(deps) {
     const firstText = summary.firstTs ? new Date(summary.firstTs).toLocaleTimeString() : "-";
     const lastText = summary.lastTs ? new Date(summary.lastTs).toLocaleTimeString() : "-";
     const dominant = formatDominantKinds(summary.dominantKinds, getViewMode());
-    const categorySummary = formatCategorySummary(summary, getViewMode());
-    const whatThisAnswers = getWhatThisAnswersLine(context?.viewId);
-
-    appendEvidenceNote(box, whatThisAnswers);
 
     const scopeGroup = createEvidenceGroup("Scope readout");
     appendEvidenceFact(scopeGroup.body, "Scope", label);
-    appendEvidenceFact(scopeGroup.body, "Activity", `${summary.total || 0} total events`);
-    appendEvidenceFact(scopeGroup.body, "Outcome", categorySummary);
     appendEvidenceFact(scopeGroup.body, "First seen", firstText);
     appendEvidenceFact(scopeGroup.body, "Last seen", lastText);
     if (selection?.bucketKey && context?.viewId !== "vendorTopDomainsEndpoints") {
@@ -440,13 +402,7 @@ export function createInsightSheet(deps) {
     if (context?.viewId === "vendorTopDomainsEndpoints" && selection?.bucketKey) {
       const bucketGroup = createEvidenceGroup("Bucket detail");
       const bucketLabel = selection?.bucketLabel || label;
-      const seen = Number(selection?.seen || 0);
-      const blocked = Number(selection?.blocked || 0);
-      const observed = Number(selection?.observed || 0);
-      const other = Number(selection?.other || 0);
       appendEvidenceFact(bucketGroup.body, "Bucket", bucketLabel);
-      appendEvidenceFact(bucketGroup.body, "Activity", `${seen} total events`);
-      appendEvidenceFact(bucketGroup.body, "Outcome", `${blocked} blocked, ${observed} observed${other > 0 ? `, ${other} other` : ""}`);
       const example = getBucketExample(selection, evidence);
       if (example) {
         appendEvidenceFact(bucketGroup.body, "Example path", example);
@@ -481,16 +437,6 @@ export function createInsightSheet(deps) {
     return box.childElementCount > 0;
   }
 
-  function getWhatThisAnswersLine(viewId) {
-    if (viewId === "vendorShareOverTime") {
-      return "What this answers: How each top vendor contributes to total activity over time, including grouped long-tail vendors.";
-    }
-    if (viewId === "vendorTopDomainsEndpoints") {
-      return "What this answers: Which domains/endpoints this selected vendor contacts most in this scope, and how much is blocked vs observed.";
-    }
-    return "";
-  }
-
   function getBucketExample(selection, evidence) {
     const fromSelection = String(selection?.bucketExample || "").trim();
     if (fromSelection) return fromSelection;
@@ -507,17 +453,6 @@ export function createInsightSheet(deps) {
       }
     }
     return "";
-  }
-
-  function buildCategorySummaryParts(counts) {
-    const parts = [
-      `${counts.blocked || 0} blocked`,
-      `${counts.observed || 0} observed`,
-    ];
-    if (Number(counts.blockedApi || 0) > 0) parts.push(`${counts.blockedApi} blocked API`);
-    if (Number(counts.observedApi || 0) > 0) parts.push(`${counts.observedApi} observed API`);
-    if (Number(counts.other || 0) > 0) parts.push(`${counts.other} other`);
-    return parts;
   }
 
   function formatInsightLeadSupport(selection, primaryEvent, context) {
@@ -794,7 +729,17 @@ export function createInsightSheet(deps) {
   function setInsightTakeaway(text) {
     const el = qs("insightTakeaway");
     if (!el) return;
-    el.textContent = String(text || "").trim();
+    const content = String(text || "").trim();
+    el.textContent = content;
+    el.classList.toggle("hidden", !content);
+  }
+
+  function setInsightMeta(text) {
+    const el = qs("insightMeta");
+    if (!el) return;
+    const content = String(text || "").trim();
+    el.textContent = content;
+    el.classList.toggle("hidden", !content);
   }
 
   function setInsightCaseMetrics(metrics) {
@@ -905,9 +850,19 @@ export function createInsightSheet(deps) {
   function buildFallbackInsight(selection, evidence) {
     const counts = summarizeVisualCategoryCounts(evidence);
     const total = counts.total;
+    const blocked = counts.blocked + counts.blockedApi;
+    const observed = counts.observed + counts.observedApi;
+    let summary = "This selected scope shows mixed activity worth reviewing.";
+    if (total < 8) {
+      summary = "This selected scope suggests external activity, but the signal is still thin.";
+    } else if (observed > blocked) {
+      summary = "This selected scope shows activity that is still getting through the current protections.";
+    } else if (blocked > observed) {
+      summary = "This selected scope shows activity that VPT is mostly containing.";
+    }
     return {
       title: selection?.title || "Insight",
-      summary: `${total} events selected (${buildCategorySummaryParts(counts).join(", ")}).`,
+      summary,
       severity: total >= 40 ? "caution" : "info",
       confidence: total >= 10 ? 0.72 : 0.45,
       warnings: ["Selection evidence is based on current filters and range."],
@@ -1020,14 +975,13 @@ export function createInsightSheet(deps) {
       const label = activeSelection?.title || "Current scope";
       qs("insightMeta").textContent = `${label} • ${evs.length} events`;
     }
+    setInsightMeta("");
     if (qs("insightSelectedLead")) qs("insightSelectedLead").textContent = formatSelectedLead(activeSelection, primaryEvent);
     setInsightTakeaway(caseSheet.takeaway);
     if (qs("insightSummary")) {
-      const summaryText = String(caseSheet.summaryDetail || "").trim()
-        || `This finding is based on ${Number(insight?.evidenceSummary?.total || evs.length || 0)} captured events in the current scope.`;
+      const summaryText = String(caseSheet.summaryDetail || "").trim();
       qs("insightSummary").textContent = summaryText;
     }
-
     setInsightSeverity(insight.severity, insight.confidence);
     setInsightConfidence(insight.confidence);
     setInsightCaseMetrics(caseSheet.metrics);
@@ -1081,21 +1035,21 @@ export function createInsightSheet(deps) {
   function resetInsightSection() {
     closeDrawer();
     if (qs("insightTitle")) qs("insightTitle").textContent = "Detailed evidence";
-    if (qs("insightMeta")) qs("insightMeta").textContent = "Select a chart point or use Explain / Info for a deeper breakdown.";
+    setInsightMeta("");
     setInsightSeverity("info", 0.45);
     setInsightConfidence(0.45);
-    if (qs("insightSelectedLead")) qs("insightSelectedLead").textContent = "You selected: no datapoint yet.";
-    setInsightTakeaway("Choose a datapoint or use Explain / Info to expand the current deterministic scope summary.");
-    if (qs("insightSummary")) qs("insightSummary").textContent = "Select a chart point to inspect why this scope stands out.";
-    if (qs("insightHow")) qs("insightHow").textContent = "Select a chart point to inspect captured evidence for this scope.";
+    if (qs("insightSelectedLead")) qs("insightSelectedLead").textContent = "No datapoint selected.";
+    setInsightTakeaway("");
+    if (qs("insightSummary")) qs("insightSummary").textContent = "";
+    if (qs("insightHow")) qs("insightHow").textContent = "";
     setInsightCaseMetrics([]);
     renderListItems(qs("insightWhy"), [], "", { hideWhenEmpty: true });
     qs("insightWhy")?.classList.add("hidden");
-    renderListItems(qs("insightLimits"), ["Insights reflect captured events in the active range and filters."], "", { hideWhenEmpty: true });
+    renderListItems(qs("insightLimits"), [], "", { hideWhenEmpty: true });
     renderSupportingReadouts([]);
-    setCaseSectionVisibility(qs("insightSummary"), true);
-    setCaseSectionVisibility(qs("insightHow"), true);
-    setCaseSectionVisibility(qs("insightLimits"), true);
+    setCaseSectionVisibility(qs("insightSummary"), false);
+    setCaseSectionVisibility(qs("insightHow"), false);
+    setCaseSectionVisibility(qs("insightLimits"), false);
     renderInsightActions([]);
     syncInsightFooterVisibility();
   }

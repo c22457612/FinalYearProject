@@ -80,7 +80,6 @@
             <span class="viz-advanced-summary-copy">
               <span class="viz-advanced-kicker">Power mode</span>
               <span class="viz-advanced-summary-title">Chart inspection controls</span>
-              <span class="viz-advanced-summary-text">Inspect the active chart with focused outcome, shaping, and filter controls.</span>
             </span>
           </summary>
           <div class="viz-advanced-panel-body">
@@ -262,12 +261,11 @@
             </select>
           </div>
         </div>
-        <div id="vizModeHelp" class="viz-mode-help"></div>
+        <div id="vizModeHelp" class="viz-mode-help hidden"></div>
 
         <section class="scope-context-section" aria-label="Scope and context">
           <div class="scope-context-header">
             <div class="scope-context-title">Scope &amp; context</div>
-            <div class="scope-context-subtitle">Current scope, vendor focus, and inspection context.</div>
           </div>
 
           <div class="scope-context-stack">
@@ -339,10 +337,6 @@
                 <div class="insight-case-heading">
                   <div class="insight-case-heading-row">
                     <div class="insight-case-title-wrap">
-                      <div class="insight-case-section-kicker">
-                        <span class="insight-section-icon insight-icon-summary" aria-hidden="true"></span>
-                        Case sheet
-                      </div>
                       <div id="insightTitle" class="panel-title">Detailed evidence</div>
                     </div>
                     <div class="insight-case-badges">
@@ -350,13 +344,11 @@
                       <div id="insightConfidence" class="insight-confidence-badge">45% confidence</div>
                     </div>
                   </div>
-                  <div id="insightMeta" class="panel-subtitle">Select a chart point or use Explain / Info for a deeper breakdown.</div>
-                  <div id="insightSelectedLead" class="insight-selected-lead">You selected: no datapoint yet.</div>
+                  <div id="insightMeta" class="panel-subtitle hidden"></div>
+                  <div id="insightSelectedLead" class="insight-selected-lead">No datapoint selected.</div>
                 </div>
               </div>
-              <div id="insightTakeaway" class="insight-case-takeaway">
-                Choose a datapoint or use Explain / Info to expand the current deterministic scope summary.
-              </div>
+              <div id="insightTakeaway" class="insight-case-takeaway hidden"></div>
             </div>
           </div>
           <div class="insight-sheet-body">
