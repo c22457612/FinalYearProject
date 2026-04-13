@@ -1629,7 +1629,6 @@ function ensureChart() {
 
       const area = params?.batch?.[0]?.areas?.[0];
       if (!area) {
-        clearVizSelection({ close: true, clearBrush: false, renderTable: true });
         return;
       }
 

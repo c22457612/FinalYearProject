@@ -141,15 +141,21 @@ export function createSelectionController(deps) {
     const selection = getVizSelection();
     if (!selection?.events?.length) return false;
 
-    const ids = selection.events.map((eventItem) => eventItem?.id).filter(Boolean);
-    if (!ids.length) return false;
+    const selectionKeys = selection.events
+      .map((eventItem) => getEventKey(eventItem))
+      .filter(Boolean);
+    if (!selectionKeys.length) return false;
 
     const scoped = getChartEvents();
-    const byId = new Map(scoped.filter((eventItem) => eventItem?.id).map((eventItem) => [eventItem.id, eventItem]));
+    const byKey = new Map(
+      scoped
+        .map((eventItem) => [getEventKey(eventItem), eventItem])
+        .filter(([key]) => Boolean(key)),
+    );
     const refreshed = [];
 
-    for (const id of ids) {
-      const eventItem = byId.get(id);
+    for (const key of selectionKeys) {
+      const eventItem = byKey.get(key);
       if (!eventItem) return false;
       refreshed.push(eventItem);
     }

@@ -118,14 +118,14 @@ export function createPollingController(deps) {
       deriveFilteredEvents();
       renderVendorChips();
 
-      if (getVizSelection() && !selectionStillValid()) {
-        clearVizSelection({ close: true, clearBrush: true, renderTable: false, updateSummary: false });
-      }
-
       renderECharts();
 
-      if (getVizSelection()?.events?.length && selectionStillValid()) {
-        renderRecentEventsFromEvents(getVizSelection().events, "No events match selection.", { selectedEventKey: getSelectedRecentEventKey() });
+      if (getVizSelection()?.events?.length) {
+        const selectionIsStillValid = selectionStillValid();
+        const selectionEvents = selectionIsStillValid
+          ? getVizSelection().events
+          : getVizSelection()?.events || [];
+        renderRecentEventsFromEvents(selectionEvents, "No events match selection.", { selectedEventKey: getSelectedRecentEventKey() });
       } else {
         renderRecentEventsFromEvents(getChartEvents(), "No events match current filters.");
       }

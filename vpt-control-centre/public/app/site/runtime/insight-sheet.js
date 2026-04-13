@@ -1035,6 +1035,7 @@ export function createInsightSheet(deps) {
   function resetInsightSection() {
     closeDrawer();
     if (qs("insightTitle")) qs("insightTitle").textContent = "Detailed evidence";
+    renderBrowserApiNarrative([]);
     setInsightMeta("");
     setInsightSeverity("info", 0.45);
     setInsightConfidence(0.45);
