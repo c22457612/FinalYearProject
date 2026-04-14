@@ -118,7 +118,7 @@ const VIEWS = [
   { id: "vendorAllowedBlockedTimeline", title: "Blocked vs observed network timeline" },
   { id: "vendorTopDomainsEndpoints", title: "Where this vendor connects (top domains/endpoints)" },
   { id: "riskTrend", title: "Risk trend timeline" },
-  { id: "timeline", title: "Activity timeline (last 24h)" },
+  { id: "timeline", title: "Activity timeline" },
   { id: "topSeen", title: "Top third-party domains" },
   { id: "kinds", title: "Event type breakdown" },
   { id: "apiGating", title: "API-like third-party requests by domain" },
@@ -131,9 +131,23 @@ const VIEWS = [
 ];
 const VIEW_TITLE_BY_ID = new Map(VIEWS.map((view) => [view.id, view.title]));
 
+function getSelectedRangeLabel() {
+  const select = qs("rangeSelect");
+  if (!select) return "";
+  const option = select.selectedOptions?.[0] || select.options?.[select.selectedIndex] || null;
+  return String(option?.textContent || "").trim();
+}
+
 function getViewTitle(viewId, context = {}) {
   void context;
-  return VIEW_TITLE_BY_ID.get(String(viewId || "")) || "Current view";
+  const normalizedViewId = String(viewId || "");
+  if (normalizedViewId === "timeline") {
+    const rangeLabel = getSelectedRangeLabel();
+    return rangeLabel
+      ? `Activity timeline (${rangeLabel})`
+      : "Activity timeline";
+  }
+  return VIEW_TITLE_BY_ID.get(normalizedViewId) || "Current view";
 }
 const POWER_DOCK_ALWAYS_VISIBLE_CONTROLS = new Set([
   "blocked",
@@ -535,8 +549,8 @@ function updateDrawerButtonState() {
   viewNavigationController.updateDrawerButtonState();
 }
 
-function syncVizSelectByMode() {
-  viewNavigationController.syncVizSelectByMode();
+function syncVizSelectByMode(options = {}) {
+  viewNavigationController.syncVizSelectByMode(options);
 }
 
 function setViewMode(mode, opts = {}) {
@@ -795,7 +809,11 @@ function renderStateGuidance({ events = [], lensPivotActive = false, emptyMessag
   heading.textContent = model.message;
   box.appendChild(heading);
 
-  const visibleActions = model.actions.filter((action) => action.id !== "reset_filters");
+  const visibleActions = model.actions.filter((action) => {
+    if (action.id === "reset_filters") return false;
+    if (action.id === "clear_vendor" && selectedVendor?.vendorId) return false;
+    return true;
+  });
 
   if (visibleActions.length) {
     const actionBox = document.createElement("div");
@@ -1852,6 +1870,7 @@ function applyVizOptionChanges() {
 
 async function applyRangeChanges() {
   await pollingController.applyRangeChanges();
+  syncVizSelectByMode({ preserveFocus: true });
 }
 
 async function fetchSite() {
