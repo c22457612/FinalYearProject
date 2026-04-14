@@ -176,11 +176,12 @@
         <section id="vaultContent" class="vendor-vault-header-strip hidden">
           <div class="vendor-vault-header-main">
             <div class="vendor-vault-header-kicker">Vendor investigation console</div>
-            <div class="vendor-vault-header-title-row">
-              <h2 id="vaultHeaderVendorName" class="vendor-vault-header-title">Vendor Vault</h2>
-            </div>
+            <h2 id="vaultHeaderVendorName" class="vendor-vault-header-title">Vendor Vault</h2>
             <p id="vaultHeaderSummary" class="vendor-vault-header-summary">
               Review observed sharing signals across captured sites.
+            </p>
+            <p id="vaultHeaderStatusLine" class="vendor-vault-header-status-line">
+              ALL SITES • INVENTORY
             </p>
           </div>
           <div class="vendor-vault-header-controls">
@@ -190,20 +191,6 @@
                 <button id="vaultScopeAllButton" type="button" class="viz-nav vendor-vault-scope-btn">All sites</button>
               </div>
               <a id="backToSiteInsightsLink" class="back-link vendor-vault-header-link" href="/vendor-vault.html?scope=all">Back to vendor selection</a>
-            </div>
-            <div class="vendor-vault-header-state" aria-label="Current investigation state">
-              <div class="vendor-vault-header-state-item">
-                <span class="vendor-vault-header-state-label">Scope</span>
-                <span id="vaultScopeStateValue" class="vendor-vault-header-state-value">This site</span>
-              </div>
-              <div class="vendor-vault-header-state-item">
-                <span class="vendor-vault-header-state-label">Mode</span>
-                <span id="vaultWorkspaceModeValue" class="vendor-vault-header-state-value">Inventory</span>
-              </div>
-              <div class="vendor-vault-header-state-item">
-                <span class="vendor-vault-header-state-label">Activity</span>
-                <span id="vaultActivityStateValue" class="vendor-vault-header-state-value">-</span>
-              </div>
             </div>
           </div>
         </section>

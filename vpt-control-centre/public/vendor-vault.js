@@ -234,6 +234,7 @@ const WORKSPACE_MODE_LABELS = Object.freeze({
 let workspaceModeBarBound = false;
 let activeWorkspaceMode = WORKSPACE_MODE_INVENTORY;
 let connectionStatusPollHandle = null;
+let headerActivityTotal = null;
 
 function buildSiteInsightsHref(site) {
   if (!String(site || "").trim()) return "/";
@@ -340,24 +341,69 @@ function setWorkspaceVisibility() {
   }
 }
 
-function renderWorkspaceModeReadout() {
-  const modeValue = qs("vaultWorkspaceModeValue");
-  if (!modeValue) return;
-  modeValue.textContent = WORKSPACE_MODE_LABELS[activeWorkspaceMode] || "Inventory";
+function toUpperOperatorLabel(value) {
+  return String(value || "")
+    .trim()
+    .replace(/\s+/g, " ")
+    .toUpperCase();
+}
+
+function normalizeHeaderSiteLabel(site) {
+  return String(site || "")
+    .trim()
+    .replace(/^[a-z]+:\/\//i, "")
+    .replace(/[/?#].*$/g, "")
+    .replace(/:\d+$/g, "")
+    .replace(/^www\./i, "")
+    .trim();
+}
+
+function getHeaderSiteLabel(maxLength = 26) {
+  const label = normalizeHeaderSiteLabel(vaultScopeState.site);
+  if (!label || label.length > maxLength) return "";
+  return label;
+}
+
+function buildHeaderStatusLine() {
+  const segments = [];
+  if (vaultScopeState.scope === SCOPE_ALL) {
+    segments.push("ALL SITES");
+  } else {
+    segments.push(toUpperOperatorLabel(getHeaderSiteLabel(22) || "THIS SITE"));
+  }
+
+  segments.push(toUpperOperatorLabel(WORKSPACE_MODE_LABELS[activeWorkspaceMode] || "Inventory"));
+
+  if (Number.isFinite(headerActivityTotal) && headerActivityTotal >= 0) {
+    segments.push(`${headerActivityTotal} EVENTS`);
+  }
+
+  return segments.join(" • ");
+}
+
+function renderHeaderStatusLine() {
+  const statusLine = qs("vaultHeaderStatusLine");
+  if (!statusLine) return;
+  statusLine.textContent = buildHeaderStatusLine();
 }
 
 function renderHeaderContextSummary() {
   const summary = qs("vaultHeaderSummary");
   if (!summary) return;
-  summary.textContent = vaultScopeState.scope === SCOPE_ALL
-    ? "Review observed sharing signals across captured sites."
+  if (vaultScopeState.scope === SCOPE_ALL) {
+    summary.textContent = "Review observed sharing signals across captured sites.";
+    return;
+  }
+
+  const siteLabel = getHeaderSiteLabel(34);
+  summary.textContent = siteLabel
+    ? `Review observed sharing signals on ${siteLabel}.`
     : "Review observed sharing signals on this site.";
 }
 
 function renderHeaderActivityReadout(totalEvents = null) {
-  const activityValue = qs("vaultActivityStateValue");
-  if (!activityValue) return;
-  activityValue.textContent = Number.isFinite(totalEvents) ? String(Math.max(0, Math.trunc(totalEvents))) : "-";
+  headerActivityTotal = Number.isFinite(totalEvents) ? Math.max(0, Math.trunc(totalEvents)) : null;
+  renderHeaderStatusLine();
 }
 
 function switchWorkspaceMode(nextMode, opts = {}) {
@@ -367,7 +413,7 @@ function switchWorkspaceMode(nextMode, opts = {}) {
   activeWorkspaceMode = resolved.mode;
   setWorkspaceModeControlState();
   setWorkspaceVisibility();
-  renderWorkspaceModeReadout();
+  renderHeaderStatusLine();
 
   if (opts.focusWorkspace) {
     const workspace = qs(resolved.workspaceId);
@@ -887,26 +933,24 @@ function showVaultContent(site, vendor) {
 
   vendorName.textContent = vendor;
   renderHeaderContextSummary();
+  renderHeaderStatusLine();
   backLink.textContent = "Back to vendor selection";
   backLink.href = buildVendorSelectionHref(site);
 }
 
 function renderScopeChipsAndControls() {
   const vendorName = qs("vaultHeaderVendorName");
-  const scopeValue = qs("vaultScopeStateValue");
   const siteButton = qs("vaultScopeSiteButton");
   const allButton = qs("vaultScopeAllButton");
   const backLink = qs("backToSiteInsightsLink");
-  if (!vendorName || !scopeValue || !siteButton || !allButton || !backLink) return;
+  if (!vendorName || !siteButton || !allButton || !backLink) return;
 
   const hasSite = Boolean(vaultScopeState.site);
   const isAll = vaultScopeState.scope === SCOPE_ALL;
 
   vendorName.textContent = vaultScopeState.vendor;
-  scopeValue.textContent = isAll
-    ? "All sites"
-    : (vaultScopeState.site ? `This site: ${vaultScopeState.site}` : "This site");
   renderHeaderContextSummary();
+  renderHeaderStatusLine();
 
   siteButton.disabled = !hasSite;
   siteButton.classList.toggle("is-active", !isAll);
