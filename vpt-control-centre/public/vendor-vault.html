@@ -178,22 +178,33 @@
             <div class="vendor-vault-header-kicker">Vendor investigation console</div>
             <div class="vendor-vault-header-title-row">
               <h2 id="vaultHeaderVendorName" class="vendor-vault-header-title">Vendor Vault</h2>
-              <div class="vendor-vault-header-chips">
-                <span id="vaultSiteChip" class="pill pill-kind">Site: -</span>
-                <span id="vaultVendorChip" class="pill pill-kind">Vendor: -</span>
-                <span id="vaultAllSitesChip" class="pill pill-kind hidden">All sites</span>
-              </div>
             </div>
             <p id="vaultHeaderSummary" class="vendor-vault-header-summary">
-              Review potential sharing indicators and related Browser API activity for this vendor.
+              Review observed sharing signals across captured sites.
             </p>
           </div>
           <div class="vendor-vault-header-controls">
-            <div id="vaultScopeToggle" class="vendor-vault-scope-toggle" role="group" aria-label="Vendor Vault scope">
-              <button id="vaultScopeSiteButton" type="button" class="viz-nav vendor-vault-scope-btn">This site</button>
-              <button id="vaultScopeAllButton" type="button" class="viz-nav vendor-vault-scope-btn">All sites</button>
+            <div class="vendor-vault-header-actions">
+              <div id="vaultScopeToggle" class="vendor-vault-scope-toggle" role="group" aria-label="Vendor Vault scope">
+                <button id="vaultScopeSiteButton" type="button" class="viz-nav vendor-vault-scope-btn">This site</button>
+                <button id="vaultScopeAllButton" type="button" class="viz-nav vendor-vault-scope-btn">All sites</button>
+              </div>
+              <a id="backToSiteInsightsLink" class="back-link vendor-vault-header-link" href="/vendor-vault.html?scope=all">Back to vendor selection</a>
             </div>
-            <a id="backToSiteInsightsLink" class="back-link vendor-vault-header-link" href="/">Back to Site Insights</a>
+            <div class="vendor-vault-header-state" aria-label="Current investigation state">
+              <div class="vendor-vault-header-state-item">
+                <span class="vendor-vault-header-state-label">Scope</span>
+                <span id="vaultScopeStateValue" class="vendor-vault-header-state-value">This site</span>
+              </div>
+              <div class="vendor-vault-header-state-item">
+                <span class="vendor-vault-header-state-label">Mode</span>
+                <span id="vaultWorkspaceModeValue" class="vendor-vault-header-state-value">Inventory</span>
+              </div>
+              <div class="vendor-vault-header-state-item">
+                <span class="vendor-vault-header-state-label">Activity</span>
+                <span id="vaultActivityStateValue" class="vendor-vault-header-state-value">-</span>
+              </div>
+            </div>
           </div>
         </section>
 
@@ -202,7 +213,7 @@
             <div class="vendor-vault-case-readout-head">
               <div class="vendor-vault-case-readout-heading">
                 <div class="vendor-vault-case-readout-kicker">Case readout</div>
-                <div id="exposureSummaryScoreText" class="vendor-vault-case-readout-copy">Concern score</div>
+                <div id="exposureSummaryScoreText" class="vendor-vault-case-readout-copy">Score</div>
               </div>
               <div class="vendor-vault-case-readout-next">
                 <span class="vendor-vault-case-readout-label">Inspect next</span>
@@ -224,10 +235,6 @@
               <div class="vendor-vault-case-readout-fact">
                 <span class="vendor-vault-case-readout-label">Blocked categories</span>
                 <span id="exposureAttemptedToReceiveList" class="vendor-vault-case-readout-value">-</span>
-              </div>
-              <div class="vendor-vault-case-readout-fact">
-                <span class="vendor-vault-case-readout-label">Concern</span>
-                <span id="exposureCaseConcern" class="vendor-vault-case-readout-value">-</span>
               </div>
             </div>
           </section>

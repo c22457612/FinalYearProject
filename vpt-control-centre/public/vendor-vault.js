@@ -225,6 +225,12 @@ const WORKSPACE_MODE_CONFIG = Object.freeze([
   { mode: WORKSPACE_MODE_BROWSER_API, buttonId: "vendorVaultModeBrowserApi", workspaceId: "vendorVaultApiWorkspace" },
   { mode: WORKSPACE_MODE_SITE_EVIDENCE, buttonId: "vendorVaultModeSiteEvidence", workspaceId: "vendorVaultSiteEvidenceWorkspace" },
 ]);
+const WORKSPACE_MODE_LABELS = Object.freeze({
+  [WORKSPACE_MODE_INVENTORY]: "Inventory",
+  [WORKSPACE_MODE_SELECTED_ITEM]: "Selected item",
+  [WORKSPACE_MODE_BROWSER_API]: "Browser API evidence",
+  [WORKSPACE_MODE_SITE_EVIDENCE]: "Site evidence",
+});
 let workspaceModeBarBound = false;
 let activeWorkspaceMode = WORKSPACE_MODE_INVENTORY;
 let connectionStatusPollHandle = null;
@@ -232,6 +238,12 @@ let connectionStatusPollHandle = null;
 function buildSiteInsightsHref(site) {
   if (!String(site || "").trim()) return "/";
   return `/site.html?site=${encodeURIComponent(site)}`;
+}
+
+function buildVendorSelectionHref(site) {
+  const resolvedSite = String(site || "").trim();
+  if (resolvedSite) return buildSiteInsightsHref(resolvedSite);
+  return buildVendorVaultLandingHref(SCOPE_ALL, "");
 }
 
 function hasSelectedInventoryItem() {
@@ -328,6 +340,26 @@ function setWorkspaceVisibility() {
   }
 }
 
+function renderWorkspaceModeReadout() {
+  const modeValue = qs("vaultWorkspaceModeValue");
+  if (!modeValue) return;
+  modeValue.textContent = WORKSPACE_MODE_LABELS[activeWorkspaceMode] || "Inventory";
+}
+
+function renderHeaderContextSummary() {
+  const summary = qs("vaultHeaderSummary");
+  if (!summary) return;
+  summary.textContent = vaultScopeState.scope === SCOPE_ALL
+    ? "Review observed sharing signals across captured sites."
+    : "Review observed sharing signals on this site.";
+}
+
+function renderHeaderActivityReadout(totalEvents = null) {
+  const activityValue = qs("vaultActivityStateValue");
+  if (!activityValue) return;
+  activityValue.textContent = Number.isFinite(totalEvents) ? String(Math.max(0, Math.trunc(totalEvents))) : "-";
+}
+
 function switchWorkspaceMode(nextMode, opts = {}) {
   const resolved = WORKSPACE_MODE_CONFIG.find((config) => config.mode === nextMode);
   if (!resolved) return;
@@ -335,6 +367,7 @@ function switchWorkspaceMode(nextMode, opts = {}) {
   activeWorkspaceMode = resolved.mode;
   setWorkspaceModeControlState();
   setWorkspaceVisibility();
+  renderWorkspaceModeReadout();
 
   if (opts.focusWorkspace) {
     const workspace = qs(resolved.workspaceId);
@@ -355,18 +388,6 @@ function bindWorkspaceModeBar() {
   });
 
   workspaceModeBarBound = true;
-}
-
-function renderHeaderContextSummary() {
-  const headerSummary = qs("vaultHeaderSummary");
-  if (!headerSummary) return;
-
-  if (vaultScopeState.scope === SCOPE_ALL) {
-    headerSummary.textContent = "Review potential sharing indicators for this vendor across captured sites.";
-    return;
-  }
-
-  headerSummary.textContent = "Review potential sharing indicators for this vendor on this site.";
 }
 
 function showMissingState(site, scopeParam) {
@@ -855,55 +876,59 @@ function showVaultContent(site, vendor) {
   const missing = qs("vaultMissingState");
   const content = qs("vaultContent");
   const sections = qs("vaultSections");
-  const vendorChip = qs("vaultVendorChip");
   const vendorName = qs("vaultHeaderVendorName");
   const backLink = qs("backToSiteInsightsLink");
-  if (!missing || !content || !sections || !vendorChip || !vendorName || !backLink) return;
+  if (!missing || !content || !sections || !vendorName || !backLink) return;
 
   missing.classList.add("hidden");
   content.classList.remove("hidden");
   sections.classList.remove("hidden");
   syncShellBackLink({ vendorSelected: true, scope: vaultScopeState.scope, site });
 
-  vendorChip.textContent = `Vendor: ${vendor}`;
   vendorName.textContent = vendor;
   renderHeaderContextSummary();
-  backLink.href = site ? buildSiteInsightsHref(site) : "/";
+  backLink.textContent = "Back to vendor selection";
+  backLink.href = buildVendorSelectionHref(site);
 }
 
 function renderScopeChipsAndControls() {
-  const siteChip = qs("vaultSiteChip");
-  const vendorChip = qs("vaultVendorChip");
   const vendorName = qs("vaultHeaderVendorName");
-  const allSitesChip = qs("vaultAllSitesChip");
+  const scopeValue = qs("vaultScopeStateValue");
   const siteButton = qs("vaultScopeSiteButton");
   const allButton = qs("vaultScopeAllButton");
   const backLink = qs("backToSiteInsightsLink");
-  if (!siteChip || !vendorChip || !vendorName || !allSitesChip || !siteButton || !allButton || !backLink) return;
+  if (!vendorName || !scopeValue || !siteButton || !allButton || !backLink) return;
 
   const hasSite = Boolean(vaultScopeState.site);
   const isAll = vaultScopeState.scope === SCOPE_ALL;
 
-  vendorChip.textContent = `Vendor: ${vaultScopeState.vendor}`;
   vendorName.textContent = vaultScopeState.vendor;
-  siteChip.textContent = `Site: ${vaultScopeState.site || "-"}`;
-  siteChip.classList.toggle("hidden", isAll);
-  allSitesChip.classList.toggle("hidden", !isAll);
+  scopeValue.textContent = isAll
+    ? "All sites"
+    : (vaultScopeState.site ? `This site: ${vaultScopeState.site}` : "This site");
+  renderHeaderContextSummary();
 
   siteButton.disabled = !hasSite;
   siteButton.classList.toggle("is-active", !isAll);
   siteButton.setAttribute("aria-pressed", String(!isAll));
+  siteButton.setAttribute("aria-disabled", String(!hasSite));
+  siteButton.title = hasSite ? "Show this vendor on the current site only" : "Unavailable: this view has no site context";
+  siteButton.setAttribute(
+    "aria-label",
+    hasSite ? "This site" : "This site unavailable because no site context is available"
+  );
 
   allButton.classList.toggle("is-active", isAll);
   allButton.setAttribute("aria-pressed", String(isAll));
+  allButton.title = "Show this vendor across all captured sites";
 
-  backLink.href = hasSite ? buildSiteInsightsHref(vaultScopeState.site) : "/";
+  backLink.textContent = "Back to vendor selection";
+  backLink.href = buildVendorSelectionHref(vaultScopeState.site);
   syncShellBackLink({ vendorSelected: true, scope: vaultScopeState.scope, site: vaultScopeState.site });
 }
 
 function renderScopeCopy() {
   const empty = qs("exposureEmptyState");
-  renderHeaderContextSummary();
   if (!empty) return;
   if (vaultScopeState.scope === SCOPE_ALL) {
     empty.textContent = "No exposure signals observed for this vendor across captured sites in request metadata.";
@@ -1216,6 +1241,7 @@ function renderRiskSummaryPanel(riskSummary, hasData) {
 }
 
 function setSummaryPanelsLoading() {
+  renderHeaderActivityReadout(null);
   renderPanelMessage("vaultActivityPanel", "Loading...", "hint");
   renderPanelMessage("vaultDomainsPanel", "Loading...", "hint");
   renderPanelMessage("vaultKeysPanel", "Loading...", "hint");
@@ -1223,6 +1249,7 @@ function setSummaryPanelsLoading() {
 }
 
 function setSummaryPanelsError() {
+  renderHeaderActivityReadout(null);
   renderPanelMessage("vaultActivityPanel", "Could not load data for this scope.", "vendor-vault-panel-error");
   renderPanelMessage("vaultDomainsPanel", "Could not load data for this scope.", "vendor-vault-panel-error");
   renderPanelMessage("vaultKeysPanel", "Could not load data for this scope.", "vendor-vault-panel-error");
@@ -1234,6 +1261,7 @@ function renderVendorVaultSummaryPanels(payload) {
   const activity = safePayload.activity_summary || {};
   const hasData = toSafeCount(activity.total_events) > 0;
 
+  renderHeaderActivityReadout(toSafeCount(activity.total_events));
   renderActivitySummaryPanel(activity, hasData);
   renderDomainsPanel(safePayload.domains_used, hasData);
   renderKeysPanel(safePayload.observed_parameter_keys, hasData);
@@ -1606,20 +1634,17 @@ function renderSummary(scoreMeta, itemModels) {
   const scoreBandEl = qs("exposureSummaryScoreBand");
   const mayList = qs("exposureMayHaveReceivedList");
   const attemptedList = qs("exposureAttemptedToReceiveList");
-  const concernEl = qs("exposureCaseConcern");
-  if (!scoreTextEl || !scoreValueEl || !scoreBandEl || !mayList || !attemptedList || !concernEl) return;
+  if (!scoreTextEl || !scoreValueEl || !scoreBandEl || !mayList || !attemptedList) return;
 
   if (!scoreMeta) {
-    scoreTextEl.textContent = "Concern score";
+    scoreTextEl.textContent = "Score";
     scoreValueEl.textContent = "-";
     scoreBandEl.textContent = "-";
-    concernEl.textContent = "-";
     renderSummaryRing(0);
   } else {
-    scoreTextEl.textContent = "Concern score";
+    scoreTextEl.textContent = "Score";
     scoreValueEl.textContent = String(scoreMeta.score);
     scoreBandEl.textContent = `${scoreMeta.band} concern`;
-    concernEl.textContent = `${scoreMeta.band} concern`;
     renderSummaryRing(scoreMeta.score);
   }
 
@@ -1633,25 +1658,9 @@ function renderSummary(scoreMeta, itemModels) {
   mayList.textContent = formatCategorySet(observedCategories, "None observed");
   attemptedList.textContent = formatCategorySet(attemptedCategories, "None detected");
   setExposureCaseSummaryNext(itemModels.length ? "Choose an inventory item in the grid." : "Review Browser API activity below.");
-  renderCaseReadoutSummary(scoreMeta, itemModels.length > 0);
-}
-
-function renderCaseReadoutSummary(scoreMeta, hasItems) {
-  const concernEl = qs("exposureCaseConcern");
-  if (!concernEl) return;
-
-  if (!hasItems) {
-    concernEl.textContent = "No scored inventory";
-    setExposureCaseSummaryNext("Review Browser API activity below.");
-    return;
-  }
-
-  concernEl.textContent = scoreMeta ? `${scoreMeta.band} concern` : "Scored inventory";
 }
 
 function resetCaseReadout() {
-  const concernEl = qs("exposureCaseConcern");
-  if (concernEl) concernEl.textContent = "-";
   setExposureCaseSummaryNext("Choose an inventory item in the grid.");
 }
 
@@ -2652,13 +2661,11 @@ function clearSuccessContent() {
   const scoreBandEl = qs("exposureSummaryScoreBand");
   const mayList = qs("exposureMayHaveReceivedList");
   const attemptedList = qs("exposureAttemptedToReceiveList");
-  const concernEl = qs("exposureCaseConcern");
-  if (scoreTextEl) scoreTextEl.textContent = "Concern score";
+  if (scoreTextEl) scoreTextEl.textContent = "Score";
   if (scoreValueEl) scoreValueEl.textContent = "-";
   if (scoreBandEl) scoreBandEl.textContent = "-";
   if (mayList) mayList.textContent = "-";
   if (attemptedList) attemptedList.textContent = "-";
-  if (concernEl) concernEl.textContent = "-";
   renderSummaryRing(0);
   activeExposureInventoryKey = "";
   renderInventoryInspection([]);
