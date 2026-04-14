@@ -118,11 +118,11 @@
             <div class="panel-header">
               <div>
                 <div class="panel-title">Settings</div>
-                <div class="panel-subtitle">Curated display system and local product preferences</div>
+                <div class="panel-subtitle">Local runtime controls, persistence readouts, and shared display preferences</div>
               </div>
             </div>
             <p class="settings-intro-copy">
-              Theme selection is intentionally bounded. Choose one of the curated Control Centre themes below to adjust the shared visual system without introducing custom color editing.
+              Review how this control centre persists UI state, where captured data lives, and which runtime surface is currently active on this device. Display remains the main visual preference area.
             </p>
           </div>
 
@@ -134,42 +134,134 @@
                   <div class="panel-subtitle">Shell and presentation preferences</div>
                 </div>
               </div>
-              <p class="settings-card-copy">Choose from the curated Control Centre themes. The active theme applies across the shared shell, cards, states, and charts.</p>
+              <p class="settings-card-copy">Choose from the curated Control Centre themes. The active selection updates the shared shell, panels, states, and chart tokens across the local UI.</p>
               <div id="themeSelector" class="settings-theme-grid" role="radiogroup" aria-label="Theme selector"></div>
               <p class="settings-card-note">
-                Theme choice is stored locally in this browser. No custom theme builder or arbitrary color picker is provided in this pass.
+                Theme choice is saved on this device and applied across the control centre.
               </p>
             </article>
 
-            <article class="panel settings-card">
+            <article class="panel settings-card settings-card-storage" aria-labelledby="settingsStorageTitle">
               <div class="panel-header">
                 <div>
-                  <div class="panel-title">Extension</div>
-                  <div class="panel-subtitle">Extension handoff and related controls</div>
+                  <div id="settingsStorageTitle" class="panel-title">Data &amp; storage</div>
+                  <div class="panel-subtitle">Local persistence and captured dataset readouts</div>
                 </div>
               </div>
-              <p class="settings-card-copy">Extension-related controls and handoff to be added.</p>
-              <p class="settings-card-note">
-                Existing extension-driven actions remain in their current feature areas until a real settings model is implemented.
-              </p>
+              <div class="settings-readout-shell">
+                <section class="settings-readout-section" aria-labelledby="settingsStorageLocalTitle">
+                  <div class="settings-section-heading">
+                    <div id="settingsStorageLocalTitle" class="settings-section-label">Local store</div>
+                  </div>
+                  <div class="settings-readout-list" aria-label="Local storage facts">
+                    <div class="settings-readout-row">
+                      <div class="settings-readout-key">Capture storage</div>
+                      <div id="storageCaptureValue" class="settings-readout-value">SQLite on this device</div>
+                    </div>
+                    <div class="settings-readout-row">
+                      <div class="settings-readout-key">Data locality</div>
+                      <div id="storageLocalityValue" class="settings-readout-value">Local-only</div>
+                    </div>
+                    <div class="settings-readout-row">
+                      <div class="settings-readout-key">Preference storage</div>
+                      <div id="storagePreferenceValue" class="settings-readout-value">Checking...</div>
+                    </div>
+                  </div>
+                </section>
+
+                <section class="settings-readout-section" aria-labelledby="settingsStorageActivityTitle">
+                  <div class="settings-section-heading">
+                    <div id="settingsStorageActivityTitle" class="settings-section-label">Captured activity</div>
+                  </div>
+                  <div class="settings-readout-list" aria-label="Captured activity summary">
+                    <div class="settings-readout-row">
+                      <div class="settings-readout-key">Tracked sites</div>
+                      <div id="storageTrackedSitesValue" class="settings-readout-value settings-readout-value-mono">-</div>
+                    </div>
+                    <div class="settings-readout-row">
+                      <div class="settings-readout-key">Captured events</div>
+                      <div id="storageCapturedEventsValue" class="settings-readout-value settings-readout-value-mono">-</div>
+                    </div>
+                    <div class="settings-readout-row">
+                      <div class="settings-readout-key">First activity</div>
+                      <div id="storageFirstActivityValue" class="settings-readout-value settings-readout-value-mono">-</div>
+                    </div>
+                    <div class="settings-readout-row">
+                      <div class="settings-readout-key">Last activity</div>
+                      <div id="storageLastActivityValue" class="settings-readout-value settings-readout-value-mono">-</div>
+                    </div>
+                  </div>
+                </section>
+
+                <section class="settings-readout-section" aria-labelledby="settingsStoragePolicyTitle">
+                  <div class="settings-section-heading">
+                    <div id="settingsStoragePolicyTitle" class="settings-section-label">Preferences &amp; policy</div>
+                  </div>
+                  <div class="settings-readout-list" aria-label="Preference and policy facts">
+                    <div class="settings-readout-row">
+                      <div class="settings-readout-key">Blocked events</div>
+                      <div id="storageBlockedEventsValue" class="settings-readout-value settings-readout-value-mono">-</div>
+                    </div>
+                    <div class="settings-readout-row">
+                      <div class="settings-readout-key">Observed events</div>
+                      <div id="storageObservedEventsValue" class="settings-readout-value settings-readout-value-mono">-</div>
+                    </div>
+                    <div class="settings-readout-row">
+                      <div class="settings-readout-key">Policy entries</div>
+                      <div id="storagePolicyEntriesValue" class="settings-readout-value settings-readout-value-mono">-</div>
+                    </div>
+                    <div class="settings-readout-row">
+                      <div class="settings-readout-key">Last policy change</div>
+                      <div id="storagePolicyChangeValue" class="settings-readout-value settings-readout-value-mono">-</div>
+                    </div>
+                  </div>
+                  <div class="settings-secondary-actions" aria-label="Data export actions">
+                    <button id="settingsExportCsvBtn" class="btn-export settings-secondary-action" type="button">Export CSV</button>
+                    <button id="settingsExportJsonBtn" class="btn-export settings-secondary-action" type="button">Export JSON</button>
+                  </div>
+                </section>
+              </div>
             </article>
 
-            <article class="panel settings-card">
+            <article class="panel settings-card settings-card-diagnostics" aria-labelledby="settingsDiagnosticsTitle">
               <div class="panel-header">
                 <div>
-                  <div class="panel-title">About / Diagnostics</div>
-                  <div class="panel-subtitle">Read-only product facts and future diagnostics</div>
+                  <div id="settingsDiagnosticsTitle" class="panel-title">Diagnostics</div>
+                  <div class="panel-subtitle">Read-only runtime facts</div>
                 </div>
               </div>
-              <p class="settings-card-copy">Version, status, and diagnostic details to be added.</p>
-              <div class="settings-fact-list" aria-label="Current read-only facts">
-                <div class="settings-fact">
-                  <div class="settings-fact-label">Runtime</div>
-                  <div class="settings-fact-value">Local-first control centre</div>
+              <div class="settings-readout-list settings-readout-list-compact" aria-label="Diagnostics facts">
+                <div class="settings-readout-row">
+                  <div class="settings-readout-key">Backend</div>
+                  <div id="diagnosticsBackendValue" class="settings-readout-value settings-status-chip" data-status="pending">Checking...</div>
                 </div>
-                <div class="settings-fact">
-                  <div class="settings-fact-label">Storage</div>
-                  <div class="settings-fact-value">Data persists locally in SQLite (privacy.db)</div>
+                <div class="settings-readout-row">
+                  <div class="settings-readout-key">Runtime</div>
+                  <div id="diagnosticsRuntimeValue" class="settings-readout-value settings-readout-value-mono">Local-first</div>
+                </div>
+                <div class="settings-readout-row">
+                  <div class="settings-readout-key">Storage backend</div>
+                  <div id="diagnosticsStorageValue" class="settings-readout-value settings-readout-value-mono">SQLite-backed local persistence</div>
+                </div>
+                <div class="settings-readout-row">
+                  <div class="settings-readout-key">Theme</div>
+                  <div id="diagnosticsThemeValue" class="settings-readout-value settings-readout-value-mono">-</div>
+                </div>
+                <div class="settings-readout-row">
+                  <div class="settings-readout-key">UI persistence</div>
+                  <div id="diagnosticsPersistenceValue" class="settings-readout-value settings-readout-value-mono">Checking...</div>
+                </div>
+                <div class="settings-readout-row">
+                  <div class="settings-readout-key">Origin</div>
+                  <div id="diagnosticsOriginValue" class="settings-readout-value settings-readout-value-mono">-</div>
+                </div>
+                <div class="settings-readout-row">
+                  <div class="settings-readout-key">API surface</div>
+                  <div id="diagnosticsApiValue" class="settings-readout-value settings-readout-value-mono">-</div>
+                </div>
+                <div class="settings-readout-row">
+                  <div class="settings-readout-key">Build</div>
+                  <div id="diagnosticsBuildValue" class="settings-readout-value settings-readout-value-mono">vpt-control-centre 1.0.0</div>
                 </div>
               </div>
             </article>

@@ -1,4 +1,6 @@
 const SETTINGS_STATUS_POLL_MS = 5000;
+const SETTINGS_BUILD_LABEL = "vpt-control-centre 1.0.0";
+const SHELL_PERSIST_KEY = "vpt.control-centre.shell.collapsed";
 
 function setConnectionStatus(state, text) {
   const statusEl = document.getElementById("connectionStatusShell");
@@ -10,16 +12,62 @@ function setConnectionStatus(state, text) {
   statusEl.setAttribute("aria-label", text);
 }
 
-async function refreshConnectionStatus() {
+function setDiagnosticsBackendStatus(state, text) {
+  const statusEl = document.getElementById("diagnosticsBackendValue");
+  if (!statusEl) return;
+
+  statusEl.textContent = text;
+  statusEl.dataset.status = state;
+  statusEl.title = text;
+}
+
+function setText(id, text) {
+  const el = document.getElementById(id);
+  if (!el) return;
+  el.textContent = text;
+  el.title = text;
+}
+
+function formatCount(value) {
+  return new Intl.NumberFormat().format(Math.max(0, Number(value) || 0));
+}
+
+function padNumber(value) {
+  return String(value).padStart(2, "0");
+}
+
+function formatDateTime(ts) {
+  const numericTs = Number(ts);
+  if (!Number.isFinite(numericTs) || numericTs <= 0) return "-";
+
+  const date = new Date(numericTs);
+  if (Number.isNaN(date.getTime())) return "-";
+
+  return `${date.getFullYear()}-${padNumber(date.getMonth() + 1)}-${padNumber(date.getDate())} ${padNumber(date.getHours())}:${padNumber(date.getMinutes())}:${padNumber(date.getSeconds())}`;
+}
+
+function isLocalStorageAvailable() {
   try {
-    const response = await fetch("/api/sites", { headers: { Accept: "application/json" } });
-    if (!response.ok) {
-      throw new Error(`HTTP ${response.status}`);
-    }
-    setConnectionStatus("online", "Connected to local backend");
+    const probeKey = "__vpt_settings_probe__";
+    window.localStorage.setItem(probeKey, "1");
+    window.localStorage.removeItem(probeKey);
+    return true;
   } catch (_error) {
-    setConnectionStatus("offline", "Backend unavailable - is server.js running?");
+    return false;
   }
+}
+
+function setExportEnabled(enabled) {
+  const buttons = [
+    document.getElementById("settingsExportCsvBtn"),
+    document.getElementById("settingsExportJsonBtn"),
+  ];
+
+  buttons.forEach((button) => {
+    if (!button) return;
+    button.disabled = !enabled;
+    button.setAttribute("aria-disabled", enabled ? "false" : "true");
+  });
 }
 
 function createThemeCard(theme, activeThemeId) {
@@ -85,6 +133,10 @@ function syncThemeSelectorState(activeThemeId) {
   });
 }
 
+function syncDiagnosticsThemeValue(themeId) {
+  setText("diagnosticsThemeValue", String(themeId || "Unavailable"));
+}
+
 function bindThemeSelector() {
   const selector = document.getElementById("themeSelector");
   const themeApi = window.VPT?.theme;
@@ -97,22 +149,179 @@ function bindThemeSelector() {
     }
     const nextThemeId = themeApi.setTheme(input.value);
     syncThemeSelectorState(nextThemeId);
+    syncDiagnosticsThemeValue(nextThemeId);
   });
 
   window.addEventListener("vpt:themechange", (event) => {
     const nextThemeId = event?.detail?.themeId || themeApi.getTheme();
     syncThemeSelectorState(nextThemeId);
+    syncDiagnosticsThemeValue(nextThemeId);
   });
+}
+
+function bindExportActions() {
+  const utils = window.VPT?.utils;
+  if (!utils) return;
+
+  const csvButton = document.getElementById("settingsExportCsvBtn");
+  const jsonButton = document.getElementById("settingsExportJsonBtn");
+
+  csvButton?.addEventListener("click", () => {
+    if (csvButton.disabled) return;
+    utils.triggerDownload(utils.buildExportUrl("csv", {}));
+  });
+
+  jsonButton?.addEventListener("click", () => {
+    if (jsonButton.disabled) return;
+    utils.triggerDownload(utils.buildExportUrl("json", {}));
+  });
+}
+
+function renderStaticDiagnostics() {
+  const themeApi = window.VPT?.theme;
+  const storageAvailable = isLocalStorageAvailable();
+  const currentOrigin = window.location?.origin || "Unavailable";
+  const apiSurface = (() => {
+    try {
+      return new URL("/api/", window.location.href).href.replace(/\/$/, "/*");
+    } catch (_error) {
+      return "Unavailable";
+    }
+  })();
+
+  setText("storageCaptureValue", "SQLite on this device");
+  setText("storageLocalityValue", "Local-only");
+  setText("storagePreferenceValue", storageAvailable ? "Browser localStorage" : "Unavailable");
+
+  setText("diagnosticsRuntimeValue", "Local-first");
+  setText("diagnosticsStorageValue", "SQLite-backed local persistence");
+  setText("diagnosticsThemeValue", themeApi?.getTheme?.() || "Unavailable");
+  setText("diagnosticsPersistenceValue", storageAvailable ? "Available" : "Unavailable");
+  setText("diagnosticsOriginValue", currentOrigin);
+  setText("diagnosticsApiValue", apiSurface);
+  setText("diagnosticsBuildValue", SETTINGS_BUILD_LABEL);
+}
+
+function summarizeSites(sites) {
+  if (!Array.isArray(sites) || !sites.length) {
+    return {
+      trackedSites: 0,
+      totalEvents: 0,
+      blockedEvents: 0,
+      observedEvents: 0,
+      firstActivity: null,
+      lastActivity: null,
+    };
+  }
+
+  let totalEvents = 0;
+  let blockedEvents = 0;
+  let observedEvents = 0;
+  let firstActivity = null;
+  let lastActivity = null;
+
+  for (const site of sites) {
+    totalEvents += Number(site?.totalEvents) || 0;
+    blockedEvents += Number(site?.blockedCount) || 0;
+    observedEvents += Number(site?.observedCount) || 0;
+
+    const firstSeen = Number(site?.firstSeen) || 0;
+    const lastSeen = Number(site?.lastSeen) || 0;
+
+    if (firstSeen > 0 && (firstActivity === null || firstSeen < firstActivity)) {
+      firstActivity = firstSeen;
+    }
+
+    if (lastSeen > 0 && (lastActivity === null || lastSeen > lastActivity)) {
+      lastActivity = lastSeen;
+    }
+  }
+
+  return {
+    trackedSites: sites.length,
+    totalEvents,
+    blockedEvents,
+    observedEvents,
+    firstActivity,
+    lastActivity,
+  };
+}
+
+function renderSiteSummary(summary, isOnline) {
+  if (!isOnline) {
+    setText("storageTrackedSitesValue", "Unavailable");
+    setText("storageCapturedEventsValue", "Unavailable");
+    setText("storageFirstActivityValue", "Unavailable");
+    setText("storageLastActivityValue", "Unavailable");
+    setText("storageBlockedEventsValue", "Unavailable");
+    setText("storageObservedEventsValue", "Unavailable");
+    return;
+  }
+
+  setText("storageTrackedSitesValue", formatCount(summary.trackedSites));
+  setText("storageCapturedEventsValue", formatCount(summary.totalEvents));
+  setText("storageBlockedEventsValue", formatCount(summary.blockedEvents));
+  setText("storageObservedEventsValue", formatCount(summary.observedEvents));
+  setText("storageFirstActivityValue", summary.firstActivity ? formatDateTime(summary.firstActivity) : "No captured events");
+  setText("storageLastActivityValue", summary.lastActivity ? formatDateTime(summary.lastActivity) : "No captured events");
+}
+
+function renderPolicySummary(policyResponse, isAvailable) {
+  if (!isAvailable || !policyResponse || typeof policyResponse !== "object") {
+    setText("storagePolicyEntriesValue", "Unavailable");
+    setText("storagePolicyChangeValue", "Unavailable");
+    return;
+  }
+
+  const items = Array.isArray(policyResponse.items) ? policyResponse.items : [];
+  const latestTs = Number(policyResponse.latestTs) || 0;
+
+  setText("storagePolicyEntriesValue", formatCount(items.length));
+  setText("storagePolicyChangeValue", latestTs > 0 ? formatDateTime(latestTs) : "No policy changes");
+}
+
+async function refreshSettingsReadouts() {
+  const api = window.VPT?.api;
+  if (!api) return;
+
+  const [sitesResult, policiesResult] = await Promise.allSettled([
+    api.getSites(),
+    api.getPolicies(),
+  ]);
+
+  const sitesOnline = sitesResult.status === "fulfilled";
+  const policiesOnline = policiesResult.status === "fulfilled";
+
+  setConnectionStatus(
+    sitesOnline ? "online" : "offline",
+    sitesOnline ? "Connected to local backend" : "Backend unavailable - is server.js running?"
+  );
+
+  setDiagnosticsBackendStatus(
+    sitesOnline ? "online" : "offline",
+    sitesOnline ? "Online" : "Backend offline"
+  );
+
+  renderSiteSummary(
+    sitesOnline ? summarizeSites(sitesResult.value) : null,
+    sitesOnline
+  );
+  renderPolicySummary(policiesOnline ? policiesResult.value : null, policiesOnline);
+  setExportEnabled(sitesOnline);
 }
 
 window.addEventListener("load", () => {
   window.VPT?.shell?.initShell?.({
     currentSection: "settings",
-    persistKey: "vpt.control-centre.shell.collapsed",
+    persistKey: SHELL_PERSIST_KEY,
   });
 
   renderThemeSelector();
   bindThemeSelector();
-  refreshConnectionStatus();
-  window.setInterval(refreshConnectionStatus, SETTINGS_STATUS_POLL_MS);
+  bindExportActions();
+  renderStaticDiagnostics();
+  setExportEnabled(false);
+  setDiagnosticsBackendStatus("pending", "Checking...");
+  refreshSettingsReadouts();
+  window.setInterval(refreshSettingsReadouts, SETTINGS_STATUS_POLL_MS);
 });
