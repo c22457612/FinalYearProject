@@ -558,7 +558,7 @@ function buildInspectorSummary(record) {
 
   return {
     lead,
-    evidence: `Snapshot mix: 1P ${formatCount(first)} | 3P ${formatCount(third)} | U ${formatCount(unknown)}. ${evidenceNote}`,
+    evidence: `Snapshot mix: 1st-party ${formatCount(first)} • 3rd-party ${formatCount(third)} • Unclear ${formatCount(unknown)}. ${evidenceNote}`,
   };
 }
 
@@ -597,9 +597,9 @@ function renderSelectorCardHtml(record) {
       </div>
       <div class="cookies-site-card-count">${formatCount(record.cookieCount)} cookies</div>
       <div class="cookies-site-card-split">
-        <span>1P ${formatCount(record.firstCount)}</span>
-        <span>3P ${formatCount(record.thirdCount)}</span>
-        <span>U ${formatCount(record.unknownCount)}</span>
+        <span>1st-party ${formatCount(record.firstCount)}</span>
+        <span>3rd-party ${formatCount(record.thirdCount)}</span>
+        <span>Unclear ${formatCount(record.unknownCount)}</span>
       </div>
       <div class="cookies-site-card-last">Last seen ${escapeHtml(friendlyTime(record.lastSeenTs))}</div>
     </button>

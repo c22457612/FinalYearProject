@@ -2453,11 +2453,16 @@
 .cookies-site-card-split {
   display: flex;
   flex-wrap: wrap;
-  gap: 0.5rem 0.75rem;
+  gap: 0.34rem 0.52rem;
   font-family: var(--font-mono);
   color: var(--color-text-muted);
-  font-size: 0.8rem;
+  font-size: 0.79rem;
+  line-height: 1.35;
   font-variant-numeric: tabular-nums;
+}
+
+.cookies-site-card-split span {
+  white-space: nowrap;
 }
 
 .cookies-site-card-last {
@@ -2976,7 +2981,7 @@
 
 .cookies-cookie-name {
   font-family: var(--font-ui);
-  font-size: 1.03rem;
+  font-size: 1.12rem;
   line-height: 1.25;
   font-weight: 600;
   color: var(--text-secondary);
@@ -2985,7 +2990,8 @@
 
 .cookies-cookie-domain {
   font-family: var(--font-ui);
-  font-size: 0.84rem;
+  font-size: 0.92rem;
+  line-height: 1.34;
   color: var(--color-text-muted);
   overflow-wrap: anywhere;
 }
@@ -3080,7 +3086,7 @@
 
 .cookies-cookie-effect-label {
   font-family: var(--font-mono);
-  font-size: 0.69rem;
+  font-size: 0.74rem;
   line-height: 1.2;
   letter-spacing: 0.08em;
   text-transform: uppercase;
@@ -3088,8 +3094,8 @@
 }
 
 .cookies-cookie-effect {
-  font-size: 0.88rem;
-  line-height: 1.48;
+  font-size: 0.96rem;
+  line-height: 1.5;
   color: var(--color-text-muted);
   max-width: 76ch;
 }
@@ -3114,7 +3120,7 @@
 
 .cookies-cookie-detail-section-title {
   font-family: var(--font-mono);
-  font-size: 0.72rem;
+  font-size: 0.78rem;
   line-height: 1.2;
   letter-spacing: 0.08em;
   text-transform: uppercase;
@@ -3140,7 +3146,7 @@
 
 .cookies-cookie-detail-label {
   font-family: var(--font-mono);
-  font-size: 0.7rem;
+  font-size: 0.74rem;
   text-transform: uppercase;
   letter-spacing: 0.06em;
   color: var(--color-text-faint);
@@ -3149,7 +3155,7 @@
 
 .cookies-cookie-detail-value {
   font-family: var(--font-mono);
-  font-size: 0.88rem;
+  font-size: 0.96rem;
   line-height: 1.4;
   color: var(--text-secondary);
   overflow-wrap: anywhere;
@@ -3166,15 +3172,15 @@
 }
 
 .cookies-cookie-detail-copy {
-  font-size: 0.9rem;
-  line-height: 1.52;
+  font-size: 0.98rem;
+  line-height: 1.55;
   color: var(--color-text-muted);
 }
 
 .cookies-cookie-detail-copy strong {
   color: var(--text-secondary);
   font-family: var(--font-mono);
-  font-size: 0.78rem;
+  font-size: 0.82rem;
   font-weight: 600;
   letter-spacing: 0.04em;
   text-transform: uppercase;
@@ -3183,8 +3189,8 @@
 .cookies-cookie-detail-note {
   padding-top: 0.56rem;
   border-top: 1px solid color-mix(in srgb, var(--accent-border) 16%, var(--divider));
-  font-size: 0.84rem;
-  line-height: 1.45;
+  font-size: 0.92rem;
+  line-height: 1.48;
   color: var(--color-text-faint);
 }
 
