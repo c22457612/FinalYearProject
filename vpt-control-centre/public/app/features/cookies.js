@@ -624,6 +624,7 @@ function renderCookieRowHtml(cookie, expanded) {
       >
         <span class="cookies-cookie-strip">
           <span class="cookies-cookie-header">
+            <span class="cookies-cookie-disclosure" aria-hidden="true">${expanded ? "-" : "+"}</span>
             <span class="cookies-cookie-main">
               <span class="cookies-cookie-name">${escapeHtml(cookie.name)}</span>
               <span class="cookies-cookie-domain">${escapeHtml(cookie.domain || "No domain recorded")}</span>
@@ -668,7 +669,7 @@ function renderCookieRowHtml(cookie, expanded) {
             <div class="cookies-cookie-detail-section-title">Heuristic notes</div>
             <div class="cookies-cookie-detail-stack">
               <div class="cookies-cookie-detail-copy">
-                <strong>Why this is the current guess:</strong> ${escapeHtml(cookie.reasoning)}
+                <strong>Heuristic basis:</strong> ${escapeHtml(cookie.reasoning)}
               </div>
               <div class="cookies-cookie-detail-copy">
                 <strong>Flags:</strong> ${escapeHtml(flagsText)}
