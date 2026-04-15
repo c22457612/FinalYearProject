@@ -220,7 +220,7 @@ function renderCompactDrawerHtml(ev, trustedSites, utils) {
     <details class="receipt-event-drawer-raw"${rawJsonOpen ? " open" : ""}>
       <summary>
         <span class="receipt-event-drawer-raw-label">Raw event JSON</span>
-        <span class="receipt-event-drawer-raw-state">Toggle payload</span>
+        <span class="receipt-event-drawer-raw-state">${rawJsonOpen ? "Hide raw payload" : "Show raw payload"}</span>
       </summary>
       <pre>${escapeHtml(JSON.stringify(ev, null, 2))}</pre>
     </details>
