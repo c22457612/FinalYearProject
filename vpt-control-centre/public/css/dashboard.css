@@ -59,6 +59,7 @@
   align-items: center;
   gap: 0.35rem;
   color: var(--color-text-faint);
+  font-family: var(--font-mono);
   font-size: 0.78rem;
   letter-spacing: 0.05em;
   text-transform: uppercase;
@@ -70,10 +71,11 @@
 
 .receipt-limit-select,
 .receipt-control-btn {
-  border-radius: 999px;
+  border-radius: var(--radius-sm);
   border: 1px solid var(--button-secondary-border);
   background: var(--surface-panel);
   color: var(--color-text-main);
+  font-family: var(--font-mono);
   font-size: 0.8rem;
   line-height: 1.2;
   padding: 0.42rem 0.78rem;
@@ -120,6 +122,7 @@
 }
 
 .receipt-history-status {
+  font-family: var(--font-mono);
   font-size: 0.81rem;
   color: var(--color-text-faint);
   line-height: 1.35;
@@ -209,13 +212,14 @@
 }
 
 .receipt-minute-count {
-  color: var(--accent-contrast);
+  color: var(--accent-strong);
+  font-family: var(--font-mono);
   font-variant-numeric: tabular-nums;
   font-size: 0.8rem;
   padding: 0.12rem 0.42rem;
   border: 1px solid var(--accent-border);
-  border-radius: 999px;
-  background: var(--accent-soft-fill);
+  border-radius: var(--radius-sm);
+  background: color-mix(in srgb, var(--accent-soft-fill) 62%, transparent);
 }
 
 .receipt-minute-list {
@@ -242,14 +246,35 @@
 }
 
 .receipt-event-row-selected {
-  background: color-mix(in srgb, var(--accent-soft-fill) 62%, var(--surface-selected));
+  background: color-mix(in srgb, var(--accent-soft-fill) 58%, var(--surface-selected));
   border-color: var(--accent-border);
-  box-shadow: inset 3px 0 0 var(--accent-rail);
+  box-shadow: inset 2px 0 0 var(--accent-rail);
 }
 
 .receipt-event-row-selected .receipt-event-time {
-  color: var(--accent-contrast);
+  color: var(--accent-strong);
+  font-size: 0.84rem;
+  font-weight: 500;
+}
+
+.receipt-event-row-selected .receipt-event-site {
+  color: var(--color-text-main);
+  font-size: 1.1rem;
   font-weight: 600;
+}
+
+.receipt-event-row-selected .receipt-event-details {
+  color: var(--color-text-main);
+  font-size: 0.94rem;
+}
+
+.receipt-minute-list:has(.receipt-event-row-selected) .receipt-event-row:not(.receipt-event-row-selected) {
+  opacity: 0.84;
+}
+
+.receipt-minute-list:has(.receipt-event-row-selected) .receipt-event-row:not(.receipt-event-row-selected):hover,
+.receipt-minute-list:has(.receipt-event-row-selected) .receipt-event-row:not(.receipt-event-row-selected):focus-visible {
+  opacity: 1;
 }
 
 .receipt-event-time {
@@ -285,6 +310,10 @@
 
 .receipt-kind-pill,
 .receipt-mode-pill {
+  border-radius: var(--radius-sm);
+  font-family: var(--font-mono);
+  font-size: 0.7rem;
+  letter-spacing: 0.02em;
   white-space: nowrap;
   border: 1px solid transparent;
 }
@@ -322,7 +351,7 @@
 
 .receipt-mode-pill {
   opacity: 0.82;
-  font-size: 0.72rem;
+  font-size: 0.7rem;
 }
 
 .receipt-event-drawer {
@@ -332,10 +361,10 @@
   border-top: 1px solid color-mix(in srgb, var(--accent-border) 32%, var(--divider));
   border-bottom: 1px solid color-mix(in srgb, var(--accent-border) 24%, var(--divider));
   border-radius: 0 0 var(--radius-sm) var(--radius-sm);
-  background: color-mix(in srgb, var(--surface-raised) 88%, var(--surface-panel));
+  background: color-mix(in srgb, var(--surface-raised) 78%, var(--surface-panel));
   box-shadow: inset 2px 0 0 var(--accent-rail);
   display: grid;
-  gap: 0.72rem;
+  gap: 0.82rem;
   min-width: 0;
   overflow: hidden;
   animation: receipt-inspector-reveal 160ms ease-out both;
@@ -366,15 +395,16 @@
 
 .receipt-event-drawer-primary {
   display: grid;
-  gap: 0.25rem;
+  gap: 0.3rem;
   min-width: 0;
 }
 
 .receipt-event-drawer-kicker,
 .receipt-event-drawer-section-label {
   color: var(--accent-strong);
+  font-family: var(--font-mono);
   font-size: 0.68rem;
-  font-weight: 700;
+  font-weight: 600;
   letter-spacing: 0.08em;
   line-height: 1.2;
   text-transform: uppercase;
@@ -390,7 +420,7 @@
 
 .receipt-event-drawer-site {
   color: var(--color-text-main);
-  font-size: 1rem;
+  font-size: 1.1rem;
   font-weight: 600;
   line-height: 1.25;
   overflow-wrap: anywhere;
@@ -399,12 +429,13 @@
 .receipt-event-drawer-time,
 .receipt-event-drawer-dot {
   color: var(--color-text-faint);
-  font-size: 0.82rem;
+  font-family: var(--font-mono);
+  font-size: 0.88rem;
 }
 
 .receipt-event-drawer-section {
   display: grid;
-  gap: 0.45rem;
+  gap: 0.5rem;
   min-width: 0;
 }
 
@@ -416,7 +447,7 @@
 .receipt-event-drawer-facts {
   display: flex;
   flex-wrap: wrap;
-  gap: 0.32rem 0.48rem;
+  gap: 0.26rem 0.42rem;
   align-items: center;
   min-width: 0;
 }
@@ -428,25 +459,26 @@
   column-gap: 0.34rem;
   min-width: 0;
   max-width: 16rem;
-  padding: 0.28rem 0.42rem;
+  padding: 0.26rem 0.4rem;
   border: 0;
   border-radius: 0;
-  background: color-mix(in srgb, var(--accent-soft-fill) 14%, transparent);
-  box-shadow: inset 0 -1px 0 color-mix(in srgb, var(--accent-border) 16%, var(--divider));
-  font-size: 0.78rem;
-  line-height: 1.28;
+  background: color-mix(in srgb, var(--accent-soft-fill) 9%, transparent);
+  box-shadow: inset 0 -1px 0 color-mix(in srgb, var(--accent-border) 12%, var(--divider));
+  font-size: 0.8rem;
+  line-height: 1.32;
 }
 
 .receipt-event-drawer-fact-label {
   color: var(--color-text-faint);
-  font-size: 0.64rem;
+  font-family: var(--font-mono);
+  font-size: 0.65rem;
   letter-spacing: 0.06em;
   text-transform: uppercase;
   flex: 0 0 auto;
 }
 
 .receipt-event-drawer-fact-value {
-  color: var(--color-text-main);
+  color: var(--text-secondary);
   min-width: 0;
   overflow-wrap: anywhere;
   word-break: break-word;
@@ -454,8 +486,9 @@
 
 .receipt-event-drawer-summary {
   color: var(--color-text-main);
-  font-size: 0.95rem;
-  line-height: 1.45;
+  font-size: 1.02rem;
+  font-weight: 500;
+  line-height: 1.46;
   min-width: 0;
   overflow-wrap: anywhere;
   word-break: break-word;
@@ -476,7 +509,7 @@
   align-items: center;
   gap: 0.75rem;
   cursor: pointer;
-  padding: 0.68rem 0 0.62rem;
+  padding: 0.58rem 0 0.54rem;
   border-bottom: 1px solid transparent;
   color: var(--color-text-main);
   list-style: none;
@@ -503,23 +536,25 @@
 
 .receipt-event-drawer-raw-label {
   color: var(--accent-strong);
+  font-family: var(--font-mono);
   font-size: 0.76rem;
-  font-weight: 700;
+  font-weight: 600;
   letter-spacing: 0.07em;
   text-transform: uppercase;
 }
 
 .receipt-event-drawer-raw-state {
   color: var(--color-text-faint);
+  font-family: var(--font-mono);
   font-size: 0.76rem;
 }
 
 .receipt-event-drawer-raw pre {
   margin: 0;
-  padding: 0.85rem 0.92rem;
-  background: color-mix(in srgb, var(--surface-panel) 72%, var(--surface-shell));
+  padding: 0.78rem 0.86rem;
+  background: color-mix(in srgb, var(--surface-panel) 54%, var(--surface-shell));
   border-left: 1px solid color-mix(in srgb, var(--accent-border) 20%, var(--divider));
-  color: var(--color-text-main);
+  color: var(--text-secondary);
   font-family: var(--font-mono);
   font-size: 0.8rem;
   line-height: 1.55;
@@ -538,6 +573,7 @@
 
 .receipt-tools-disclosure summary {
   cursor: pointer;
+  font-family: var(--font-mono);
   font-size: 0.78rem;
   color: var(--color-text-faint);
 }
@@ -558,10 +594,11 @@
   min-height: 2rem;
   padding: 0.42rem 0.78rem;
   border: 1px solid color-mix(in srgb, var(--accent-border) 40%, var(--button-secondary-border));
-  border-radius: 999px;
+  border-radius: var(--radius-sm);
   background: var(--surface-panel);
   color: var(--color-text-main);
   cursor: pointer;
+  font-family: var(--font-mono);
   font-size: 0.8rem;
   line-height: 1.2;
   list-style: none;
@@ -588,10 +625,10 @@
 }
 
 .inspect-queue[open] summary {
-  background: var(--accent-soft-fill);
+  background: color-mix(in srgb, var(--accent-soft-fill) 66%, var(--surface-panel));
   border-color: var(--accent-rail);
-  box-shadow: inset 0 -2px 0 var(--accent-rail);
-  color: var(--accent-contrast);
+  box-shadow: inset 2px 0 0 var(--accent-rail);
+  color: var(--color-text-main);
 }
 
 .inspect-queue[open] summary::after {
@@ -608,9 +645,9 @@
   overflow: auto;
   padding: 0.35rem 0.75rem;
   border: 1px solid color-mix(in srgb, var(--accent-border) 42%, var(--border-subtle-color));
-  border-radius: var(--radius-sm);
+  border-radius: 0 0 var(--radius-sm) var(--radius-sm);
   background: var(--surface-raised);
-  box-shadow: inset 0 1px 0 var(--accent-border), inset 3px 0 0 var(--accent-rail);
+  box-shadow: inset 0 1px 0 color-mix(in srgb, var(--accent-border) 44%, var(--divider)), inset 2px 0 0 var(--accent-rail);
 }
 
 .inspect-next-list {
@@ -672,6 +709,8 @@
 
 .btn-export-quiet {
   padding: 0.42rem 0.78rem;
+  border-radius: var(--radius-sm);
+  font-family: var(--font-mono);
   font-size: 0.8rem;
   line-height: 1.2;
   background: var(--button-secondary-fill-hover);
@@ -681,7 +720,7 @@
 .btn-export-quiet:hover {
   background: var(--accent-soft-fill);
   border-color: var(--accent-border);
-  color: var(--accent-contrast);
+  color: var(--color-text-main);
 }
 
 @media (max-width: 1120px) {
