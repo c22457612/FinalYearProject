@@ -13,9 +13,9 @@ function formatLastSeen(ts) {
 }
 
 function buildMetaText({ totalSites, matchingSites, search }) {
-  if (!totalSites) return "0 tracked";
-  if (search) return `${formatCount(matchingSites)} matching / ${formatCount(totalSites)} tracked`;
-  return `${formatCount(totalSites)} tracked`;
+  if (!totalSites) return "0 sites tracked";
+  if (search) return `${formatCount(matchingSites)} matching / ${formatCount(totalSites)} sites tracked`;
+  return `${formatCount(totalSites)} sites tracked`;
 }
 
 function compareSites(sort, a, b) {

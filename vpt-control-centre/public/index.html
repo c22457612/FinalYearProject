@@ -201,8 +201,9 @@
       <section class="sites-launcher-panel">
         <div class="sites-launcher-header">
           <div class="sites-launcher-copy">
-            <div class="panel-title">Choose a site to inspect</div>
-            <div class="panel-subtitle">Search, sort, and open Site Insights for the next site you want to review.</div>
+            <h1 class="panel-title">Tracked sites</h1>
+            <div class="panel-subtitle">Search, sort, and open Site Insights for captured sites.</div>
+            <div id="sitesMeta" class="sites-meta" aria-live="polite">0 sites tracked</div>
           </div>
 
           <div class="sites-controls" role="search">
@@ -222,8 +223,6 @@
             </select>
           </div>
         </div>
-
-        <div id="sitesMeta" class="sites-meta" aria-live="polite">0 tracked</div>
 
         <div id="sitesGrid" class="sites-grid">
           <!-- site cards inserted by dashboard.js -->
@@ -737,14 +736,6 @@
         </section>
       </main>
 
-
-
-      <footer>
-        <div>data persists locally in SQLite (privacy.db).</div>
-        <div>Source: local extension events streamed to
-          <code>http://127.0.0.1:4141</code>.
-        </div>
-      </footer>
     </div>
   </div>
 
