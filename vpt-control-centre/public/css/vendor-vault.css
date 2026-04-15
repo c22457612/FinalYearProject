@@ -2879,3 +2879,87 @@
   border-color: var(--accent-rail);
   box-shadow: inset 0 0 0 1px var(--accent-border), 0 0 0 1px var(--accent-rail);
 }
+
+/* Vendor Vault final technical-details subtle focus glow */
+
+.vendor-vault-technical-details > summary:hover,
+.vendor-vault-technical-details > summary:focus-visible {
+  border-color: var(--accent-border);
+  box-shadow: inset 2px 0 0 var(--accent-rail), 0 0 0 1px var(--accent-rail);
+}
+
+.vendor-vault-technical-details[open] > summary {
+  border-color: var(--accent-border);
+  box-shadow: inset 2px 0 0 var(--accent-rail), inset 0 0 0 1px var(--accent-border);
+}
+
+.vendor-vault-technical-details[open] > summary:hover,
+.vendor-vault-technical-details[open] > summary:focus-visible {
+  box-shadow: inset 2px 0 0 var(--accent-rail), inset 0 0 0 1px var(--accent-border), 0 0 0 1px var(--accent-rail);
+}
+
+/* Vendor Vault workspace tab rail polish */
+
+.vendor-vault-mode-bar {
+  top: 0;
+  align-items: stretch;
+  gap: 0;
+  isolation: isolate;
+  overflow: visible;
+  padding: 0;
+  border: 1px solid var(--border-subtle-color);
+  border-bottom: 1px solid var(--divider);
+  border-radius: 0;
+  background: var(--surface-raised);
+  box-shadow:
+    inset 0 1px 0 var(--divider),
+    inset 0 -1px 0 var(--divider);
+}
+
+.vendor-vault-mode-bar::before {
+  content: "";
+  position: absolute;
+  z-index: -1;
+  top: -0.85rem;
+  right: -1px;
+  bottom: -0.16rem;
+  left: -1px;
+  background: var(--surface-raised);
+  border-bottom: 1px solid var(--divider);
+  pointer-events: none;
+}
+
+.vendor-vault-mode-btn {
+  box-sizing: border-box;
+  position: relative;
+  align-self: stretch;
+  padding-top: 0.36rem;
+  padding-bottom: 0.38rem;
+  background: transparent;
+  line-height: 1.18;
+}
+
+.vendor-vault-mode-btn + .vendor-vault-mode-btn {
+  border-left-color: var(--divider);
+}
+
+.vendor-vault-mode-btn:hover {
+  background: var(--surface-hover);
+  color: var(--color-text-main);
+}
+
+.vendor-vault-mode-btn.is-active {
+  z-index: 1;
+  background: transparent;
+  color: var(--color-text-main);
+  font-weight: 800;
+  box-shadow: inset 0 -2px 0 var(--color-text-muted);
+}
+
+.vendor-vault-mode-btn:focus-visible {
+  z-index: 2;
+  outline: none;
+  background: var(--surface-hover);
+  color: var(--color-text-main);
+  box-shadow: inset 0 -2px 0 var(--color-text-muted);
+}
