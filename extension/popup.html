@@ -773,19 +773,33 @@
           </div>
         </section>
 
-        <section class="console-section api-section">
+        <section class="console-section">
           <div class="section-head">
-            <span class="section-kicker">Browser API</span>
-            <p class="section-copy">Live API modes.</p>
+            <span class="section-kicker">Notifications</span>
+            <p class="section-copy">Local alert controls.</p>
           </div>
           <div class="control-list">
             <div class="control-row">
               <div class="control-main">
-                <label class="control-label" for="apiNotificationsEnabled">Detection notifications</label>
-                <span class="control-help">Local Browser API alerts.</span>
+                <label class="control-label" for="apiNotificationsEnabled">Browser API notifications</label>
+                <span class="control-help">Local alerts for Browser API detections.</span>
               </div>
               <input id="apiNotificationsEnabled" class="toggle" type="checkbox" />
             </div>
+            <div class="control-row">
+              <div class="control-main">
+                <label class="control-label" for="networkNotificationsEnabled">Tracker blocking notifications</label>
+                <span class="control-help">Local alerts when VPT blocks a tracker request.</span>
+              </div>
+              <input id="networkNotificationsEnabled" class="toggle" type="checkbox" />
+            </div>
+          </div>
+        </section>
+
+        <section class="console-section api-section">
+          <div class="section-head">
+            <span class="section-kicker">Browser API</span>
+            <p class="section-copy">Live API modes.</p>
           </div>
           <div id="apiPolicyGrid" class="api-policy-list">
             <div class="api-policy-row">

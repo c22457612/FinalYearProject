@@ -8,6 +8,7 @@ const captureEnabledChk = document.getElementById("captureEnabled");
 const promptOnNewSitesChk = document.getElementById("promptOnNewSites");
 const trustedSitesEnabledChk = document.getElementById("trustedSitesEnabled");
 const apiNotificationsEnabledChk = document.getElementById("apiNotificationsEnabled");
+const networkNotificationsEnabledChk = document.getElementById("networkNotificationsEnabled");
 const floatingStatusStripEnabledChk = document.getElementById("floatingStatusStripEnabled");
 const cookieSnapshotBtn = document.getElementById("cookieSnapshotBtn");
 const clearCookiesBtn = document.getElementById("clearCookiesBtn");
@@ -338,6 +339,7 @@ async function load() {
     promptOnNewSites,
     trustedSitesEnabled,
     apiNotificationsEnabled,
+    networkNotificationsEnabled,
     captureEnabled: storedCaptureEnabled,
     floatingStatusStripEnabled,
   } = await chrome.storage.local.get([
@@ -346,6 +348,7 @@ async function load() {
     "promptOnNewSites",
     "trustedSitesEnabled",
     "apiNotificationsEnabled",
+    "networkNotificationsEnabled",
     "captureEnabled",
     "floatingStatusStripEnabled",
   ]);
@@ -358,6 +361,9 @@ async function load() {
   trustedSitesEnabledChk.checked = trustedSitesEnabled !== false;
   if (apiNotificationsEnabledChk) {
     apiNotificationsEnabledChk.checked = apiNotificationsEnabled !== false;
+  }
+  if (networkNotificationsEnabledChk) {
+    networkNotificationsEnabledChk.checked = networkNotificationsEnabled === true;
   }
   if (floatingStatusStripEnabledChk) {
     floatingStatusStripEnabledChk.checked = floatingStatusStripEnabled === true;
@@ -423,9 +429,19 @@ apiNotificationsEnabledChk?.addEventListener("change", async () => {
   await chrome.storage.local.set({ apiNotificationsEnabled: apiNotificationsEnabledChk.checked });
   setStatus(
     apiNotificationsEnabledChk.checked
-      ? "Browser API detection notifications enabled."
-      : "Browser API detection notifications paused.",
+      ? "Browser API notifications enabled."
+      : "Browser API notifications paused.",
     apiNotificationsEnabledChk.checked ? "success" : "warn"
+  );
+});
+
+networkNotificationsEnabledChk?.addEventListener("change", async () => {
+  await chrome.storage.local.set({ networkNotificationsEnabled: networkNotificationsEnabledChk.checked });
+  setStatus(
+    networkNotificationsEnabledChk.checked
+      ? "Tracker blocking notifications enabled."
+      : "Tracker blocking notifications paused.",
+    networkNotificationsEnabledChk.checked ? "success" : "warn"
   );
 });
 

@@ -14,6 +14,7 @@ const MAX_STORED_EVENTS = 500;
 const API_EVENT_DEDUPE_WINDOW_MS = 1500;
 const API_EVENT_DEDUPE_LIMIT = 250;
 const API_NOTIFICATION_THROTTLE_MS = 45_000;
+const NETWORK_NOTIFICATION_THROTTLE_MS = 60_000;
 const floatingStatusShared = globalThis.__VPTFloatingStatusShared || null;
 
 let lastPolicyTs = 0;
@@ -27,6 +28,7 @@ let trustedDomains = [];       // base domains user trusts
 let trustedSitesEnabled = true;
 let captureEnabled = true;
 let apiNotificationsEnabled = true;
+let networkNotificationsEnabled = false;
 let backendTrustedDomains = new Set();
 let pendingTrustOps = {};
 let enterOnce = null; // { siteBase, ts }
@@ -37,6 +39,7 @@ const previewObserved = new Map(); // reqBase -> { blocked: boolean, allowed: bo
 const locationCache = {};          // tabId -> last main-frame URL
 const recentApiEventKeys = new Map();
 const lastApiNotificationByKey = new Map();
+const lastNetworkNotificationByDomain = new Map();
 
 let lastCommandId = 0;
 
@@ -376,8 +379,39 @@ function maybeNotifyApiDetection(event) {
   chrome.notifications.create(id, {
     type: "basic",
     iconUrl: "icons/icon128.png",
-    title: "Visual Privacy Toolkit",
+    title: "Browser API activity detected",
     message: getApiDetectionNotificationMessage(event),
+  }, () => {
+    setTimeout(() => chrome.notifications.clear(id), 5000);
+  });
+}
+
+function cleanupNetworkNotificationKeys(now) {
+  for (const [domain, ts] of lastNetworkNotificationByDomain.entries()) {
+    if ((now - ts) > NETWORK_NOTIFICATION_THROTTLE_MS) {
+      lastNetworkNotificationByDomain.delete(domain);
+    }
+  }
+}
+
+function maybeNotifyTrackerBlocked(domain) {
+  if (!networkNotificationsEnabled) return;
+  const blockedDomain = String(domain || "").trim();
+  if (!blockedDomain) return;
+
+  const now = Date.now();
+  cleanupNetworkNotificationKeys(now);
+
+  const last = lastNetworkNotificationByDomain.get(blockedDomain) || 0;
+  if ((now - last) < NETWORK_NOTIFICATION_THROTTLE_MS) return;
+
+  lastNetworkNotificationByDomain.set(blockedDomain, now);
+  const id = `tracker-block-${now}-${Math.random().toString(16).slice(2, 8)}`;
+  chrome.notifications.create(id, {
+    type: "basic",
+    iconUrl: "icons/icon128.png",
+    title: "Tracker request blocked",
+    message: `${blockedDomain} was blocked in ${currentMode} mode.`,
   }, () => {
     setTimeout(() => chrome.notifications.clear(id), 5000);
   });
@@ -962,15 +996,18 @@ async function loadExtensionFlags() {
   const {
     captureEnabled: storedCaptureEnabled,
     apiNotificationsEnabled: storedApiNotificationsEnabled,
+    networkNotificationsEnabled: storedNetworkNotificationsEnabled,
     pendingTrustOps: storedPendingTrustOps,
   } = await chrome.storage.local.get([
     "captureEnabled",
     "apiNotificationsEnabled",
+    "networkNotificationsEnabled",
     "pendingTrustOps",
   ]);
 
   captureEnabled = storedCaptureEnabled !== false;
   apiNotificationsEnabled = storedApiNotificationsEnabled !== false;
+  networkNotificationsEnabled = storedNetworkNotificationsEnabled === true;
   pendingTrustOps = storedPendingTrustOps && typeof storedPendingTrustOps === "object"
     ? storedPendingTrustOps
     : {};
@@ -1224,6 +1261,12 @@ chrome.storage.onChanged.addListener(async ch => {
     apiNotificationsEnabled = ch.apiNotificationsEnabled.newValue !== false;
     if (!apiNotificationsEnabled) {
       lastApiNotificationByKey.clear();
+    }
+  }
+  if ("networkNotificationsEnabled" in ch) {
+    networkNotificationsEnabled = ch.networkNotificationsEnabled.newValue === true;
+    if (!networkNotificationsEnabled) {
+      lastNetworkNotificationByDomain.clear();
     }
   }
   if ("pendingTrustOps" in ch) {
@@ -1522,6 +1565,8 @@ chrome.declarativeNetRequest.onRuleMatchedDebug.addListener((info) => {
   persistStats();
 
   const host = hostFromUrl(info.request.url);
+  const blockedDomain = base(host) || host;
+  maybeNotifyTrackerBlocked(blockedDomain);
 
   // Work out the top-level site base from the initiator, if we can
   const topHost = hostFromOrigin(info.request.initiator || "");
