@@ -156,15 +156,6 @@ function statusToneClass(tone) {
   return tone ? ` ${escape(tone)}` : "";
 }
 
-function latestTrustPolicyTs(policiesResponse) {
-  const items = Array.isArray(policiesResponse?.items) ? policiesResponse.items : [];
-  return items.reduce((max, item) => {
-    const op = normalizeOptional(item?.op);
-    if (op !== "trust_site" && op !== "untrust_site") return max;
-    return Math.max(max, Number(item?.ts) || 0);
-  }, 0);
-}
-
 function syncSubview() {
   const trustedPanel = document.getElementById("trustedSitesTrustedPanel");
   const observedPanel = document.getElementById("trustedSitesObservedPanel");
@@ -185,16 +176,13 @@ function syncSubview() {
 function renderStatusStrip(snapshot, siteIndex) {
   const trustedCountEl = document.getElementById("trustedSitesStatCount");
   const observedCountEl = document.getElementById("trustedSitesStatObserved");
-  const lastChangedEl = document.getElementById("trustedSitesStatLastChanged");
   const trustedTabCountEl = document.getElementById("trustedSitesSubviewTrustedCount");
   const observedTabCountEl = document.getElementById("trustedSitesSubviewObservedCount");
-  const lastChangedTs = latestTrustPolicyTs(viewState.latestPolicies);
   const trustedCount = snapshot.length;
   const observedCount = siteIndex.size;
 
   if (trustedCountEl) trustedCountEl.textContent = String(trustedCount);
   if (observedCountEl) observedCountEl.textContent = String(observedCount);
-  if (lastChangedEl) lastChangedEl.textContent = lastChangedTs ? formatFriendlyTime(lastChangedTs) : "-";
   if (trustedTabCountEl) trustedTabCountEl.textContent = String(trustedCount);
   if (observedTabCountEl) observedTabCountEl.textContent = String(observedCount);
 }
@@ -251,16 +239,12 @@ function buildContextHtml(summary) {
 
 function trustedSiteRowHtml(entry, summary) {
   const isPending = viewState.pendingSite === entry.site;
-  const badgeHtml = summary
-    ? '<div class="trusted-sites-badge-group"><span class="trusted-sites-badge trusted-sites-badge-observed">Also observed</span></div>'
-    : "";
 
   return `
     <article class="trusted-sites-row trusted-sites-row-trusted">
       <div class="trusted-sites-row-main">
         <div class="trusted-sites-row-head">
           <div class="trusted-sites-domain">${escape(entry.site)}</div>
-          ${badgeHtml}
         </div>
         ${buildContextHtml(summary)}
       </div>
@@ -286,16 +270,12 @@ function recentSiteRowHtml(site, isTrusted) {
   const blockedCount = Number(site?.blockedCount) || 0;
   const normalizedSite = normalizeOptional(site?.site).toLowerCase();
   const pendingUntrust = viewState.pendingSite === normalizedSite;
-  const badgeHtml = isTrusted
-    ? '<div class="trusted-sites-badge-group"><span class="trusted-sites-badge trusted-sites-badge-trusted">Also trusted</span></div>'
-    : "";
 
   return `
     <article class="trusted-sites-row trusted-sites-row-observed">
       <div class="trusted-sites-row-main">
         <div class="trusted-sites-row-head">
           <div class="trusted-sites-domain">${escape(site?.site || "unknown")}</div>
-          ${badgeHtml}
         </div>
         <div class="trusted-sites-context-grid">
           <div class="trusted-sites-context-item">
