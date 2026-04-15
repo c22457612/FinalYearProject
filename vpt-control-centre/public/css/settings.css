@@ -28,7 +28,40 @@
 .settings-intro-copy {
   max-width: 76ch;
   color: var(--text-muted);
-  line-height: 1.58;
+  line-height: 1.5;
+}
+
+.settings-intro-panel {
+  gap: 0.56rem;
+}
+
+.settings-intro-panel .panel-header {
+  margin-bottom: 0;
+}
+
+.settings-intro-panel .panel-title {
+  font-size: 0.98rem;
+  line-height: 1.28;
+}
+
+.settings-intro-panel .panel-subtitle {
+  color: var(--color-text-faint);
+}
+
+.settings-intro-status {
+  width: fit-content;
+  max-width: 100%;
+  padding-top: 0.42rem;
+  border-top: 1px solid var(--divider);
+  color: var(--color-text-faint);
+  font-family: var(--font-mono);
+  font-size: 0.67rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  line-height: 1.45;
+  text-transform: uppercase;
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
 }
 
 .settings-grid {
@@ -311,6 +344,7 @@
 }
 
 .settings-readout-key {
+  min-width: 0;
   color: var(--color-text-faint);
   font-size: 0.66rem;
   font-weight: 700;
@@ -319,11 +353,14 @@
 }
 
 .settings-readout-value {
+  min-width: 0;
   justify-self: end;
   color: var(--color-text-main);
   text-align: right;
   font-size: 0.84rem;
   line-height: 1.44;
+  overflow-wrap: anywhere;
+  word-break: normal;
 }
 
 .settings-readout-value-mono {
@@ -368,9 +405,10 @@
 .settings-secondary-actions {
   display: flex;
   flex-wrap: wrap;
-  gap: 0.34rem;
-  padding-top: 0.18rem;
-  border-top: 1px solid var(--divider);
+  gap: 0.42rem;
+  margin-top: 0.5rem;
+  padding-top: 0.62rem;
+  border-top: 1px solid color-mix(in srgb, var(--accent-border) 42%, var(--divider));
 }
 
 .settings-card-storage .settings-readout-shell {
@@ -392,6 +430,7 @@
 }
 
 .settings-card-diagnostics .settings-readout-row {
+  grid-template-columns: minmax(7.6rem, 8.4rem) minmax(0, 1fr);
   gap: 0.86rem;
 }
 
@@ -405,26 +444,53 @@
   line-height: 1.38;
 }
 
+.settings-card-diagnostics .settings-readout-value {
+  justify-self: stretch;
+  text-align: right;
+}
+
+.settings-card-diagnostics .settings-status-chip {
+  width: fit-content;
+  justify-self: end;
+  align-self: start;
+}
+
+.settings-card-diagnostics .settings-readout-row-secondary {
+  background: color-mix(in srgb, var(--surface-muted) 58%, transparent);
+}
+
+.settings-card-diagnostics .settings-readout-row-secondary .settings-readout-key,
+.settings-readout-value-secondary {
+  color: var(--color-text-faint);
+}
+
 .settings-secondary-action {
-  padding: 0.26rem 0.56rem;
-  border-color: var(--button-secondary-border);
-  background: transparent;
-  color: var(--color-text-muted);
+  position: relative;
+  padding: 0.34rem 0.68rem;
+  border-color: var(--accent-border);
+  background: color-mix(in srgb, var(--accent-soft-fill) 46%, transparent);
+  color: var(--accent-strong);
   font-size: 0.72rem;
   font-weight: 700;
   letter-spacing: 0.05em;
   text-transform: uppercase;
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent-soft-fill) 68%, transparent);
 }
 
 .settings-secondary-action:hover:not(:disabled),
 .settings-secondary-action:focus-visible:not(:disabled) {
-  border-color: var(--accent-border);
-  background: var(--accent-soft-fill);
+  border-color: var(--accent-rail);
+  background: var(--accent-soft-fill-strong);
   color: var(--color-text-main);
+  box-shadow: inset 0 0 0 1px var(--accent-border);
 }
 
 .settings-secondary-action:disabled {
-  opacity: 0.44;
+  border-color: var(--button-secondary-border);
+  background: transparent;
+  color: var(--color-text-faint);
+  box-shadow: none;
+  opacity: 0.5;
   cursor: default;
 }
 

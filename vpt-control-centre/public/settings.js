@@ -1,6 +1,8 @@
 const SETTINGS_STATUS_POLL_MS = 5000;
 const SETTINGS_BUILD_LABEL = "vpt-control-centre 1.0.0";
 const SHELL_PERSIST_KEY = "vpt.control-centre.shell.collapsed";
+let settingsIntroBackendStatus = "checking";
+let settingsIntroTrackedSites = null;
 
 function setConnectionStatus(state, text) {
   const statusEl = document.getElementById("connectionStatusShell");
@@ -26,6 +28,20 @@ function setText(id, text) {
   if (!el) return;
   el.textContent = text;
   el.title = text;
+}
+
+function formatIntroBackendStatus(status) {
+  if (status === "online") return "BACKEND ONLINE";
+  if (status === "offline") return "BACKEND OFFLINE";
+  return "BACKEND CHECKING";
+}
+
+function updateIntroStatus() {
+  const parts = ["SQLITE LOCAL STORE", formatIntroBackendStatus(settingsIntroBackendStatus)];
+  if (settingsIntroBackendStatus === "online" && settingsIntroTrackedSites !== null) {
+    parts.push(`${formatCount(settingsIntroTrackedSites)} SITES`);
+  }
+  setText("settingsIntroStatus", parts.join(" · "));
 }
 
 function formatCount(value) {
@@ -291,6 +307,9 @@ async function refreshSettingsReadouts() {
 
   const sitesOnline = sitesResult.status === "fulfilled";
   const policiesOnline = policiesResult.status === "fulfilled";
+  settingsIntroBackendStatus = sitesOnline ? "online" : "offline";
+  const siteSummary = sitesOnline ? summarizeSites(sitesResult.value) : null;
+  settingsIntroTrackedSites = siteSummary ? siteSummary.trackedSites : null;
 
   setConnectionStatus(
     sitesOnline ? "online" : "offline",
@@ -303,10 +322,12 @@ async function refreshSettingsReadouts() {
   );
 
   renderSiteSummary(
-    sitesOnline ? summarizeSites(sitesResult.value) : null,
+    siteSummary,
     sitesOnline
   );
   renderPolicySummary(policiesOnline ? policiesResult.value : null, policiesOnline);
+  setText("diagnosticsLastCheckValue", formatDateTime(Date.now()));
+  updateIntroStatus();
   setExportEnabled(sitesOnline);
 }
 
@@ -320,6 +341,7 @@ window.addEventListener("load", () => {
   bindThemeSelector();
   bindExportActions();
   renderStaticDiagnostics();
+  updateIntroStatus();
   setExportEnabled(false);
   setDiagnosticsBackendStatus("pending", "Checking...");
   refreshSettingsReadouts();

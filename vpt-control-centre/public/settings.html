@@ -117,13 +117,14 @@
           <div class="panel settings-intro-panel">
             <div class="panel-header">
               <div>
-                <div class="panel-title">Settings</div>
+                <div class="panel-title">Local runtime and preferences</div>
                 <div class="panel-subtitle">Local runtime controls, persistence readouts, and shared display preferences</div>
               </div>
             </div>
             <p class="settings-intro-copy">
-              Review how this control centre persists UI state, where captured data lives, and which runtime surface is currently active on this device. Display remains the main visual preference area.
+              Control the shared theme, review local data storage, and check runtime status for this device.
             </p>
+            <div id="settingsIntroStatus" class="settings-intro-status">SQLITE LOCAL STORE &middot; BACKEND CHECKING</div>
           </div>
 
           <section class="settings-grid" aria-label="Settings sections">
@@ -262,6 +263,10 @@
                 <div class="settings-readout-row">
                   <div class="settings-readout-key">Build</div>
                   <div id="diagnosticsBuildValue" class="settings-readout-value settings-readout-value-mono">vpt-control-centre 1.0.0</div>
+                </div>
+                <div class="settings-readout-row settings-readout-row-secondary">
+                  <div class="settings-readout-key">Last backend check</div>
+                  <div id="diagnosticsLastCheckValue" class="settings-readout-value settings-readout-value-mono settings-readout-value-secondary">Pending</div>
                 </div>
               </div>
             </article>
