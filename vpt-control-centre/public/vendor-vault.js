@@ -2387,7 +2387,7 @@ function renderVendorApiEvidenceGroups(list, groups) {
     card.setAttribute("role", "listitem");
 
     const summary = document.createElement("summary");
-    summary.className = "vendor-vault-row-summary";
+    summary.className = "vendor-vault-row-summary vendor-vault-api-summary";
 
     const rowMain = document.createElement("div");
     rowMain.className = "vendor-vault-row-main";
@@ -2427,18 +2427,18 @@ function renderVendorApiEvidenceGroups(list, groups) {
     summary.appendChild(chevron);
 
     const panel = document.createElement("div");
-    panel.className = "vendor-vault-entry-panel";
+    panel.className = "vendor-vault-entry-panel vendor-vault-api-drawer";
 
     const summaryLine = document.createElement("p");
-    summaryLine.className = "vendor-vault-expanded-summary";
+    summaryLine.className = "vendor-vault-expanded-summary vendor-vault-api-drawer-summary";
     summaryLine.textContent = narrative.summaryLine;
     panel.appendChild(summaryLine);
 
     const layout = document.createElement("div");
-    layout.className = "vendor-vault-expanded-layout";
+    layout.className = "vendor-vault-expanded-layout vendor-vault-api-drawer-layout";
 
     const left = document.createElement("div");
-    left.className = "vendor-vault-expanded-main";
+    left.className = "vendor-vault-expanded-main vendor-vault-api-drawer-main";
 
     const meaningHeading = document.createElement("h4");
     meaningHeading.className = "vendor-vault-expanded-heading";
@@ -2446,7 +2446,7 @@ function renderVendorApiEvidenceGroups(list, groups) {
     left.appendChild(meaningHeading);
 
     const meaningBlock = document.createElement("div");
-    meaningBlock.className = "vendor-vault-plain-block";
+    meaningBlock.className = "vendor-vault-plain-block vendor-vault-api-meaning-block";
 
     const meaningLine = document.createElement("p");
     meaningLine.className = "vendor-vault-plain-line";
@@ -2460,7 +2460,7 @@ function renderVendorApiEvidenceGroups(list, groups) {
     left.appendChild(limitationHeading);
 
     const limitationText = document.createElement("p");
-    limitationText.className = "vendor-vault-plain-line vendor-vault-plain-note";
+    limitationText.className = "vendor-vault-plain-line vendor-vault-plain-note vendor-vault-api-limitation";
     limitationText.textContent = group.limitation;
     left.appendChild(limitationText);
 
@@ -2477,7 +2477,7 @@ function renderVendorApiEvidenceGroups(list, groups) {
     layout.appendChild(left);
 
     const right = document.createElement("aside");
-    right.className = "vendor-vault-evidence-compact";
+    right.className = "vendor-vault-evidence-compact vendor-vault-api-evidence-compact";
 
     const evidenceHeading = document.createElement("h4");
     evidenceHeading.className = "vendor-vault-evidence-heading";
@@ -2486,10 +2486,16 @@ function renderVendorApiEvidenceGroups(list, groups) {
 
     const evidenceList = document.createElement("dl");
     evidenceList.className = "vendor-vault-evidence-kv";
-    appendEvidenceField(evidenceList, "Observed", String(group.counts.observed_warned));
-    appendEvidenceField(evidenceList, "Blocked", String(group.counts.blocked));
-    appendEvidenceField(evidenceList, "Allowed on trusted site", String(group.counts.trusted_allowed));
-    appendEvidenceField(evidenceList, "Count", String(group.count));
+    appendEvidenceField(evidenceList, "Observed", String(group.counts.observed_warned), {
+      primary: group.counts.observed_warned > 0,
+    });
+    appendEvidenceField(evidenceList, "Blocked", String(group.counts.blocked), {
+      primary: group.counts.blocked > 0,
+    });
+    appendEvidenceField(evidenceList, "Allowed on trusted site", String(group.counts.trusted_allowed), {
+      primary: group.counts.trusted_allowed > 0,
+    });
+    appendEvidenceField(evidenceList, "Count", String(group.count), { primary: true });
     appendEvidenceField(evidenceList, "Last seen", group.lastSeen);
     right.appendChild(evidenceList);
 
