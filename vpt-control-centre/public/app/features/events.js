@@ -186,30 +186,42 @@ function renderCompactDrawerHtml(ev, trustedSites, utils) {
   const rawJsonOpen = ev?.id && rawJsonOpenEventId === ev.id;
   const factsHtml = facts.length
     ? `
-      <div class="receipt-event-drawer-facts">
-        ${facts.map((fact) => `
-          <span class="receipt-event-drawer-fact">
-            <span class="receipt-event-drawer-fact-label">${escapeHtml(fact.label)}</span>
-            <span class="receipt-event-drawer-fact-value">${escapeHtml(fact.value)}</span>
-          </span>
-        `).join("")}
-      </div>
+      <section class="receipt-event-drawer-section receipt-event-drawer-section-facts" aria-label="Event readouts">
+        <div class="receipt-event-drawer-section-label">Event readouts</div>
+        <div class="receipt-event-drawer-facts">
+          ${facts.map((fact) => `
+            <span class="receipt-event-drawer-fact">
+              <span class="receipt-event-drawer-fact-label">${escapeHtml(fact.label)}</span>
+              <span class="receipt-event-drawer-fact-value">${escapeHtml(fact.value)}</span>
+            </span>
+          `).join("")}
+        </div>
+      </section>
     `
     : "";
 
   return `
     <div class="receipt-event-drawer-head">
       <div class="receipt-event-drawer-primary">
-        <span class="receipt-event-drawer-site">${escapeHtml(ev.site || "unknown")}</span>
-        <span class="receipt-event-drawer-dot">&middot;</span>
-        <span class="receipt-event-drawer-time">${escapeHtml(formatExactTimestamp(ev.ts))}</span>
+        <span class="receipt-event-drawer-kicker">Selected event</span>
+        <div class="receipt-event-drawer-title-line">
+          <span class="receipt-event-drawer-site">${escapeHtml(ev.site || "unknown")}</span>
+          <span class="receipt-event-drawer-dot">&middot;</span>
+          <span class="receipt-event-drawer-time">${escapeHtml(formatExactTimestamp(ev.ts))}</span>
+        </div>
       </div>
       <span class="pill pill-kind receipt-kind-pill ${tone}">${escapeHtml(ev.kind || "event")}</span>
     </div>
+    <section class="receipt-event-drawer-section receipt-event-drawer-summary-panel" aria-label="Event summary">
+      <div class="receipt-event-drawer-section-label">Event summary</div>
+      <div class="receipt-event-drawer-summary">${escapeHtml(summary)}</div>
+    </section>
     ${factsHtml}
-    <div class="receipt-event-drawer-summary">${escapeHtml(summary)}</div>
     <details class="receipt-event-drawer-raw"${rawJsonOpen ? " open" : ""}>
-      <summary>Raw event JSON</summary>
+      <summary>
+        <span class="receipt-event-drawer-raw-label">Raw event JSON</span>
+        <span class="receipt-event-drawer-raw-state">Toggle payload</span>
+      </summary>
       <pre>${escapeHtml(JSON.stringify(ev, null, 2))}</pre>
     </details>
   `;
