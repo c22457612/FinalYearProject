@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" viewBox="0 0 128 128" role="img" aria-labelledby="title">
+  <title>Visual Privacy Toolkit icon</title>
+  <rect x="8" y="8" width="112" height="112" rx="20" fill="#30363d"/>
+  <rect x="8" y="8" width="112" height="112" rx="20" fill="none" stroke="#4b5563" stroke-width="4"/>
+  <path d="M31 33h16l17 45 17-45h16L72 98H56L31 33Z" fill="#e8edf4"/>
+</svg>
