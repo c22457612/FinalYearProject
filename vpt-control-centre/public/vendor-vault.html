@@ -277,7 +277,7 @@
                         <div id="vaultExportStatus" class="vendor-vault-export-status" aria-live="polite"></div>
                       </div>
                     </div>
-                    <div class="vendor-vault-inventory-overview-note">Select one item in the grid to inspect its detail in the selected-item workspace.</div>
+                    <div class="vendor-vault-inventory-overview-note">Select an item to inspect details.</div>
                     <div id="exposureInventoryGrid" class="vendor-vault-inventory-grid" role="listbox" aria-label="Vendor inventory overview"></div>
                   </section>
                 </div>
@@ -287,7 +287,7 @@
                 <div class="vendor-vault-workspace-head">
                   <div class="vendor-vault-case-summary-kicker">Selected item</div>
                   <h3 id="vendorVaultSelectedItemHeading" class="vendor-vault-workspace-title">Inspect the current item in detail</h3>
-                  <p class="vendor-vault-workspace-copy">This workspace shows the currently selected inventory item with the same evidence and guidance model as before.</p>
+                  <p class="vendor-vault-workspace-copy">Review the selected signal, its evidence, and the next action.</p>
                 </div>
                 <div id="vendorVaultSelectedItemEmpty" class="vendor-vault-workspace-empty hidden" aria-live="polite">
                   <div class="vendor-vault-workspace-empty-title">No inventory item selected yet</div>
@@ -304,7 +304,7 @@
                   <div>
                     <div class="panel-title">Browser API activity in this investigation</div>
                     <div class="vendor-vault-disclaimer">
-                      This section separates activity linked to this vendor from other privacy activity seen on the same site.
+                      Vendor-linked activity is separated from wider site context.
                     </div>
                   </div>
                 </div>
@@ -331,7 +331,7 @@
                         <div class="vendor-vault-api-subsection-kicker">Activity linked to this vendor</div>
                         <h3 id="vendorApiEvidenceVendorHeading" class="vendor-vault-api-subsection-title">Browser API activity linked to this vendor</h3>
                         <p class="vendor-vault-api-subsection-copy">
-                          This section shows Browser API activity we can link to this vendor.
+                          Browser API activity linked to this vendor.
                         </p>
                       </div>
                       <div id="vendorApiEvidenceVendorNarrative" class="vendor-vault-api-narrative hidden"></div>
@@ -344,10 +344,10 @@
                         <div class="vendor-vault-api-subsection-kicker">Other privacy activity on this site</div>
                         <h3 id="vendorApiEvidenceContextualHeading" class="vendor-vault-api-subsection-title">Browser API activity seen elsewhere on this site</h3>
                         <p id="vendorApiEvidenceContextualIntro" class="vendor-vault-api-subsection-copy">
-                          This Browser API activity was observed on this site, but it is not directly linked to this vendor.
+                          Site-level Browser API activity not directly linked to this vendor.
                         </p>
                         <p id="vendorApiEvidenceContextualNote" class="vendor-vault-api-subsection-note">
-                          It may still contribute to tracking or profiling on this page, even though it is not part of this vendor-specific evidence.
+                          Useful as page context, not vendor-specific evidence.
                         </p>
                       </div>
                       <div id="vendorApiEvidenceContextualNarrative" class="vendor-vault-api-narrative hidden"></div>
@@ -362,7 +362,7 @@
                 <div class="vendor-vault-workspace-head vendor-vault-workspace-head-support">
                   <div class="vendor-vault-case-summary-kicker">Site evidence</div>
                   <h3 id="vendorVaultSiteEvidenceHeading" class="vendor-vault-workspace-title">Supporting site-level evidence for this vendor context</h3>
-                  <p class="vendor-vault-workspace-copy">Use these supporting summaries to review activity volume, domains, observed key names, and risk shape around this vendor.</p>
+                  <p class="vendor-vault-workspace-copy">Activity volume, domains, key names, and risk shape for this vendor context.</p>
                 </div>
                 <div class="vendor-vault-secondary-panels">
                   <section class="vendor-vault-readout vendor-vault-readout-activity" aria-labelledby="vaultActivityHeading">

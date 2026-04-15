@@ -305,8 +305,8 @@ function setSelectedItemWorkspaceContentState(activeItem) {
 
   if (copy) {
     copy.textContent = hasItem
-      ? `This workspace follows the active inventory selection for ${activeItem.categoryLabel} using the same evidence and guidance model as before.`
-      : "This workspace shows the currently selected inventory item with the same evidence and guidance model as before.";
+      ? `Current selection: ${activeItem.categoryLabel}. Review evidence and next action.`
+      : "Choose an inventory item to review evidence and next action.";
   }
 }
 
@@ -1123,10 +1123,11 @@ function renderPanelMessage(panelId, text, className) {
   panel.appendChild(line);
 }
 
-function appendPanelRow(panel, key, value) {
+function appendPanelRow(panel, key, value, opts = {}) {
   if (!panel) return;
   const row = document.createElement("div");
   row.className = "vendor-vault-panel-row";
+  if (opts.primary) row.classList.add("is-primary");
 
   const keyEl = document.createElement("span");
   keyEl.className = "vendor-vault-panel-key";
@@ -1159,6 +1160,15 @@ function appendPanelList(panel, items) {
     list.appendChild(li);
   }
   panel.appendChild(list);
+}
+
+function appendPanelCountRows(panel, rows, opts = {}) {
+  if (!panel || !Array.isArray(rows)) return;
+  const limit = Math.max(1, Number(opts.limit) || rows.length);
+  for (const row of rows.slice(0, limit)) {
+    if (!row) continue;
+    appendPanelRow(panel, row.label, String(toSafeCount(row.count)), { primary: Boolean(row.primary) });
+  }
 }
 
 function formatRiskLabel(label) {
@@ -1201,7 +1211,7 @@ function renderActivitySummaryPanel(summary, hasData) {
     return;
   }
 
-  appendPanelRow(panel, "Total events", String(toSafeCount(summary && summary.total_events)));
+  appendPanelRow(panel, "Total events", String(toSafeCount(summary && summary.total_events)), { primary: true });
   appendPanelRow(panel, "Observed", String(toSafeCount(summary && summary.observed_count)));
   appendPanelRow(panel, "Blocked", String(toSafeCount(summary && summary.blocked_count)));
   appendPanelRow(panel, "First seen", formatDateTime(summary && summary.first_seen));
@@ -1220,13 +1230,17 @@ function renderDomainsPanel(domainsUsed, hasData) {
     return;
   }
 
-  appendPanelRow(panel, "Distinct domains", String(totalDistinct));
+  appendPanelRow(panel, "Distinct domains", String(totalDistinct), { primary: true });
   const topFive = topDomains
     .slice(0, 5)
-    .map((row) => `${String(row && row.domain ? row.domain : "-")} (${toSafeCount(row && row.count)})`);
+    .map((row, index) => ({
+      label: String(row && row.domain ? row.domain : "-"),
+      count: toSafeCount(row && row.count),
+      primary: index === 0,
+    }));
   if (topFive.length) {
     appendPanelMeta(panel, "Most common domains");
-    appendPanelList(panel, topFive);
+    appendPanelCountRows(panel, topFive);
   }
 }
 
@@ -1242,13 +1256,17 @@ function renderKeysPanel(keysSummary, hasData) {
     return;
   }
 
-  appendPanelRow(panel, "Distinct keys", String(totalDistinct));
+  appendPanelRow(panel, "Distinct keys", String(totalDistinct), { primary: true });
   const topFive = topKeys
     .slice(0, 5)
-    .map((row) => `${String(row && row.key ? row.key : "-")} (${toSafeCount(row && row.count)})`);
+    .map((row, index) => ({
+      label: String(row && row.key ? row.key : "-"),
+      count: toSafeCount(row && row.count),
+      primary: index === 0,
+    }));
   if (topFive.length) {
     appendPanelMeta(panel, "Most common key names");
-    appendPanelList(panel, topFive);
+    appendPanelCountRows(panel, topFive);
   }
 }
 
@@ -1262,7 +1280,14 @@ function renderRiskDimension(panel, title, countsObj, preferredOrder, limit) {
     panel.appendChild(unavailable);
     return;
   }
-  appendPanelList(panel, entries.map(([key, count]) => `${formatRiskLabel(key)}: ${count}`));
+  appendPanelCountRows(
+    panel,
+    entries.map(([key, count], index) => ({
+      label: formatRiskLabel(key),
+      count,
+      primary: index === 0,
+    }))
+  );
 }
 
 function renderRiskSummaryPanel(riskSummary, hasData) {
@@ -1773,9 +1798,10 @@ function renderGuidedActions(container, actions) {
   if (secondary.childElementCount > 0) container.appendChild(secondary);
 }
 
-function appendEvidenceField(list, label, value) {
+function appendEvidenceField(list, label, value, opts = {}) {
   const row = document.createElement("div");
   row.className = "vendor-vault-evidence-row";
+  if (opts.primary) row.classList.add("is-primary");
 
   const term = document.createElement("dt");
   term.className = "vendor-vault-evidence-key";
@@ -1805,6 +1831,24 @@ function appendEntryMetaFact(container, label, value) {
   item.appendChild(text);
 
   container.appendChild(item);
+}
+
+function appendSelectedMetric(container, label, value, opts = {}) {
+  const metric = document.createElement("div");
+  metric.className = "vendor-vault-selected-metric";
+  if (opts.semanticClass) metric.classList.add(opts.semanticClass);
+
+  const key = document.createElement("span");
+  key.className = "vendor-vault-selected-metric-label";
+  key.textContent = label;
+  metric.appendChild(key);
+
+  const text = document.createElement("span");
+  text.className = "vendor-vault-selected-metric-value";
+  text.textContent = value;
+  metric.appendChild(text);
+
+  container.appendChild(metric);
 }
 
 function appendTechnicalDetailRow(container, label, value) {
@@ -1922,18 +1966,23 @@ function buildInventoryDrilldownHeader(item) {
   head.appendChild(badges);
   rowMain.appendChild(head);
 
-  const meta = document.createElement("div");
-  meta.className = "vendor-vault-entry-meta";
-  appendEntryMetaFact(meta, "Observed", String(item.counts.observed));
-  appendEntryMetaFact(meta, "Attempted", String(item.counts.attempted));
-  appendEntryMetaFact(meta, "Count", String(item.count));
-  appendEntryMetaFact(meta, "Last seen", item.lastSeen);
-  rowMain.appendChild(meta);
+  const takeaway = document.createElement("p");
+  takeaway.className = "vendor-vault-selected-takeaway";
+  takeaway.textContent = getExpandedSummarySentence(item);
+  rowMain.appendChild(takeaway);
 
-  const note = document.createElement("div");
-  note.className = "vendor-vault-drilldown-note";
-  note.textContent = "This detail follows the item selected in the investigation grid.";
-  rowMain.appendChild(note);
+  const metrics = document.createElement("div");
+  metrics.className = "vendor-vault-selected-metrics";
+  appendSelectedMetric(
+    metrics,
+    "Score",
+    `${item.itemScoreMeta.itemScore} ${item.itemScoreMeta.itemBand}`,
+    { semanticClass: `vendor-vault-band-${String(item.itemScoreMeta.itemBand).toLowerCase()}` }
+  );
+  appendSelectedMetric(metrics, "Confidence", item.confidenceText);
+  appendSelectedMetric(metrics, "Observed", String(item.counts.observed));
+  appendSelectedMetric(metrics, "Attempted", String(item.counts.attempted));
+  rowMain.appendChild(metrics);
 
   header.appendChild(rowMain);
 
@@ -1950,42 +1999,6 @@ function buildInventoryDrilldownPanel(item) {
   const panel = document.createElement("div");
   panel.className = "vendor-vault-entry-panel vendor-vault-entry-panel-static";
 
-  const summaryLine = document.createElement("p");
-  summaryLine.className = "vendor-vault-expanded-summary";
-  summaryLine.textContent = getExpandedSummarySentence(item);
-  panel.appendChild(summaryLine);
-
-  const plainHeading = document.createElement("h4");
-  plainHeading.className = "vendor-vault-expanded-heading";
-  plainHeading.textContent = "In plain English";
-  panel.appendChild(plainHeading);
-
-  const plainBlock = document.createElement("div");
-  plainBlock.className = "vendor-vault-plain-block";
-
-  const whatLine = document.createElement("p");
-  whatLine.className = "vendor-vault-plain-line";
-  whatLine.innerHTML = `<span class="vendor-vault-plain-label">What it is:</span> ${item.plainEnglishWhat}`;
-  plainBlock.appendChild(whatLine);
-
-  const whyLine = document.createElement("p");
-  whyLine.className = "vendor-vault-plain-line";
-  whyLine.innerHTML = `<span class="vendor-vault-plain-label">Why it matters:</span> ${item.plainEnglishWhy}`;
-  plainBlock.appendChild(whyLine);
-
-  const caseLine = document.createElement("p");
-  caseLine.className = "vendor-vault-plain-line";
-  caseLine.innerHTML = `<span class="vendor-vault-plain-label">In this case:</span> ${item.inThisCase}`;
-  plainBlock.appendChild(caseLine);
-
-  if (item.uncertaintyNote) {
-    const noteLine = document.createElement("p");
-    noteLine.className = "vendor-vault-plain-line vendor-vault-plain-note";
-    noteLine.innerHTML = `<span class="vendor-vault-plain-label">Note:</span> ${item.uncertaintyNote}`;
-    plainBlock.appendChild(noteLine);
-  }
-  panel.appendChild(plainBlock);
-
   const layout = document.createElement("div");
   layout.className = "vendor-vault-expanded-layout";
 
@@ -1996,7 +2009,27 @@ function buildInventoryDrilldownPanel(item) {
   whyHeading.className = "vendor-vault-expanded-heading";
   whyHeading.textContent = "Why it matters";
   left.appendChild(whyHeading);
-  appendBulletList(left, item.privacyBullets.slice(0, 2), "vendor-vault-why-list");
+
+  const plainBlock = document.createElement("div");
+  plainBlock.className = "vendor-vault-plain-block vendor-vault-plain-block-compact";
+
+  const whyLine = document.createElement("p");
+  whyLine.className = "vendor-vault-plain-line";
+  whyLine.innerHTML = `<span class="vendor-vault-plain-label">Risk:</span> ${item.plainEnglishWhy}`;
+  plainBlock.appendChild(whyLine);
+
+  const caseLine = document.createElement("p");
+  caseLine.className = "vendor-vault-plain-line";
+  caseLine.innerHTML = `<span class="vendor-vault-plain-label">In this case:</span> ${item.inThisCase}`;
+  plainBlock.appendChild(caseLine);
+
+  if (item.uncertaintyNote) {
+    const noteLine = document.createElement("p");
+    noteLine.className = "vendor-vault-plain-line vendor-vault-plain-note";
+    noteLine.innerHTML = `<span class="vendor-vault-plain-label">Caveat:</span> ${item.uncertaintyNote}`;
+    plainBlock.appendChild(noteLine);
+  }
+  left.appendChild(plainBlock);
 
   const actionsHeading = document.createElement("h4");
   actionsHeading.className = "vendor-vault-expanded-heading";
@@ -2020,9 +2053,11 @@ function buildInventoryDrilldownPanel(item) {
 
   const evidenceList = document.createElement("dl");
   evidenceList.className = "vendor-vault-evidence-kv";
-  appendEvidenceField(evidenceList, "Observed", String(item.counts.observed));
-  appendEvidenceField(evidenceList, "Attempted", String(item.counts.attempted));
-  appendEvidenceField(evidenceList, "Confidence", item.confidenceText);
+  appendEvidenceField(evidenceList, "Observed", String(item.counts.observed), { primary: true });
+  appendEvidenceField(evidenceList, "Attempted", String(item.counts.attempted), { primary: true });
+  appendEvidenceField(evidenceList, "Confidence", item.confidenceText, { primary: true });
+  appendEvidenceField(evidenceList, "Example key", item.exampleKey || "-");
+  appendEvidenceField(evidenceList, "Total requests", String(item.count));
   appendEvidenceField(evidenceList, "First seen", item.firstSeen);
   appendEvidenceField(evidenceList, "Last seen", item.lastSeen);
   right.appendChild(evidenceList);
@@ -2038,6 +2073,10 @@ function buildInventoryDrilldownPanel(item) {
 
   const technicalGrid = document.createElement("div");
   technicalGrid.className = "vendor-vault-technical-grid";
+  appendTechnicalDetailRow(technicalGrid, "Surface", item.surface);
+  appendTechnicalDetailRow(technicalGrid, "Category", item.categoryId || "unknown");
+  appendTechnicalDetailRow(technicalGrid, "Example key", item.exampleKey || "-");
+  appendTechnicalDetailRow(technicalGrid, "Key meaning", item.keyHint && item.keyHint.meaning ? item.keyHint.meaning : item.plainEnglishWhat);
   appendTechnicalDetailRow(technicalGrid, "Item score", `${item.itemScoreMeta.itemScore} (${item.itemScoreMeta.itemBand})`);
   appendTechnicalDetailRow(technicalGrid, "Category weight", String(item.itemScoreMeta.weight));
   appendTechnicalDetailRow(technicalGrid, "Confidence factor", `${item.itemScoreMeta.confidencePct}%`);
@@ -2179,13 +2218,13 @@ function buildApiEvidenceNarrative(group) {
   if (sectionKey === API_EVIDENCE_SECTION_VENDOR) {
     return {
       summaryLine: `Activity linked to this vendor included ${group.label}.`,
-      meaningLine: `Activity linked to this vendor included ${group.label}. This may be used to infer network, browser, or device characteristics.`,
+      meaningLine: `${group.label} may be used to infer network, browser, or device characteristics.`,
     };
   }
 
   return {
     summaryLine: `This site also showed ${group.label}, but it is not directly linked to this vendor.`,
-    meaningLine: `This site also showed ${group.label}. It may still contribute to fingerprinting, probing, or sensitive-access risk on this page, but it is not part of the evidence directly linked to this vendor.`,
+    meaningLine: `${group.label} may still contribute to fingerprinting, probing, or sensitive-access risk on this page.`,
   };
 }
 
@@ -2326,7 +2365,7 @@ function buildVendorApiEvidenceGroups(events, site, vendor) {
     .map((group) => ({
       ...group,
       lastSeen: formatDateTime(group.lastSeenTs),
-      limitation: "This signal does not prove data was received. It indicates capability or attempt based on observed activity.",
+      limitation: "Capability or attempt signal; not proof of receipt.",
       actions: buildApiEvidenceActions(group, site, vendor),
     }))
     .sort((a, b) => (
@@ -2463,6 +2502,40 @@ function renderVendorApiEvidenceGroups(list, groups) {
   }
 }
 
+function appendApiNarrativeCountStrip(container, counts) {
+  if (!container || !counts || typeof counts !== "object") return;
+  const metrics = [
+    ["Events", counts.total],
+    ["Observed", counts.observed],
+    ["Blocked", counts.blocked],
+    ["Trusted allowed", counts.trustedAllowed],
+  ].filter(([, value]) => toSafeCount(value) > 0);
+
+  if (!metrics.length) return;
+
+  const strip = document.createElement("div");
+  strip.className = "vendor-vault-api-narrative-counts";
+
+  for (const [label, value] of metrics) {
+    const item = document.createElement("div");
+    item.className = "vendor-vault-api-narrative-count";
+
+    const key = document.createElement("span");
+    key.className = "vendor-vault-api-narrative-count-label";
+    key.textContent = label;
+    item.appendChild(key);
+
+    const text = document.createElement("span");
+    text.className = "vendor-vault-api-narrative-count-value";
+    text.textContent = String(toSafeCount(value));
+    item.appendChild(text);
+
+    strip.appendChild(item);
+  }
+
+  container.appendChild(strip);
+}
+
 function renderVendorApiNarrative(sectionKey, groups) {
   const container = sectionKey === API_EVIDENCE_SECTION_VENDOR
     ? qs("vendorApiEvidenceVendorNarrative")
@@ -2495,6 +2568,8 @@ function renderVendorApiNarrative(sectionKey, groups) {
   detail.className = "vendor-vault-api-narrative-detail";
   detail.textContent = narrative.detail;
   container.appendChild(detail);
+
+  appendApiNarrativeCountStrip(container, narrative.counts);
 
   const grid = document.createElement("div");
   grid.className = "vendor-vault-api-narrative-grid";
@@ -2599,11 +2674,11 @@ function syncContextualApiEvidenceCopy() {
   if (!intro || !note) return hasSiteScope;
 
   if (hasSiteScope) {
-    intro.textContent = "This Browser API activity was observed on this site, but it is not directly linked to this vendor.";
-    note.textContent = "It may still contribute to tracking or profiling on this page, even though it is outside the evidence linked to this vendor.";
+    intro.textContent = "Site-level Browser API activity not directly linked to this vendor.";
+    note.textContent = "Useful as page context, not vendor-specific evidence.";
   } else {
-    intro.textContent = "Other site-level Browser API activity is shown only in This site view because it is not directly linked to this vendor.";
-    note.textContent = "These signals provide page context rather than vendor-specific evidence.";
+    intro.textContent = "Switch to This site to review wider page context.";
+    note.textContent = "Contextual signals are separate from vendor-specific evidence.";
   }
 
   return hasSiteScope;
