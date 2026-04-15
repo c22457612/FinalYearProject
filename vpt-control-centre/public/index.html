@@ -387,56 +387,54 @@
       <main id="view-trusted-sites" class="trusted-sites-view hidden">
         <section class="trusted-sites-stack">
           <div class="panel trusted-sites-shell-panel">
-            <div class="panel-header">
-              <div>
-                <div class="panel-title">Trusted Sites</div>
-                <div id="trustedSitesHeroSubtitle" class="panel-subtitle">
-                  Manage the trust policy you apply to specific sites.
+            <div class="panel-header trusted-sites-masthead-header">
+              <div class="trusted-sites-title-block">
+                <div class="panel-title trusted-sites-page-title">Trusted Sites</div>
+                <div id="trustedSitesHeroSubtitle" class="panel-subtitle trusted-sites-masthead-copy">
+                  Review explicit trust decisions and recent privacy-event context.
                 </div>
               </div>
             </div>
-            <p class="trusted-sites-lead">
-              Use this page to review the sites you trust now, inspect recently observed sites from captured privacy events,
-              and change trust explicitly through the existing policy flow.
-            </p>
-            <div class="trusted-sites-honesty-strip" aria-label="Trusted Sites honesty notes">
-              <div class="trusted-sites-honesty-note">
-                <strong>Trust is explicit</strong>
-                <span>You decide which domains are trusted, and you can remove trust at any time.</span>
+            <div class="trusted-sites-masthead-readouts">
+              <div class="trusted-sites-honesty-strip" aria-label="Trusted Sites policy notes">
+                <div class="trusted-sites-honesty-note">
+                  <strong>Explicit trust</strong>
+                  <span>You choose the domains and can remove them at any time.</span>
+                </div>
+                <div class="trusted-sites-honesty-note">
+                  <strong>Observed events only</strong>
+                  <span>Recent sites come from captured VPT privacy events, not full browsing history.</span>
+                </div>
+                <div class="trusted-sites-honesty-note">
+                  <strong>Not a safety rating</strong>
+                  <span>Trust relaxes selected protections; it does not certify a site as safe.</span>
+                </div>
               </div>
-              <div class="trusted-sites-honesty-note">
-                <strong>Observed is limited</strong>
-                <span>Recently observed sites come from captured VPT privacy events only, not full browsing history.</span>
-              </div>
-              <div class="trusted-sites-honesty-note">
-                <strong>Trusted is not universal safety</strong>
-                <span>Trust relaxes certain protections by your choice. It does not mean a site is universally safe.</span>
-              </div>
-            </div>
-            <div class="trusted-sites-status-strip" aria-label="Trusted Sites status">
-              <div class="trusted-sites-status-item">
-                <span class="trusted-sites-status-label">Trusted now</span>
-                <strong id="trustedSitesStatCount" class="trusted-sites-status-value">0</strong>
-                <span class="trusted-sites-status-note">explicitly trusted domains</span>
-              </div>
-              <div class="trusted-sites-status-item">
-                <span class="trusted-sites-status-label">Observed recently</span>
-                <strong id="trustedSitesStatObserved" class="trusted-sites-status-value">0</strong>
-                <span class="trusted-sites-status-note">sites from captured privacy events</span>
-              </div>
-              <div class="trusted-sites-status-item">
-                <span class="trusted-sites-status-label">Last trust change</span>
-                <strong id="trustedSitesStatLastChanged" class="trusted-sites-status-value">-</strong>
-                <span class="trusted-sites-status-note">from current policy history</span>
+              <div class="trusted-sites-status-strip" aria-label="Trusted Sites status">
+                <div class="trusted-sites-status-item">
+                  <span class="trusted-sites-status-label">Trusted now</span>
+                  <strong id="trustedSitesStatCount" class="trusted-sites-status-value">0</strong>
+                  <span class="trusted-sites-status-note">trusted domains</span>
+                </div>
+                <div class="trusted-sites-status-item">
+                  <span class="trusted-sites-status-label">Observed recently</span>
+                  <strong id="trustedSitesStatObserved" class="trusted-sites-status-value">0</strong>
+                  <span class="trusted-sites-status-note">event sites</span>
+                </div>
+                <div class="trusted-sites-status-item">
+                  <span class="trusted-sites-status-label">Last trust change</span>
+                  <strong id="trustedSitesStatLastChanged" class="trusted-sites-status-value">-</strong>
+                  <span class="trusted-sites-status-note">policy history</span>
+                </div>
               </div>
             </div>
           </div>
 
-          <div class="panel trusted-sites-add-panel trusted-sites-add-panel-prominent">
-            <div class="panel-header">
+          <div class="panel trusted-sites-add-panel trusted-sites-command-strip">
+            <div class="panel-header trusted-sites-command-header">
               <div>
                 <div class="panel-title">Trust a new site</div>
-                <div class="panel-subtitle">Add trust manually, even if VPT has never observed the domain before.</div>
+                <div class="panel-subtitle">Manual trust-policy command.</div>
               </div>
             </div>
             <form id="trustedSitesAddForm" class="trusted-sites-form">
@@ -455,7 +453,7 @@
                 </button>
               </div>
               <div class="trusted-sites-form-hint">
-                Enter a base domain such as <code>example.com</code>. If you paste a full URL, only the hostname is used. You do not need a prior observed event.
+                Paste a URL or enter a domain; VPT stores the hostname.
               </div>
               <div id="trustedSitesFormStatus" class="trusted-sites-form-status" aria-live="polite"></div>
             </form>
@@ -466,9 +464,11 @@
               <div>
                 <div class="panel-title">Manage trust policy</div>
                 <div class="panel-subtitle">
-                  Switch between your current trusted set and recently observed candidates without scrolling through a stacked page.
+                  Choose the policy list to review.
                 </div>
               </div>
+            </div>
+            <div class="trusted-sites-mode-header" aria-label="Trusted Sites list mode">
               <div class="trusted-sites-subnav console-selector" role="tablist" aria-label="Trusted Sites views">
                 <button
                   id="trustedSitesSubviewTrusted"

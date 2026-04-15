@@ -251,15 +251,16 @@ function buildContextHtml(summary) {
 
 function trustedSiteRowHtml(entry, summary) {
   const isPending = viewState.pendingSite === entry.site;
+  const badgeHtml = summary
+    ? '<div class="trusted-sites-badge-group"><span class="trusted-sites-badge trusted-sites-badge-observed">Also observed</span></div>'
+    : "";
 
   return `
     <article class="trusted-sites-row trusted-sites-row-trusted">
       <div class="trusted-sites-row-main">
         <div class="trusted-sites-row-head">
           <div class="trusted-sites-domain">${escape(entry.site)}</div>
-          <div class="trusted-sites-badge-group">
-            <span class="trusted-sites-badge trusted-sites-badge-trusted">Trusted now</span>
-          </div>
+          ${badgeHtml}
         </div>
         ${buildContextHtml(summary)}
       </div>
@@ -285,21 +286,16 @@ function recentSiteRowHtml(site, isTrusted) {
   const blockedCount = Number(site?.blockedCount) || 0;
   const normalizedSite = normalizeOptional(site?.site).toLowerCase();
   const pendingUntrust = viewState.pendingSite === normalizedSite;
-  const badges = isTrusted
-    ? `
-      <span class="trusted-sites-badge trusted-sites-badge-trusted">Trusted now</span>
-      <span class="trusted-sites-badge trusted-sites-badge-observed">Observed recently</span>
-    `
-    : '<span class="trusted-sites-badge trusted-sites-badge-observed">Observed recently</span>';
+  const badgeHtml = isTrusted
+    ? '<div class="trusted-sites-badge-group"><span class="trusted-sites-badge trusted-sites-badge-trusted">Also trusted</span></div>'
+    : "";
 
   return `
     <article class="trusted-sites-row trusted-sites-row-observed">
       <div class="trusted-sites-row-main">
         <div class="trusted-sites-row-head">
           <div class="trusted-sites-domain">${escape(site?.site || "unknown")}</div>
-          <div class="trusted-sites-badge-group">
-            ${badges}
-          </div>
+          ${badgeHtml}
         </div>
         <div class="trusted-sites-context-grid">
           <div class="trusted-sites-context-item">
