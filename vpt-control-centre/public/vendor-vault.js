@@ -134,6 +134,13 @@ const KEY_HINT_RULES = [
   },
 ];
 
+const OBSERVED_KEY_GLOSSES = Object.freeze({
+  id: "identifier",
+  cid: "client id",
+  sid: "session id",
+  dl: "page url",
+});
+
 let latestExposureRequestId = 0;
 let latestSummaryRequestId = 0;
 let latestApiEvidenceRequestId = 0;
@@ -1131,7 +1138,8 @@ function appendPanelRow(panel, key, value, opts = {}) {
 
   const keyEl = document.createElement("span");
   keyEl.className = "vendor-vault-panel-key";
-  keyEl.textContent = key;
+  if (opts.labelNode) keyEl.appendChild(opts.labelNode);
+  else keyEl.textContent = key;
   row.appendChild(keyEl);
 
   const valueEl = document.createElement("span");
@@ -1167,8 +1175,30 @@ function appendPanelCountRows(panel, rows, opts = {}) {
   const limit = Math.max(1, Number(opts.limit) || rows.length);
   for (const row of rows.slice(0, limit)) {
     if (!row) continue;
-    appendPanelRow(panel, row.label, String(toSafeCount(row.count)), { primary: Boolean(row.primary) });
+    appendPanelRow(panel, row.label, String(toSafeCount(row.count)), {
+      primary: Boolean(row.primary),
+      labelNode: row.labelNode || null,
+    });
   }
+}
+
+function getObservedKeyGloss(key) {
+  const normalized = String(key || "").trim().toLowerCase();
+  return OBSERVED_KEY_GLOSSES[normalized] || "";
+}
+
+function buildObservedKeyLabel(key) {
+  const rawKey = String(key || "").trim() || "-";
+  const gloss = getObservedKeyGloss(rawKey);
+  const label = document.createDocumentFragment();
+  label.appendChild(document.createTextNode(rawKey));
+  if (gloss) {
+    const glossEl = document.createElement("span");
+    glossEl.className = "vendor-vault-key-gloss";
+    glossEl.textContent = ` (${gloss})`;
+    label.appendChild(glossEl);
+  }
+  return label;
 }
 
 function formatRiskLabel(label) {
@@ -1261,6 +1291,7 @@ function renderKeysPanel(keysSummary, hasData) {
     .slice(0, 5)
     .map((row, index) => ({
       label: String(row && row.key ? row.key : "-"),
+      labelNode: buildObservedKeyLabel(row && row.key ? row.key : "-"),
       count: toSafeCount(row && row.count),
       primary: index === 0,
     }));
@@ -2670,7 +2701,11 @@ function renderVendorApiEvidenceSubsection(sectionKey, groups, opts = {}) {
   renderVendorApiEvidenceGroups(list, safeGroups);
   list.classList.toggle("hidden", safeGroups.length === 0);
   empty.classList.toggle("hidden", safeGroups.length !== 0);
-  empty.textContent = safeGroups.length === 0 ? String(opts.emptyText || "") : "";
+  empty.innerHTML = "";
+  if (safeGroups.length === 0) {
+    if (opts.emptyNode) empty.appendChild(opts.emptyNode);
+    else empty.textContent = String(opts.emptyText || "");
+  }
 }
 
 function syncContextualApiEvidenceCopy() {
@@ -2690,6 +2725,15 @@ function syncContextualApiEvidenceCopy() {
   return hasSiteScope;
 }
 
+function buildContextualApiEvidenceEmptyLink() {
+  const site = String(vaultScopeState.site || "").trim();
+  const link = document.createElement("a");
+  link.className = "vendor-vault-action-link";
+  link.href = site ? buildSiteInsightsHref(site) : "/?view=sites";
+  link.textContent = "Switch to Site Insights to review this page";
+  return link;
+}
+
 function renderVendorApiEvidenceSections(vendorGroups, contextualGroups) {
   const hasSiteScope = syncContextualApiEvidenceCopy();
   renderVendorApiEvidenceSubsection(API_EVIDENCE_SECTION_VENDOR, vendorGroups, {
@@ -2698,7 +2742,8 @@ function renderVendorApiEvidenceSections(vendorGroups, contextualGroups) {
   renderVendorApiEvidenceSubsection(API_EVIDENCE_SECTION_CONTEXTUAL, contextualGroups, {
     emptyText: hasSiteScope
       ? "No other Browser API activity was observed on this site."
-      : "Switch to This site to review other Browser API activity seen on the page.",
+      : "",
+    emptyNode: hasSiteScope ? null : buildContextualApiEvidenceEmptyLink(),
   });
 }
 
