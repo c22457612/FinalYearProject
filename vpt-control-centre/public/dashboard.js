@@ -111,7 +111,12 @@ function buildInspectReason(metrics, siteSummary) {
 
 function renderInspectNext(sites, events) {
   const container = document.getElementById("inspectNextList");
+  const toggle = document.getElementById("inspectQueueToggle");
   if (!container) return;
+
+  const setQueueCount = (count) => {
+    if (toggle) toggle.textContent = `Inspect queue (${count})`;
+  };
 
   const latest = (Array.isArray(events) ? events : []).slice();
 
@@ -162,10 +167,12 @@ function renderInspectNext(sites, events) {
     .slice(0, 5);
 
   if (!rows.length) {
+    setQueueCount(0);
     container.innerHTML = '<div class="inspect-next-empty">No active sites in the current receipt.</div>';
     return;
   }
 
+  setQueueCount(rows.length);
   container.innerHTML = rows.map((row, index) => `
     <div class="inspect-next-item">
       <div class="inspect-next-rank" aria-hidden="true">${index + 1}</div>

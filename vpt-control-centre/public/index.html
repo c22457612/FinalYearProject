@@ -135,7 +135,15 @@
                   Showing latest events...
                 </div>
               </div>
-              <div class="receipt-header-actions" aria-label="Receipt exports">
+              <div class="receipt-header-actions" aria-label="Receipt tools">
+                <details class="inspect-queue">
+                  <summary id="inspectQueueToggle">Inspect queue (0)</summary>
+                  <div class="inspect-queue-panel">
+                    <div id="inspectNextList" class="inspect-next-list">
+                      <div class="inspect-next-empty">Waiting for site activity...</div>
+                    </div>
+                  </div>
+                </details>
                 <button id="exportAllCsvBtn" class="btn-export btn-export-quiet">Export CSV</button>
                 <button id="exportAllJsonBtn" class="btn-export btn-export-quiet">Export JSON</button>
               </div>
@@ -184,23 +192,6 @@
                 </div>
               </div>
             </details>
-          </div>
-        </section>
-
-        <section class="right-column home-support-column">
-          <div class="panel inspect-next-panel">
-            <div class="panel-header">
-              <div>
-                <div class="panel-title">Inspect next</div>
-                <div class="panel-subtitle">
-                  Small, high-signal sites from the current receipt window
-                </div>
-              </div>
-            </div>
-
-            <div id="inspectNextList" class="inspect-next-list">
-              <div class="inspect-next-empty">Waiting for site activity...</div>
-            </div>
           </div>
         </section>
       </main>
