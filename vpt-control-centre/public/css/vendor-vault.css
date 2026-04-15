@@ -2687,31 +2687,31 @@
   }
 }
 
-/* Vendor Vault directory accent-only pass */
+/* Vendor Vault directory neutral selector pass */
 
 .vendor-directory {
-  border-top-color: color-mix(in srgb, var(--accent-border) 34%, var(--divider));
+  border-top-color: var(--divider);
 }
 
 .vendor-directory-toolbar {
-  border-color: color-mix(in srgb, var(--accent-border) 32%, var(--border-subtle-color));
-  box-shadow: inset 2px 0 0 color-mix(in srgb, var(--accent-rail) 46%, transparent), inset 0 1px 0 var(--divider);
+  border-color: var(--border-subtle-color);
+  box-shadow: none;
 }
 
 .vendor-directory-toolbar-group + .vendor-directory-toolbar-group {
-  border-left-color: color-mix(in srgb, var(--accent-border) 22%, var(--divider));
+  border-left-color: var(--divider);
 }
 
 .vendor-directory-input,
 .vendor-directory-select {
-  border-color: color-mix(in srgb, var(--accent-border) 38%, var(--button-secondary-border));
-  background: color-mix(in srgb, var(--surface-panel) 94%, var(--accent-soft-fill));
-  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent-soft-fill) 64%, transparent);
+  border-color: var(--button-secondary-border);
+  background: var(--surface-panel);
+  box-shadow: none;
 }
 
 .vendor-directory-input:hover,
 .vendor-directory-select:hover {
-  border-color: color-mix(in srgb, var(--accent-border) 58%, var(--button-secondary-border));
+  border-color: color-mix(in srgb, var(--button-secondary-border) 68%, var(--color-text-muted));
 }
 
 .vendor-directory-input:focus-visible,
@@ -2721,47 +2721,35 @@
 }
 
 .vendor-directory-tile {
-  border-color: color-mix(in srgb, var(--accent-border) 38%, var(--border-subtle-color));
+  border-color: var(--border-subtle-color);
   background: var(--surface-panel);
-  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent-soft-fill) 52%, transparent);
+  box-shadow: none;
 }
 
 .vendor-directory-tile::before {
   width: 3px;
-  background: color-mix(in srgb, var(--accent-rail) 34%, transparent);
+  background: transparent;
 }
 
 .vendor-directory-tile:hover,
 .vendor-directory-tile:focus-visible {
-  background: color-mix(in srgb, var(--surface-selected) 88%, var(--accent-soft-fill));
+  background: color-mix(in srgb, var(--surface-hover) 92%, var(--accent-soft-fill));
   border-color: var(--accent-border);
-  box-shadow: inset 0 0 0 1px var(--accent-border), 0 0 0 3px color-mix(in srgb, var(--focus-ring) 72%, transparent);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent-border) 52%, transparent);
 }
 
 .vendor-directory-tile:hover::before,
 .vendor-directory-tile:focus-visible::before,
+.vendor-directory-tile:active::before,
 .vendor-directory-tile.is-active::before,
 .vendor-directory-tile.is-selected::before,
 .vendor-directory-tile[aria-current="true"]::before {
   background: var(--accent-rail);
 }
 
-/* Vendor Vault directory final subtle glow override */
-
-.vendor-directory-input:focus-visible,
-.vendor-directory-select:focus-visible {
-  border-color: var(--accent-rail);
-  box-shadow: inset 0 0 0 1px var(--accent-border), 0 0 0 1px var(--accent-rail);
-}
-
-.vendor-directory-tile:hover,
-.vendor-directory-tile:focus-visible {
-  border-color: var(--accent-rail);
-  box-shadow: inset 0 0 0 1px var(--accent-border), 0 0 0 1px var(--accent-rail);
-}
-
 .vendor-directory-tile:hover .vendor-directory-tile-marker,
 .vendor-directory-tile:focus-visible .vendor-directory-tile-marker,
+.vendor-directory-tile:active .vendor-directory-tile-marker,
 .vendor-directory-tile.is-active .vendor-directory-tile-marker,
 .vendor-directory-tile.is-selected .vendor-directory-tile-marker,
 .vendor-directory-tile[aria-current="true"] .vendor-directory-tile-marker {
@@ -2775,109 +2763,17 @@
 }
 
 .vendor-directory-tile:active {
-  border-color: var(--accent-rail);
+  border-color: var(--accent-border);
   background: color-mix(in srgb, var(--surface-selected) 82%, var(--accent-soft-fill-strong));
-  box-shadow: inset 3px 0 0 var(--accent-rail), inset 0 0 0 1px var(--accent-border);
+  box-shadow: inset 3px 0 0 var(--accent-rail), inset 0 0 0 1px color-mix(in srgb, var(--accent-border) 70%, transparent);
 }
 
 .vendor-directory-tile.is-active,
 .vendor-directory-tile.is-selected,
 .vendor-directory-tile[aria-current="true"] {
   border-color: var(--accent-border);
-  box-shadow: inset 3px 0 0 var(--accent-rail), inset 0 0 0 1px var(--accent-border);
-}
-
-/* Vendor Vault directory accent color fix */
-
-.vendor-directory-input:hover,
-.vendor-directory-select:hover,
-.vendor-directory-input:focus-visible,
-.vendor-directory-select:focus-visible {
-  border-color: var(--accent-border);
-}
-
-.vendor-directory-input:focus-visible,
-.vendor-directory-select:focus-visible {
-  box-shadow: inset 0 0 0 1px var(--accent-border), 0 0 0 3px var(--focus-ring);
-}
-
-.vendor-directory-tile:hover,
-.vendor-directory-tile:focus-visible {
-  border-color: var(--accent-border);
-  box-shadow: inset 0 0 0 1px var(--accent-border), 0 0 0 3px var(--focus-ring);
-}
-
-.vendor-directory-tile:hover::before,
-.vendor-directory-tile:focus-visible::before,
-.vendor-directory-tile:active::before,
-.vendor-directory-tile.is-active::before,
-.vendor-directory-tile.is-selected::before,
-.vendor-directory-tile[aria-current="true"]::before {
-  background: var(--accent-rail);
-}
-
-/* Vendor Vault directory subtle focus glow */
-
-.vendor-directory-input:focus-visible,
-.vendor-directory-select:focus-visible {
-  border-color: var(--accent-rail);
-  box-shadow: inset 0 0 0 1px var(--accent-border), 0 0 0 1px var(--accent-rail);
-}
-
-.vendor-directory-tile:hover,
-.vendor-directory-tile:focus-visible {
-  border-color: var(--accent-rail);
-  box-shadow: inset 0 0 0 1px var(--accent-border), 0 0 0 1px var(--accent-rail);
-}
-
-.vendor-directory-tile:active,
-.vendor-directory-tile.is-active,
-.vendor-directory-tile.is-selected,
-.vendor-directory-tile[aria-current="true"] {
-  border-color: var(--accent-rail);
-  box-shadow: inset 3px 0 0 var(--accent-rail), inset 0 0 0 1px var(--accent-border);
-}
-
-/* Vendor Vault directory focus glow accent fix */
-
-.vendor-directory-input:hover,
-.vendor-directory-select:hover {
-  border-color: var(--accent-border);
-}
-
-.vendor-directory-input:focus-visible,
-.vendor-directory-select:focus-visible {
-  border-color: var(--accent-rail);
-  box-shadow: inset 0 0 0 1px var(--accent-border), 0 0 0 3px var(--accent-rail);
-}
-
-.vendor-directory-tile:hover,
-.vendor-directory-tile:focus-visible {
-  border-color: var(--accent-rail);
-  box-shadow: inset 0 0 0 1px var(--accent-border), 0 0 0 3px var(--accent-rail);
-}
-
-.vendor-directory-tile:hover::before,
-.vendor-directory-tile:focus-visible::before,
-.vendor-directory-tile:active::before,
-.vendor-directory-tile.is-active::before,
-.vendor-directory-tile.is-selected::before,
-.vendor-directory-tile[aria-current="true"]::before {
-  background: var(--accent-rail);
-}
-
-/* Vendor Vault directory final subtle glow override */
-
-.vendor-directory-input:focus-visible,
-.vendor-directory-select:focus-visible {
-  border-color: var(--accent-rail);
-  box-shadow: inset 0 0 0 1px var(--accent-border), 0 0 0 1px var(--accent-rail);
-}
-
-.vendor-directory-tile:hover,
-.vendor-directory-tile:focus-visible {
-  border-color: var(--accent-rail);
-  box-shadow: inset 0 0 0 1px var(--accent-border), 0 0 0 1px var(--accent-rail);
+  background: color-mix(in srgb, var(--surface-selected) 88%, var(--accent-soft-fill));
+  box-shadow: inset 3px 0 0 var(--accent-rail), inset 0 0 0 1px color-mix(in srgb, var(--accent-border) 70%, transparent);
 }
 
 /* Vendor Vault final technical-details subtle focus glow */
