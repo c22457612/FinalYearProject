@@ -215,8 +215,8 @@
   color: var(--accent-strong);
   font-family: var(--font-mono);
   font-variant-numeric: tabular-nums;
-  font-size: 0.8rem;
-  padding: 0.12rem 0.42rem;
+  font-size: 0.86rem;
+  padding: 0.16rem 0.52rem;
   border: 1px solid var(--accent-border);
   border-radius: var(--radius-sm);
   background: color-mix(in srgb, var(--accent-soft-fill) 62%, transparent);
@@ -312,8 +312,10 @@
 .receipt-mode-pill {
   border-radius: var(--radius-sm);
   font-family: var(--font-mono);
-  font-size: 0.7rem;
+  font-size: 0.78rem;
   letter-spacing: 0.02em;
+  line-height: 1.15;
+  padding: 0.2rem 0.5rem;
   white-space: nowrap;
   border: 1px solid transparent;
 }
@@ -351,7 +353,6 @@
 
 .receipt-mode-pill {
   opacity: 0.82;
-  font-size: 0.7rem;
 }
 
 .receipt-event-drawer {
@@ -359,7 +360,7 @@
   margin: -0.02rem 0 0.46rem 6.1rem;
   padding: 0.86rem 1rem 0.96rem;
   border-top: 1px solid color-mix(in srgb, var(--accent-border) 32%, var(--divider));
-  border-bottom: 1px solid color-mix(in srgb, var(--accent-border) 24%, var(--divider));
+  border-bottom: 1px solid color-mix(in srgb, var(--accent-border) 48%, var(--divider));
   border-radius: 0 0 var(--radius-sm) var(--radius-sm);
   background: color-mix(in srgb, var(--surface-raised) 78%, var(--surface-panel));
   box-shadow: inset 2px 0 0 var(--accent-rail);
@@ -389,7 +390,7 @@
   gap: 0.85rem;
   flex-wrap: wrap;
   min-width: 0;
-  padding-bottom: 0.64rem;
+  padding-bottom: 0.74rem;
   border-bottom: 1px solid color-mix(in srgb, var(--accent-border) 20%, var(--divider));
 }
 
@@ -403,9 +404,9 @@
 .receipt-event-drawer-section-label {
   color: var(--accent-strong);
   font-family: var(--font-mono);
-  font-size: 0.68rem;
-  font-weight: 600;
-  letter-spacing: 0.08em;
+  font-size: 0.78rem;
+  font-weight: 700;
+  letter-spacing: 0.075em;
   line-height: 1.2;
   text-transform: uppercase;
 }
@@ -435,7 +436,7 @@
 
 .receipt-event-drawer-section {
   display: grid;
-  gap: 0.5rem;
+  gap: 0.62rem;
   min-width: 0;
 }
 
@@ -447,7 +448,7 @@
 .receipt-event-drawer-facts {
   display: flex;
   flex-wrap: wrap;
-  gap: 0.26rem 0.42rem;
+  gap: 0.42rem 0.58rem;
   align-items: center;
   min-width: 0;
 }
@@ -456,29 +457,31 @@
   display: inline-grid;
   grid-template-columns: auto minmax(0, 1fr);
   align-items: center;
-  column-gap: 0.34rem;
+  column-gap: 0.46rem;
   min-width: 0;
-  max-width: 16rem;
-  padding: 0.26rem 0.4rem;
+  max-width: 20rem;
+  padding: 0.38rem 0.56rem;
   border: 0;
   border-radius: 0;
   background: color-mix(in srgb, var(--accent-soft-fill) 9%, transparent);
   box-shadow: inset 0 -1px 0 color-mix(in srgb, var(--accent-border) 12%, var(--divider));
-  font-size: 0.8rem;
+  font-size: 0.9rem;
   line-height: 1.32;
 }
 
 .receipt-event-drawer-fact-label {
   color: var(--color-text-faint);
   font-family: var(--font-mono);
-  font-size: 0.65rem;
+  font-size: 0.72rem;
   letter-spacing: 0.06em;
   text-transform: uppercase;
   flex: 0 0 auto;
 }
 
 .receipt-event-drawer-fact-value {
-  color: var(--text-secondary);
+  color: var(--color-text-main);
+  font-size: 0.96rem;
+  font-weight: 600;
   min-width: 0;
   overflow-wrap: anywhere;
   word-break: break-word;
@@ -508,11 +511,25 @@
   justify-content: space-between;
   align-items: center;
   gap: 0.75rem;
+  min-height: 2.7rem;
   cursor: pointer;
-  padding: 0.58rem 0 0.54rem;
+  padding: 0.72rem 0 0.68rem;
   border-bottom: 1px solid transparent;
-  color: var(--color-text-main);
+  color: var(--accent-strong);
   list-style: none;
+}
+
+.receipt-event-drawer-raw summary:hover,
+.receipt-event-drawer-raw summary:focus-visible {
+  box-shadow: inset 0 -1px 0 color-mix(in srgb, var(--accent-border) 24%, transparent);
+  outline: none;
+}
+
+.receipt-event-drawer-raw summary:hover .receipt-event-drawer-raw-label,
+.receipt-event-drawer-raw summary:focus-visible .receipt-event-drawer-raw-label,
+.receipt-event-drawer-raw summary:hover .receipt-event-drawer-raw-state,
+.receipt-event-drawer-raw summary:focus-visible .receipt-event-drawer-raw-state {
+  color: var(--accent-contrast);
 }
 
 .receipt-event-drawer-raw summary::-webkit-details-marker {
@@ -521,9 +538,26 @@
 
 .receipt-event-drawer-raw summary::after {
   content: "+";
+  display: inline-grid;
+  place-items: center;
+  flex: 0 0 auto;
+  width: 1.45rem;
+  height: 1.45rem;
+  border: 1px solid color-mix(in srgb, var(--accent-border) 56%, var(--divider));
+  border-radius: var(--radius-sm);
+  background: color-mix(in srgb, var(--accent-soft-fill) 54%, transparent);
   color: var(--accent-strong);
   font-family: var(--font-mono);
-  font-size: 0.82rem;
+  font-size: 1.05rem;
+  font-weight: 700;
+  line-height: 1;
+}
+
+.receipt-event-drawer-raw summary:hover::after,
+.receipt-event-drawer-raw summary:focus-visible::after {
+  border-color: var(--accent-border);
+  background: color-mix(in srgb, var(--accent-soft-fill-strong) 58%, transparent);
+  color: var(--accent-contrast);
 }
 
 .receipt-event-drawer-raw[open] summary {
@@ -537,16 +571,17 @@
 .receipt-event-drawer-raw-label {
   color: var(--accent-strong);
   font-family: var(--font-mono);
-  font-size: 0.76rem;
-  font-weight: 600;
+  font-size: 0.84rem;
+  font-weight: 700;
   letter-spacing: 0.07em;
   text-transform: uppercase;
 }
 
 .receipt-event-drawer-raw-state {
-  color: var(--color-text-faint);
+  color: var(--text-secondary);
   font-family: var(--font-mono);
-  font-size: 0.76rem;
+  font-size: 0.86rem;
+  font-weight: 600;
 }
 
 .receipt-event-drawer-raw pre {
