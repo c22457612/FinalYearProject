@@ -581,7 +581,7 @@ test("selection lifecycle clears selection when mode changes", () => {
       ],
     },
     vizPositionLabel: { textContent: "" },
-    vizModeHelp: { textContent: "" },
+    vizModeHelp: { textContent: "", classList: { toggle: () => {} } },
     advancedControlsPanel: { open: true },
     vizOpenDrawerBtn: { disabled: false, textContent: "", title: "" },
     privacyStatusFilter: { disabled: false, title: "" },
@@ -598,8 +598,8 @@ test("selection lifecycle clears selection when mode changes", () => {
       { id: "timeline", title: "Timeline" },
       { id: "riskTrend", title: "Risk trend" },
     ],
-    easyViewIds: new Set(["timeline"]),
-    powerOnlyViewLabelSuffix: " (Power only)",
+    easySiteWideViewIds: new Set(["timeline"]),
+    easyVendorFocusViewIds: new Set(["timeline"]),
     privacyFilterAllOnlyViewIds: new Set(),
     getViewMode: () => viewMode,
     setViewModeState: (next) => { viewMode = next; },
@@ -908,8 +908,8 @@ test("state guidance model keeps sparse actions capped at two and prioritized", 
     viewId: "vendorTopDomainsEndpoints",
     lowInformationThreshold: 8,
   });
-  const filtered = buildStateGuidanceModel({
-    eventCount: 0,
+  const filteredSparse = buildStateGuidanceModel({
+    eventCount: 3,
     hasVendorFocus: false,
     vendorName: "",
     activeFilterCount: 2,
@@ -921,8 +921,8 @@ test("state guidance model keeps sparse actions capped at two and prioritized", 
 
   assert.equal(vendorScoped.actions.length, 2);
   assert.equal(Array.from(vendorScoped.actions, (action) => action.id).join(","), "broaden_range,clear_vendor");
-  assert.equal(filtered.actions.length, 2);
-  assert.equal(Array.from(filtered.actions, (action) => action.id).join(","), "broaden_range,reset_filters");
+  assert.equal(filteredSparse.actions.length, 2);
+  assert.equal(Array.from(filteredSparse.actions, (action) => action.id).join(","), "broaden_range,reset_filters");
 });
 
 test("vendor scope banner model produces integrated scope copy and vault link", () => {
@@ -997,7 +997,7 @@ test("view navigation keeps advanced controls closed when entering power mode", 
       options: [{ value: "timeline", textContent: "Timeline", dataset: {} }],
     },
     vizPositionLabel: { textContent: "" },
-    vizModeHelp: { textContent: "" },
+    vizModeHelp: { textContent: "", classList: { toggle: () => {} } },
     advancedControlsPanel: { open: true },
     vizOpenDrawerBtn: { disabled: false, textContent: "", title: "" },
     privacyStatusFilter: { disabled: false, title: "" },
@@ -1009,8 +1009,8 @@ test("view navigation keeps advanced controls closed when entering power mode", 
     qs: (id) => controls[id] || null,
     getDocumentBody: () => ({ classList: { toggle: () => {} } }),
     views: [{ id: "timeline", title: "Timeline" }],
-    easyViewIds: new Set(["timeline"]),
-    powerOnlyViewLabelSuffix: " (Power only)",
+    easySiteWideViewIds: new Set(["timeline"]),
+    easyVendorFocusViewIds: new Set(["timeline"]),
     privacyFilterAllOnlyViewIds: new Set(),
     getViewMode: () => viewMode,
     setViewModeState: (next) => { viewMode = next; },
@@ -1047,11 +1047,11 @@ test("view navigation renders chart selector rail for allowed views only", () =>
       value: "timeline",
       options: [
         { value: "timeline", textContent: "Timeline", dataset: {} },
-        { value: "riskTrend", textContent: "Risk trend", dataset: {} },
+        { value: "topSeen", textContent: "Top third-party domains", dataset: {} },
       ],
     },
     vizPositionLabel: { textContent: "" },
-    vizModeHelp: { textContent: "" },
+    vizModeHelp: { textContent: "", classList: { toggle: () => {} } },
     vizPathSelector: { innerHTML: "" },
     advancedControlsPanel: { open: false },
     vizOpenDrawerBtn: { disabled: false, textContent: "", title: "" },
@@ -1065,10 +1065,10 @@ test("view navigation renders chart selector rail for allowed views only", () =>
     getDocumentBody: () => ({ classList: { toggle: () => {} } }),
     views: [
       { id: "timeline", title: "Timeline" },
-      { id: "riskTrend", title: "Risk trend" },
+      { id: "topSeen", title: "Top third-party domains" },
     ],
-    easyViewIds: new Set(["timeline"]),
-    powerOnlyViewLabelSuffix: " (Power only)",
+    easySiteWideViewIds: new Set(["timeline"]),
+    easyVendorFocusViewIds: new Set(["timeline"]),
     privacyFilterAllOnlyViewIds: new Set(),
     getViewMode: () => viewMode,
     setViewModeState: (next) => { viewMode = next; },
@@ -1090,7 +1090,7 @@ test("view navigation renders chart selector rail for allowed views only", () =>
   controller.syncVizSelectByMode();
 
   assert.match(controls.vizPathSelector.innerHTML, /data-viz-view-id="timeline"/);
-  assert.doesNotMatch(controls.vizPathSelector.innerHTML, /data-viz-view-id="riskTrend"/);
+  assert.doesNotMatch(controls.vizPathSelector.innerHTML, /data-viz-view-id="topSeen"/);
 });
 
 test("view navigation rail follows easy-mode fallback for disallowed current view", () => {
@@ -1102,14 +1102,14 @@ test("view navigation rail follows easy-mode fallback for disallowed current vie
   const controls = {
     viewModeSelect: { value: "easy" },
     vizSelect: {
-      value: "riskTrend",
+      value: "topSeen",
       options: [
         { value: "timeline", textContent: "Timeline", dataset: {} },
-        { value: "riskTrend", textContent: "Risk trend", dataset: {} },
+        { value: "topSeen", textContent: "Top third-party domains", dataset: {} },
       ],
     },
     vizPositionLabel: { textContent: "" },
-    vizModeHelp: { textContent: "" },
+    vizModeHelp: { textContent: "", classList: { toggle: () => {} } },
     vizPathSelector: { innerHTML: "" },
     advancedControlsPanel: { open: false },
     vizOpenDrawerBtn: { disabled: false, textContent: "", title: "" },
@@ -1123,10 +1123,10 @@ test("view navigation rail follows easy-mode fallback for disallowed current vie
     getDocumentBody: () => ({ classList: { toggle: () => {} } }),
     views: [
       { id: "timeline", title: "Timeline" },
-      { id: "riskTrend", title: "Risk trend" },
+      { id: "topSeen", title: "Top third-party domains" },
     ],
-    easyViewIds: new Set(["timeline"]),
-    powerOnlyViewLabelSuffix: " (Power only)",
+    easySiteWideViewIds: new Set(["timeline"]),
+    easyVendorFocusViewIds: new Set(["timeline"]),
     privacyFilterAllOnlyViewIds: new Set(),
     getViewMode: () => viewMode,
     setViewModeState: (next) => { viewMode = next; },
@@ -1150,7 +1150,7 @@ test("view navigation rail follows easy-mode fallback for disallowed current vie
   assert.equal(vizIndex, 0);
   assert.equal(controls.vizSelect.value, "timeline");
   assert.match(controls.vizPathSelector.innerHTML, /data-viz-view-id="timeline"/);
-  assert.doesNotMatch(controls.vizPathSelector.innerHTML, /data-viz-view-id="riskTrend"/);
+  assert.doesNotMatch(controls.vizPathSelector.innerHTML, /data-viz-view-id="topSeen"/);
 });
 
 test("view navigation can switch charts by view id through the selector rail path", () => {
@@ -1165,11 +1165,11 @@ test("view navigation can switch charts by view id through the selector rail pat
       value: "timeline",
       options: [
         { value: "timeline", textContent: "Timeline", dataset: {} },
-        { value: "riskTrend", textContent: "Risk trend", dataset: {} },
+        { value: "topSeen", textContent: "Top third-party domains", dataset: {} },
       ],
     },
     vizPositionLabel: { textContent: "" },
-    vizModeHelp: { textContent: "" },
+    vizModeHelp: { textContent: "", classList: { toggle: () => {} } },
     vizPathSelector: { innerHTML: "" },
     advancedControlsPanel: { open: false },
     vizOpenDrawerBtn: { disabled: false, textContent: "", title: "" },
@@ -1185,10 +1185,10 @@ test("view navigation can switch charts by view id through the selector rail pat
     getDocumentBody: () => ({ classList: { toggle: () => {} } }),
     views: [
       { id: "timeline", title: "Timeline" },
-      { id: "riskTrend", title: "Risk trend" },
+      { id: "topSeen", title: "Top third-party domains" },
     ],
-    easyViewIds: new Set(["timeline"]),
-    powerOnlyViewLabelSuffix: " (Power only)",
+    easySiteWideViewIds: new Set(["timeline"]),
+    easyVendorFocusViewIds: new Set(["timeline"]),
     privacyFilterAllOnlyViewIds: new Set(),
     getViewMode: () => viewMode,
     setViewModeState: (next) => { viewMode = next; },
@@ -1207,11 +1207,11 @@ test("view navigation can switch charts by view id through the selector rail pat
     updateFilterSummary: () => {},
   });
 
-  controller.switchVizById("riskTrend", { focusViewId: "riskTrend" });
+  controller.switchVizById("topSeen", { focusViewId: "topSeen" });
 
   assert.equal(vizIndex, 1);
-  assert.equal(controls.vizSelect.value, "riskTrend");
-  assert.match(controls.vizPathSelector.innerHTML, /data-viz-view-id="riskTrend"/);
+  assert.equal(controls.vizSelect.value, "topSeen");
+  assert.match(controls.vizPathSelector.innerHTML, /data-viz-view-id="topSeen"/);
   assert.equal(clearCalls.length, 1);
   assert.equal(chartRenders, 1);
 });
@@ -1233,7 +1233,10 @@ test("chart orchestration applies readable defaults in power mode for time-based
     getVizMetric: () => "seen",
     buildVendorRollup: () => [],
     buildTimelineOption: () => ({ option: {}, meta: {} }),
-    buildVendorAllowedBlockedTimelineOption: () => ({ option: {}, meta: {} }),
+    buildVendorAllowedBlockedTimelineOption: (events, options) => {
+      calls.push({ view: "vendorAllowedBlockedTimeline", options });
+      return { option: {}, meta: {} };
+    },
     buildVendorTopDomainsEndpointsOption: () => ({ option: {}, meta: {} }),
     buildTopDomainsOption: () => ({ option: {}, meta: {} }),
     buildKindsOption: () => ({ option: {}, meta: {} }),
@@ -1252,10 +1255,6 @@ test("chart orchestration applies readable defaults in power mode for time-based
       calls.push({ view: "riskTrend", options });
       return { option: {}, meta: {} };
     },
-    buildBaselineDetectedBlockedTrendOption: (events, options) => {
-      calls.push({ view: "baselineDetectedBlockedTrend", options });
-      return { option: {}, meta: {} };
-    },
     buildVendorKindMatrixOption: () => ({ option: {}, meta: {} }),
     buildRuleIdFrequencyOption: () => ({ option: {}, meta: {} }),
     setVizSelection: () => {},
@@ -1268,7 +1267,7 @@ test("chart orchestration applies readable defaults in power mode for time-based
   const events = [{ id: "e1", ts: 1_000, kind: "network.observed" }];
   controller.buildViewOption("vendorShareOverTime", events, { viewMode: "power" });
   controller.buildViewOption("riskTrend", events, { viewMode: "power" });
-  controller.buildViewOption("baselineDetectedBlockedTrend", events, { viewMode: "power" });
+  controller.buildViewOption("vendorAllowedBlockedTimeline", events, { viewMode: "power" });
 
   assert.equal(calls.length, 3);
   for (const call of calls) {
@@ -1312,10 +1311,10 @@ test("vendor chart clicks keep focus in the visualizer instead of forcing case-s
     buildVendorBlockRateComparisonOption: () => ({ option: {}, meta: {} }),
     buildVendorShareOverTimeOption: () => ({ option: {}, meta: {} }),
     buildRiskTrendOption: () => ({ option: {}, meta: {} }),
-    buildBaselineDetectedBlockedTrendOption: () => ({ option: {}, meta: {} }),
     buildVendorKindMatrixOption: () => ({ option: {}, meta: {} }),
     buildRuleIdFrequencyOption: () => ({ option: {}, meta: {} }),
     setVizSelection: (selection) => { lastSelection = selection; },
+    syncVizSelectByMode: () => {},
     renderVendorChips: () => { renderVendorChipCalls += 1; },
     renderECharts: () => { renderChartCalls += 1; },
     focusVendorDetailsUx: () => { focusCalls += 1; },
@@ -1493,8 +1492,12 @@ test("insight summary text calls out browser API activity for API-only selection
     },
   });
 
-  assert.match(insight.summary, /0 blocked, 0 observed, 2 observed API/i);
-  assert.match(insight.summary, /Browser API activity/i);
+  assert.match(insight.summary, /signal is still thin/i);
+  assert.equal(insight.evidenceSummary.blocked, 0);
+  assert.equal(insight.evidenceSummary.observed, 0);
+  assert.equal(insight.evidenceSummary.observedApi, 2);
+  assert.ok(insight.warnings.some((warning) => /Browser API activity/i.test(warning)));
+  assert.ok(insight.dangers.some((danger) => /Browser API signals/i.test(danger)));
 });
 
 test("insight visibility routes vendor-detail focus to the lower insight sheet", () => {
@@ -1769,7 +1772,7 @@ test("vendor share over time uses readable default zoom in low-signal power mode
   assert.equal(built.option.series?.[0]?.type, "bar");
 });
 
-test("baseline trend uses readable default zoom in low-signal power mode", () => {
+test("risk trend uses readable default zoom in low-signal power mode", () => {
   const { createChartBuilders } = loadRuntimeModuleExport(
     "public/app/site/chart-builders.js",
     ["createChartBuilders"]
@@ -1801,18 +1804,20 @@ test("baseline trend uses readable default zoom in low-signal power mode", () =>
     partyLabels: {},
   });
 
-  const built = builders.buildBaselineDetectedBlockedTrendOption([
+  const built = builders.buildRiskTrendOption([
     {
-      id: "baseline-1",
+      id: "risk-1",
       ts: 60 * 60 * 1000,
       kind: "network.observed",
-      enrichment: { privacyStatus: "baseline", mitigationStatus: "observed_only" },
+      data: { isThirdParty: true, resourceType: "script" },
+      enrichment: { privacyStatus: "signal_detected", mitigationStatus: "observed_only" },
     },
     {
-      id: "detected-1",
+      id: "risk-2",
       ts: 2 * 60 * 60 * 1000,
-      kind: "network.observed",
-      enrichment: { privacyStatus: "signal_detected", mitigationStatus: "observed_only" },
+      kind: "network.blocked",
+      data: { isThirdParty: true, resourceType: "script" },
+      enrichment: { privacyStatus: "policy_blocked", mitigationStatus: "blocked" },
     },
   ], { viewMode: "power", densityAware: true });
 
