@@ -162,7 +162,6 @@ const landingDirectoryState = {
   selectedSite: "",
   search: "",
   sort: LANDING_SORT_ACTIVITY,
-  sites: [],
   vendors: [],
 };
 const EXPORT_APP_NAME = "Visual Privacy Toolkit - Vendor Vault";
@@ -480,10 +479,6 @@ function normalizeLandingSort(sort) {
   return LANDING_SORT_ACTIVITY;
 }
 
-function getLandingSiteSelect() {
-  return qs("vendorDirectorySite");
-}
-
 function setLandingDirectoryStatus(message, opts = {}) {
   const status = qs("vendorDirectoryStatus");
   if (!status) return;
@@ -710,55 +705,6 @@ function renderLandingVendorGrid() {
   }
 }
 
-function setLandingSiteSelectVisible(visible) {
-  const siteSelect = getLandingSiteSelect();
-  if (!siteSelect) return;
-  siteSelect.classList.toggle("hidden", !visible);
-}
-
-function renderLandingSiteOptions() {
-  const siteSelect = getLandingSiteSelect();
-  if (!siteSelect) return;
-
-  siteSelect.innerHTML = "";
-  const placeholder = document.createElement("option");
-  placeholder.value = "";
-  placeholder.textContent = "Choose site...";
-  siteSelect.appendChild(placeholder);
-
-  for (const site of landingDirectoryState.sites) {
-    const option = document.createElement("option");
-    option.value = site;
-    option.textContent = site;
-    siteSelect.appendChild(option);
-  }
-
-  if (landingDirectoryState.selectedSite && landingDirectoryState.sites.includes(landingDirectoryState.selectedSite)) {
-    siteSelect.value = landingDirectoryState.selectedSite;
-  } else {
-    siteSelect.value = "";
-  }
-}
-
-async function loadLandingSites() {
-  try {
-    const response = await fetch("/api/sites");
-    if (!response.ok) throw new Error(`sites_request_failed_${response.status}`);
-    const rows = await response.json();
-    landingDirectoryState.sites = Array.from(new Set(
-      (Array.isArray(rows) ? rows : [])
-        .map((row) => String(row && row.site ? row.site : "").trim())
-        .filter(Boolean)
-    ));
-    renderLandingSiteOptions();
-  } catch (err) {
-    console.error("Vendor directory sites fetch failed:", err);
-    landingDirectoryState.sites = [];
-    renderLandingSiteOptions();
-    setLandingDirectoryStatus("Could not load sites list.", { isError: true });
-  }
-}
-
 function buildLandingVendorsUrl() {
   if (landingDirectoryState.scope === SCOPE_SITE && landingDirectoryState.selectedSite) {
     return `/api/vendors?site=${encodeURIComponent(landingDirectoryState.selectedSite)}`;
@@ -794,32 +740,12 @@ async function loadLandingVendors() {
   }
 }
 
-async function handleLandingScopeChange(nextScope) {
-  landingDirectoryState.scope = nextScope === SCOPE_SITE ? SCOPE_SITE : SCOPE_ALL;
-  setLandingSiteSelectVisible(landingDirectoryState.scope === SCOPE_SITE);
-
-  if (landingDirectoryState.scope === SCOPE_SITE) {
-    await loadLandingSites();
-    if (!landingDirectoryState.selectedSite && landingDirectoryState.sites.length) {
-      landingDirectoryState.selectedSite = landingDirectoryState.sites[0];
-    }
-    renderLandingSiteOptions();
-  } else {
-    landingDirectoryState.selectedSite = "";
-  }
-
-  updateLandingScopeInUrl();
-  await loadLandingVendors();
-}
-
 function bindLandingDirectoryControls() {
   if (landingDirectoryControlsBound) return;
 
   const searchInput = qs("vendorDirectorySearch");
   const sortSelect = qs("vendorDirectorySort");
-  const scopeSelect = qs("vendorDirectoryScope");
-  const siteSelect = getLandingSiteSelect();
-  if (!searchInput || !sortSelect || !scopeSelect || !siteSelect) return;
+  if (!searchInput || !sortSelect) return;
 
   searchInput.addEventListener("input", () => {
     landingDirectoryState.search = searchInput.value || "";
@@ -831,47 +757,29 @@ function bindLandingDirectoryControls() {
     renderLandingVendorGrid();
   });
 
-  scopeSelect.addEventListener("change", () => {
-    void handleLandingScopeChange(scopeSelect.value);
-  });
-
-  siteSelect.addEventListener("change", () => {
-    landingDirectoryState.selectedSite = String(siteSelect.value || "").trim();
-    updateLandingScopeInUrl();
-    void loadLandingVendors();
-  });
-
   landingDirectoryControlsBound = true;
 }
 
 function bootLandingDirectory(initialSite, scopeParam) {
   const searchInput = qs("vendorDirectorySearch");
   const sortSelect = qs("vendorDirectorySort");
-  const scopeSelect = qs("vendorDirectoryScope");
-  const siteSelect = getLandingSiteSelect();
-  if (!searchInput || !sortSelect || !scopeSelect || !siteSelect) return;
+  if (!searchInput || !sortSelect) return;
 
   landingDirectoryState.search = "";
   landingDirectoryState.sort = LANDING_SORT_ACTIVITY;
-  landingDirectoryState.scope = normalizeScope(scopeParam) === SCOPE_SITE ? SCOPE_SITE : SCOPE_ALL;
+  landingDirectoryState.scope = normalizeScope(scopeParam) === SCOPE_SITE && String(initialSite || "").trim()
+    ? SCOPE_SITE
+    : SCOPE_ALL;
   landingDirectoryState.selectedSite = landingDirectoryState.scope === SCOPE_SITE ? String(initialSite || "").trim() : "";
 
   searchInput.value = "";
   sortSelect.value = LANDING_SORT_ACTIVITY;
-  scopeSelect.value = landingDirectoryState.scope;
 
   bindLandingDirectoryControls();
-  setLandingSiteSelectVisible(landingDirectoryState.scope === SCOPE_SITE);
 
   if (landingDirectoryState.scope === SCOPE_SITE) {
-    void loadLandingSites().then(() => {
-      if (!landingDirectoryState.selectedSite && landingDirectoryState.sites.length) {
-        landingDirectoryState.selectedSite = landingDirectoryState.sites[0];
-      }
-      renderLandingSiteOptions();
-      updateLandingScopeInUrl();
-      return loadLandingVendors();
-    });
+    updateLandingScopeInUrl();
+    void loadLandingVendors();
     return;
   }
 
@@ -918,13 +826,6 @@ function syncShellBackLink({ vendorSelected = false, scope = SCOPE_ALL, site = "
   shellBackLink.textContent = "\u2190 Back to Control Centre";
 }
 
-function updateScopeInUrl(scope) {
-  const url = new URL(window.location.href);
-  url.searchParams.set("scope", scope === SCOPE_ALL ? SCOPE_ALL : SCOPE_SITE);
-  const next = `${url.pathname}?${url.searchParams.toString()}`;
-  window.history.replaceState({}, "", next);
-}
-
 function showVaultContent(site, vendor) {
   const missing = qs("vaultMissingState");
   const content = qs("vaultContent");
@@ -947,31 +848,12 @@ function showVaultContent(site, vendor) {
 
 function renderScopeChipsAndControls() {
   const vendorName = qs("vaultHeaderVendorName");
-  const siteButton = qs("vaultScopeSiteButton");
-  const allButton = qs("vaultScopeAllButton");
   const backLink = qs("backToSiteInsightsLink");
-  if (!vendorName || !siteButton || !allButton || !backLink) return;
-
-  const hasSite = Boolean(vaultScopeState.site);
-  const isAll = vaultScopeState.scope === SCOPE_ALL;
+  if (!vendorName || !backLink) return;
 
   vendorName.textContent = vaultScopeState.vendor;
   renderHeaderContextSummary();
   renderHeaderStatusLine();
-
-  siteButton.disabled = !hasSite;
-  siteButton.classList.toggle("is-active", !isAll);
-  siteButton.setAttribute("aria-pressed", String(!isAll));
-  siteButton.setAttribute("aria-disabled", String(!hasSite));
-  siteButton.title = hasSite ? "Show this vendor on the current site only" : "Unavailable: this view has no site context";
-  siteButton.setAttribute(
-    "aria-label",
-    hasSite ? "This site" : "This site unavailable because no site context is available"
-  );
-
-  allButton.classList.toggle("is-active", isAll);
-  allButton.setAttribute("aria-pressed", String(isAll));
-  allButton.title = "Show this vendor across all captured sites";
 
   backLink.textContent = "Back to vendor selection";
   backLink.href = buildVendorSelectionHref(vaultScopeState.site);
@@ -986,23 +868,6 @@ function renderScopeCopy() {
     return;
   }
   empty.textContent = "No exposure signals observed for this scope in captured request metadata.";
-}
-
-function setScope(nextScope, opts = {}) {
-  const requested = normalizeScope(nextScope) || SCOPE_SITE;
-  if (requested === SCOPE_SITE && !vaultScopeState.site) return;
-  if (vaultScopeState.scope === requested) return;
-
-  vaultScopeState.scope = requested;
-  renderScopeChipsAndControls();
-  renderScopeCopy();
-  setExportStatus("");
-  if (opts.updateUrl !== false) updateScopeInUrl(vaultScopeState.scope);
-  if (opts.reload !== false) {
-    loadExposureInventory();
-    loadVendorVaultSummary();
-    loadVendorApiEvidence();
-  }
 }
 
 function clamp01(value) {
@@ -2720,7 +2585,7 @@ function syncContextualApiEvidenceCopy() {
     intro.textContent = "Site-level Browser API activity not directly linked to this vendor.";
     note.textContent = "Useful as page context, not vendor-specific evidence.";
   } else {
-    intro.textContent = "Switch to This site to review wider page context.";
+    intro.textContent = "Open Site Insights to review wider page context.";
     note.textContent = "Contextual signals are separate from vendor-specific evidence.";
   }
 
@@ -3226,20 +3091,6 @@ function bootVendorVault() {
   if (exportCsvButton) {
     exportCsvButton.addEventListener("click", () => {
       handleExportCsvClick();
-    });
-  }
-
-  const scopeSiteButton = qs("vaultScopeSiteButton");
-  if (scopeSiteButton) {
-    scopeSiteButton.addEventListener("click", () => {
-      setScope(SCOPE_SITE, { updateUrl: true, reload: true });
-    });
-  }
-
-  const scopeAllButton = qs("vaultScopeAllButton");
-  if (scopeAllButton) {
-    scopeAllButton.addEventListener("click", () => {
-      setScope(SCOPE_ALL, { updateUrl: true, reload: true });
     });
   }
 
