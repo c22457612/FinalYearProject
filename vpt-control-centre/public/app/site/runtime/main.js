@@ -1062,6 +1062,8 @@ function resolveChartPointForOption(point, option, effectiveViewId) {
   return null;
 }
 
+// Selection state survives chart rebuilds by resolving the semantic point back
+// onto the current ECharts option before applying overlay/highlight actions.
 function resolveChartPointForCurrentChart(point) {
   if (!point || !chart) return null;
   const option = chart.getOption?.();

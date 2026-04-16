@@ -169,6 +169,8 @@
     return deriveGateDecision(geolocationAction, trustedSite);
   }
 
+  // Clipboard writes are warning-only in this wave to avoid breaking user flows;
+  // reads are the sensitive path and can be hard-blocked.
   function deriveClipboardGateDecision(clipboardAction, trustedSite, accessType) {
     const policyAction = normalizeClipboardGateAction(clipboardAction);
     const normalizedAccessType = normalizeClipboardAccessType(accessType);

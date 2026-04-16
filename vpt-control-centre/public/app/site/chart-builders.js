@@ -601,6 +601,8 @@ function formatBinLabel(binMs) {
   return `${mins}m`;
 }
 
+// Low-signal timelines are re-binned and optionally zoomed so sparse evidence
+// stays readable without implying continuous activity across the whole range.
 function assessTimelineSignal({ totalBins = 0, binEvents = [], totalEvents = 0 } = {}) {
   const safeBins = Math.max(1, Number(totalBins || 0));
   const activeBins = (Array.isArray(binEvents) ? binEvents : []).filter((list) => Array.isArray(list) && list.length > 0);
@@ -1138,6 +1140,8 @@ function assessVendorBucketSignal(rows) {
   };
 }
 
+// Endpoint buckets combine domain + path-like endpoint and include API outcomes
+// so vendor focus reflects both network traffic and browser-API evidence.
 function buildVendorEndpointRanking(events, selectedVendor, metric = "seen", { limit = null } = {}) {
   const vendorId = String(selectedVendor?.vendorId || "");
   const vendorName = selectedVendor?.vendorName || "the selected vendor";

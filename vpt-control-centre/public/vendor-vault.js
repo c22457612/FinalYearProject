@@ -1440,6 +1440,8 @@ function getEvidenceCounts(row) {
   return { observed: 0, attempted: 0, unknown: fallbackCount, total: fallbackCount };
 }
 
+// UI review-priority score: category weight x confidence x evidence level.
+// It ranks inspection urgency, not legal risk or proof of vendor storage.
 function computeOverallRowContribution(row) {
   const categoryId = String(row && row.data_category ? row.data_category : "");
   const categoryWeight = OVERALL_CATEGORY_WEIGHTS[categoryId] || DEFAULT_OVERALL_CATEGORY_WEIGHT;

@@ -134,6 +134,8 @@ function classifyDomain(rawDomain) {
     }
   }
 
+  // Unknown vendors are still grouped by base domain so the UI can aggregate evidence
+  // without implying the domain is part of the curated taxonomy.
   const fallback = toBaseDomain(normalized) || normalized;
   return {
     vendorId: fallback,
@@ -457,6 +459,8 @@ function normalizeApiToken(value) {
   return String(value || "").trim().toLowerCase();
 }
 
+// Deterministic privacy classification from metadata only; confidence reflects signal strength,
+// not proof that sensitive payloads were read or stored.
 function deriveApiClassification(kind, surfaceDetail, data = {}, stunTurnHostnames = []) {
   if (surfaceDetail === "canvas") {
     const operation = normalizeApiToken(data.operation);

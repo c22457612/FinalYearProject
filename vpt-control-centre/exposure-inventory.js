@@ -178,7 +178,8 @@ async function deriveExposureInventory(dbCtx, opts = {}) {
     const keyNames = extractQueryParamNames(row.request_url);
     if (!keyNames.length) continue;
 
-    // Prevent an event with many keys in one category from over-counting.
+    // Count at most one contribution per event/category/surface so a noisy URL
+    // cannot inflate exposure evidence just by carrying many matching parameters.
     const perEventContributions = new Map();
     const contributionSite = isSiteScoped ? site : normalizeSite(row.first_party_site);
 
